@@ -21,9 +21,15 @@ class ClipYtRouteMiddleware:
     async def __call__(self, scope, receive, send):
         if scope.get("type") == "http":
             path = scope.get("path", "")
+            if path.startswith("/gradio_api/clipyt/"):
+                rewritten = "/api/" + path[len("/gradio_api/clipyt/"):]
+                scope = dict(scope, path=rewritten, raw_path=rewritten.encode("utf-8"))
+                await clipyt_api(scope, receive, send)
+                return
             if path.startswith("/api/") or path.startswith("/clipyt-api/") or path.startswith("/background"):
                 if path.startswith("/clipyt-api/"):
-                    scope = dict(scope, path="/api/" + path[len("/clipyt-api/"):])
+                    rewritten = "/api/" + path[len("/clipyt-api/"):]
+                    scope = dict(scope, path=rewritten, raw_path=rewritten.encode("utf-8"))
                 await clipyt_api(scope, receive, send)
                 return
         await self.inner_app(scope, receive, send)

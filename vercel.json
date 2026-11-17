@@ -3,6 +3,6 @@
     { "source": "/", "destination": "/frontend/index.html" },
     { "source": "/static/:path*", "destination": "/frontend/:path*" },
     { "source": "/background-blur.jpg", "destination": "/frontend/background-blur.jpg" },
-    { "source": "/api/:path*", "destination": "https://lucky136-clipyt.hf.space/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://lucky136-clipyt.hf.space/gradio_api/clipyt/:path*" }
   ]
 }
