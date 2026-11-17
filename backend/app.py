@@ -281,15 +281,15 @@ def _get_preblurred_background() -> Optional[bytes]:
         return _BLUR_BG_CACHE["bytes"]
 
     img = Image.open(bg_file).convert("RGB")
-    # Resize to crisp 1280px wide before blurring (smooth look + tiny fast-loading JPEG)
-    if img.width > 1280:
-        ratio = 1280 / img.width
-        img = img.resize((1280, max(1, int(img.height * ratio))), Image.Resampling.LANCZOS)
-    img = img.filter(ImageFilter.GaussianBlur(radius=16))
-    img = ImageEnhance.Brightness(img).enhance(0.45)
+    # Crisp 1600px wide + light dreamy blur (radius=3.5) so artwork stays clearly visible & 60fps
+    if img.width > 1600:
+        ratio = 1600 / img.width
+        img = img.resize((1600, max(1, int(img.height * ratio))), Image.Resampling.LANCZOS)
+    img = img.filter(ImageFilter.GaussianBlur(radius=3.5))
+    img = ImageEnhance.Brightness(img).enhance(1.02)
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=82, optimize=True)
+    img.save(buf, format="JPEG", quality=86, optimize=True)
     data = buf.getvalue()
     _BLUR_BG_CACHE["mtime"] = mtime
     _BLUR_BG_CACHE["bytes"] = data
