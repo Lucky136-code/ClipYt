@@ -6,17 +6,32 @@ from backend.app import app as clipyt_api
 from backend.video_processor import detect_best_encoder
 
 
-# Inject ClipYt FastAPI routes (/api/* and /background*) into Gradio's FastAPI app
-# BEFORE Gradio's catch-all frontend route, even when ZeroGPU intercepts demo.launch()
+class ClipYtRouteMiddleware:
+    """
+    Outermost ASGI middleware that routes /api/*, /clipyt-api/*, and /background*
+    straight to ClipYt's FastAPI backend BEFORE Gradio's built-in /api handler.
+    """
+
+    def __init__(self, inner_app):
+        self.inner_app = inner_app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            path = scope.get("path", "")
+            if path.startswith("/api/") or path.startswith("/clipyt-api/") or path.startswith("/background"):
+                if path.startswith("/clipyt-api/"):
+                    scope = dict(scope, path="/api/" + path[len("/clipyt-api/"):])
+                await clipyt_api(scope, receive, send)
+                return
+        await self.inner_app(scope, receive, send)
+
+
 _orig_create_app = gr_routes.App.create_app
 
 
 def _patched_create_app(*args, **kwargs):
     gradio_app = _orig_create_app(*args, **kwargs)
-    for route in reversed(clipyt_api.router.routes):
-        path = getattr(route, "path", "")
-        if path.startswith(("/api/", "/background")):
-            gradio_app.router.routes.insert(0, route)
+    gradio_app.add_middleware(ClipYtRouteMiddleware)
     return gradio_app
 
 
