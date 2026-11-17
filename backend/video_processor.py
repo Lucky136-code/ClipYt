@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import time
 import subprocess
 import uuid
@@ -28,6 +29,15 @@ def detect_best_encoder() -> Dict[str, Any]:
     """Probe hardware GPU H.264 encoders once and cache the fastest high-quality option."""
     global _BEST_ENCODER
     if _BEST_ENCODER is not None:
+        return _BEST_ENCODER
+
+    # On Hugging Face ZeroGPU Spaces, probing NVENC/CUDA outside @spaces.GPU can trip startup checks
+    if os.environ.get("SPACE_ID"):
+        _BEST_ENCODER = {
+            "name": "libx264",
+            "hw_in": [],
+            "enc_args": ["-c:v", "libx264", "-preset", "superfast", "-crf", "19"],
+        }
         return _BEST_ENCODER
 
     candidates = [
