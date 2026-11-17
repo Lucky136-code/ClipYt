@@ -20,6 +20,13 @@ YTDLP_BASE_OPTS = {
     "remote_components": ["ejs:github"],
 }
 
+# Optional YouTube cookies support for cloud hosting (e.g. Hugging Face Spaces Secret: YOUTUBE_COOKIES)
+_env_cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
+if _env_cookies:
+    _cookies_file = TEMP_DIR / "yt_cookies.txt"
+    _cookies_file.write_text(_env_cookies, encoding="utf-8")
+    YTDLP_BASE_OPTS["cookiefile"] = str(_cookies_file)
+
 ASPECT_RATIOS = {
     "9:16": {"width": 1080, "height": 1920, "label": "9:16 Vertical (Shorts / Reels / TikTok)"},
     "1:1": {"width": 1080, "height": 1080, "label": "1:1 Square (Instagram / LinkedIn / X)"},

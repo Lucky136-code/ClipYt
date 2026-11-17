@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -183,6 +184,10 @@ def generate_ass_subtitles(
         margin_v = int(round(video_height * (0.20 if video_height > video_width else 0.10)))
 
     # Style definitions (ASS colors use &HAABBGGRR)
+    is_windows = os.name == "nt"
+    bold_font = "Arial Black" if is_windows else "DejaVu Sans"
+    clean_font = "Segoe UI" if is_windows else "Liberation Sans"
+
     uppercase = False
     if style_preset == "neon_yellow":
         primary_color = "&H0000E5FF"   # Bright Golden Yellow
@@ -191,7 +196,7 @@ def generate_ass_subtitles(
         border_style = 1
         outline = max(4, int(font_size * 0.10))
         shadow = 4
-        font_name = "Arial Black"
+        font_name = bold_font
         uppercase = True
     elif style_preset == "clean_modern":
         primary_color = "&H00FFFFFF"   # Pure White
@@ -200,7 +205,7 @@ def generate_ass_subtitles(
         border_style = 3               # Opaque box
         outline = max(10, int(font_size * 0.18))
         shadow = 0
-        font_name = "Segoe UI"
+        font_name = clean_font
         uppercase = False
     else:  # viral_pop (default)
         primary_color = "&H00FFFFFF"   # Crisp White
@@ -209,7 +214,7 @@ def generate_ass_subtitles(
         border_style = 1
         outline = max(5, int(font_size * 0.11))
         shadow = 4
-        font_name = "Arial Black"
+        font_name = bold_font
         uppercase = True
 
     header = f"""[Script Info]
