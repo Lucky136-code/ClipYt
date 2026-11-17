@@ -176,7 +176,11 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
     clean_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else url
 
     ydl_opts = dict(YTDLP_BASE_OPTS)
-    ydl_opts["extract_flat"] = False
+    ydl_opts.update({
+        "extract_flat": False,
+        "ignore_no_formats_error": True,
+        "format": None,
+    })
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(clean_url, download=False)
