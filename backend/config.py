@@ -20,11 +20,15 @@ except Exception:
 
 EXPORTS_DIR = TEMP_DIR
 
+YTDLP_CACHE_DIR = TEMP_DIR / "ytdlp_cache"
+YTDLP_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 YTDLP_BASE_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "no_color": True,
     "source_address": "0.0.0.0",
+    "cachedir": str(YTDLP_CACHE_DIR),
     "js_runtimes": {"node": {}},
     "remote_components": ["ejs:github"],
 }

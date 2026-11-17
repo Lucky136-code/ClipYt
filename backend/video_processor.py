@@ -69,27 +69,50 @@ def detect_best_encoder() -> Dict[str, Any]:
 
 
 def _build_stream_strategies() -> list:
-    """Preferred fast H.264 1080p stream strategies (zero AV1 decode slowdown)."""
+    """
+    Preferred fast H.264 1080p stream strategies with flexible bv*+ba/b fallback.
+    Each entry is (label, opts_dict, allow_cookies).
+    Note: Some clients (web_embedded, android_vr) drop all formats if cookies are passed.
+    """
     hd_fmt = (
         "bestvideo[height<=1080][fps<=30][vcodec^=avc1]+bestaudio[ext=m4a]/"
         "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
-        "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+        "best[height<=1080][protocol^=m3u8]/"
+        "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bv*+ba/b"
     )
     strategies = []
     if YTDLP_BASE_OPTS.get("cookiefile"):
         strategies.extend([
             (
-                "Authenticated TV HD Stream",
+                "Authenticated Safari HLS 1080p",
                 {
-                    "extractor_args": {"youtube": {"player_client": ["tv"]}},
-                    "format": hd_fmt,
+                    "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
+                    "format": "best[height<=1080][protocol^=m3u8]/best[height<=1080]/bv*+ba/b",
                 },
+                True,
             ),
             (
-                "Authenticated Web HD Stream",
+                "Authenticated Default HD",
                 {
                     "format": hd_fmt,
                 },
+                True,
+            ),
+            (
+                "Authenticated TV Stream",
+                {
+                    "extractor_args": {"youtube": {"player_client": ["tv"]}},
+                    "format": "bv*+ba/b",
+                },
+                True,
+            ),
+            (
+                "Authenticated Mobile Web",
+                {
+                    "extractor_args": {"youtube": {"player_client": ["mweb"]}},
+                    "format": "bv*+ba/b",
+                },
+                True,
             ),
         ])
 
@@ -100,15 +123,25 @@ def _build_stream_strategies() -> list:
                 "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
                 "format": hd_fmt,
             },
+            False,
+        ),
+        (
+            "Safari HLS 1080p",
+            {
+                "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
+                "format": "best[height<=1080][protocol^=m3u8]/best[height<=1080]/bv*+ba/b",
+            },
+            False,
         ),
         (
             "HD HLS Stream",
             {
                 "format": (
                     "bestvideo[height<=1080][protocol^=m3u8]+bestaudio[protocol^=m3u8]/"
-                    "best[height<=1080][protocol^=m3u8]"
+                    "best[height<=1080][protocol^=m3u8]/bv*+ba/b"
                 ),
             },
+            False,
         ),
         (
             "Android VR HD Stream",
@@ -116,16 +149,26 @@ def _build_stream_strategies() -> list:
                 "extractor_args": {"youtube": {"player_client": ["android_vr"]}},
                 "format": hd_fmt,
             },
+            False,
         ),
         (
             "Universal Fallback Stream",
             {
                 "extractor_args": {"youtube": {"player_client": ["tv_simply"]}},
-                "format": "best[height<=1080]/best",
+                "format": "bv*+ba/b",
             },
+            False,
         ),
     ])
     return strategies
+
+
+def _make_ydl_opts(strat_opts: dict, allow_cookies: bool) -> dict:
+    ydl_opts = dict(YTDLP_BASE_OPTS)
+    if not allow_cookies:
+        ydl_opts.pop("cookiefile", None)
+    ydl_opts.update(strat_opts)
+    return ydl_opts
 
 
 def prewarm_video_streams(url: str, video_id: str) -> None:
@@ -138,9 +181,8 @@ def prewarm_video_streams(url: str, video_id: str) -> None:
         return
 
     clean_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else url
-    for label, strat_opts in _build_stream_strategies():
-        ydl_opts = dict(YTDLP_BASE_OPTS)
-        ydl_opts.update(strat_opts)
+    for label, strat_opts, allow_cookies in _build_stream_strategies():
+        ydl_opts = _make_ydl_opts(strat_opts, allow_cookies)
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(clean_url, download=False)
@@ -148,6 +190,7 @@ def prewarm_video_streams(url: str, video_id: str) -> None:
                 STREAM_INFO_CACHE[video_id] = {
                     "info": info,
                     "strat_opts": strat_opts,
+                    "allow_cookies": allow_cookies,
                     "label": label,
                     "ts": time.time(),
                 }
@@ -192,8 +235,7 @@ def download_clip_segment(
     # Attempt 0: Instant pre-warmed cached metadata (skips webpage + JS solve!)
     cached = STREAM_INFO_CACHE.get(video_id)
     if cached and (time.time() - cached["ts"] < STREAM_CACHE_TTL_SEC):
-        ydl_opts = dict(YTDLP_BASE_OPTS)
-        ydl_opts.update(cached["strat_opts"])
+        ydl_opts = _make_ydl_opts(cached["strat_opts"], cached.get("allow_cookies", True))
         ydl_opts.update({
             "download_ranges": download_range_func(None, [(pad_start, pad_end)]),
             "force_keyframes_at_cuts": False,  # Stream copy (-c copy) -> instant!
@@ -213,9 +255,9 @@ def download_clip_segment(
 
     # Live multi-tier waterfall fallback
     last_error = None
-    for idx, (label, strat_opts) in enumerate(_build_stream_strategies(), 1):
+    for idx, (label, strat_opts, allow_cookies) in enumerate(_build_stream_strategies(), 1):
         if idx > 1 and progress_cb:
-            progress_cb(f"Switching to {label}...", 25 + idx * 5)
+            progress_cb(f"Switching to {label}...", min(48, 22 + idx * 3))
 
         for leftover in output_path.parent.glob(f"{output_path.stem}.*"):
             try:
@@ -223,8 +265,7 @@ def download_clip_segment(
             except Exception:
                 pass
 
-        ydl_opts = dict(YTDLP_BASE_OPTS)
-        ydl_opts.update(strat_opts)
+        ydl_opts = _make_ydl_opts(strat_opts, allow_cookies)
         ydl_opts.update({
             "download_ranges": download_range_func(None, [(pad_start, pad_end)]),
             "force_keyframes_at_cuts": False,  # Stream copy (-c copy) -> instant!
@@ -240,6 +281,7 @@ def download_clip_segment(
                     STREAM_INFO_CACHE[video_id] = {
                         "info": info,
                         "strat_opts": strat_opts,
+                        "allow_cookies": allow_cookies,
                         "label": label,
                         "ts": time.time(),
                     }
