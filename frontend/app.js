@@ -341,9 +341,10 @@ function renderHeatmapChart(heatmapPoints) {
   const labels = points.map((p) => p.time_str);
   const values = points.map((p) => p.intensity);
 
-  const gradient = ctx.createLinearGradient(0, 0, 0, 210);
-  gradient.addColorStop(0, "rgba(255, 26, 26, 0.55)");
-  gradient.addColorStop(1, "rgba(255, 26, 26, 0.0)");
+  const gradient = ctx.createLinearGradient(0, 0, 0, 215);
+  gradient.addColorStop(0, "rgba(124, 58, 237, 0.34)");
+  gradient.addColorStop(0.65, "rgba(167, 139, 250, 0.12)");
+  gradient.addColorStop(1, "rgba(196, 181, 253, 0.0)");
 
   heatmapChartInstance = new Chart(ctx, {
     type: "line",
@@ -353,16 +354,16 @@ function renderHeatmapChart(heatmapPoints) {
         {
           label: "Engagement",
           data: values,
-          borderColor: "#ff2626",
-          borderWidth: 2.5,
+          borderColor: "#7c3aed",
+          borderWidth: 2.8,
           backgroundColor: gradient,
           fill: true,
-          tension: 0.35,
+          tension: 0.38,
           pointRadius: 0,
           pointHoverRadius: 6,
           pointHoverBackgroundColor: "#ffffff",
-          pointHoverBorderColor: "#ff1a1a",
-          pointHoverBorderWidth: 2,
+          pointHoverBorderColor: "#7c3aed",
+          pointHoverBorderWidth: 2.5,
         },
       ],
     },
@@ -375,12 +376,13 @@ function renderHeatmapChart(heatmapPoints) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(10, 10, 14, 0.94)",
-          titleColor: "#ffffff",
-          bodyColor: "#fca5a5",
-          borderColor: "rgba(255, 26, 26, 0.5)",
+          backgroundColor: "rgba(255, 255, 255, 0.96)",
+          titleColor: "#18102b",
+          bodyColor: "#7c3aed",
+          borderColor: "rgba(124, 58, 237, 0.28)",
           borderWidth: 1,
           padding: 10,
+          cornerRadius: 10,
           displayColors: false,
           callbacks: {
             title: (items) => `Time: ${items[0].label}`,
@@ -390,14 +392,14 @@ function renderHeatmapChart(heatmapPoints) {
       },
       scales: {
         x: {
-          grid: { color: "rgba(255, 255, 255, 0.06)" },
-          ticks: { color: "#9ca3af", maxTicksLimit: 10 },
+          grid: { color: "rgba(109, 64, 198, 0.08)" },
+          ticks: { color: "#675b85", maxTicksLimit: 10 },
         },
         y: {
           min: 0,
           max: 100,
-          grid: { color: "rgba(255, 255, 255, 0.06)" },
-          ticks: { color: "#9ca3af", callback: (v) => v + "%" },
+          grid: { color: "rgba(109, 64, 198, 0.08)" },
+          ticks: { color: "#675b85", callback: (v) => v + "%" },
         },
       },
     },
