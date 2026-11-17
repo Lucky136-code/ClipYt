@@ -1,28 +1,49 @@
 import os
+import time
+import spaces
+import gradio as gr
+from backend.app import app as clipyt_api
+from backend.video_processor import detect_best_encoder
 
-try:
-    import spaces  # type: ignore  # Must be imported first on Hugging Face ZeroGPU
-except Exception:
-    spaces = None
 
-import uvicorn
-from backend.app import app
+@spaces.GPU
+def _zerogpu_ready(msg: str) -> str:
+    return msg
 
-# Register a minimal Gradio interface at /gradio with an @spaces.GPU handler
-# so Hugging Face ZeroGPU startup verification passes while / serves ClipYt!
-if spaces is not None:
-    try:
-        import gradio as gr  # type: ignore
 
-        @spaces.GPU
-        def _zerogpu_ready(msg: str = "ok") -> str:
-            return msg
+with gr.Blocks(title="ClipYt Backend") as demo:
+    gr.Markdown(
+        "# ClipYt Backend is Running\n"
+        "Open the live app at **[https://clipyt.vercel.app](https://clipyt.vercel.app/)**."
+    )
+    _inp = gr.Textbox(visible=False)
+    _out = gr.Textbox(visible=False)
+    _btn = gr.Button(visible=False)
+    _btn.click(fn=_zerogpu_ready, inputs=_inp, outputs=_out)
 
-        _demo = gr.Interface(fn=_zerogpu_ready, inputs=gr.Text(), outputs=gr.Text())
-        app = gr.mount_gradio_app(app, _demo, path="/gradio")
-    except Exception:
-        pass
 
 if __name__ == "__main__":
+    detect_best_encoder()
     port = int(os.environ.get("PORT", "7860"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+
+    # Launch via official Gradio demo.launch() so Hugging Face ZeroGPU startup passes
+    launch_res = demo.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        prevent_thread_lock=True,
+    )
+
+    # Inject ClipYt FastAPI routes (/api/* and /background*) directly onto Gradio's FastAPI server
+    fastapi_app = getattr(demo, "app", None)
+    if fastapi_app is None and isinstance(launch_res, tuple):
+        fastapi_app = launch_res[0]
+
+    if fastapi_app is not None:
+        for route in reversed(clipyt_api.router.routes):
+            path = getattr(route, "path", "")
+            if path.startswith(("/api/", "/background")):
+                fastapi_app.router.routes.insert(0, route)
+
+    # Keep main thread alive while Gradio/Uvicorn serves requests
+    while True:
+        time.sleep(3600)
