@@ -423,10 +423,10 @@ def _build_word_highlight_dialogues(
                 if j == i:
                     if pop_active:
                         parts.append(
-                            rf"{{\c{active_color_ass}\fscx108\fscy108\t(0,70,\fscx100\fscy100)}}{txt}{{\r}}"
+                            rf"{{\c{active_color_ass}&\fscx108\fscy108\t(0,70,\fscx100\fscy100)}}{txt}{{\r}}"
                         )
                     else:
-                        parts.append(rf"{{\c{active_color_ass}}}{txt}{{\r}}")
+                        parts.append(rf"{{\c{active_color_ass}&}}{txt}{{\r}}")
                 else:
                     parts.append(txt)
 
