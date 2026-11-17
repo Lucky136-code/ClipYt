@@ -254,7 +254,7 @@ def download_clip_segment(
             STREAM_INFO_CACHE.pop(video_id, None)
 
     # Live multi-tier waterfall fallback
-    last_error = None
+    errors = []
     for idx, (label, strat_opts, allow_cookies) in enumerate(_build_stream_strategies(), 1):
         if idx > 1 and progress_cb:
             progress_cb(f"Switching to {label}...", min(48, 22 + idx * 3))
@@ -291,10 +291,11 @@ def download_clip_segment(
                 if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
                     return cand, leading_pad
         except Exception as e:
-            last_error = e
+            errors.append(f"{label}: {str(e)[:140]}")
             continue
 
-    raise RuntimeError(f"Could not download video segment: {last_error}")
+    summary = " | ".join(errors[:3]) if errors else "Unknown download error"
+    raise RuntimeError(f"Could not download video segment ({summary})")
 
 
 def _has_audio_stream(filepath: Path) -> bool:

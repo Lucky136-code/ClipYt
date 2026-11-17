@@ -65,6 +65,59 @@ class GenerateRequest(BaseModel):
     peak_time: Optional[float] = None
 
 
+@app.get("/api/diag")
+async def api_diag(url: str = "https://www.youtube.com/watch?v=B2YhlGTGXpM"):
+    """Safe diagnostic endpoint (never exposes secrets) to inspect yt-dlp formats on cloud hosts."""
+    import shutil
+    import yt_dlp
+    from backend.config import YTDLP_BASE_OPTS
+
+    cookie_path = YTDLP_BASE_OPTS.get("cookiefile")
+    cookie_lines = 0
+    if cookie_path and Path(cookie_path).exists():
+        cookie_lines = sum(
+            1 for ln in Path(cookie_path).read_text(encoding="utf-8", errors="ignore").splitlines()
+            if ln.strip() and not ln.startswith("#")
+        )
+
+    def _probe():
+        report = {}
+        for name, extra, use_ck in [
+            ("default_ck", {}, True),
+            ("web_safari_ck", {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}}, True),
+            ("tv_ck", {"extractor_args": {"youtube": {"player_client": ["tv"]}}}, True),
+            ("mweb_ck", {"extractor_args": {"youtube": {"player_client": ["mweb"]}}}, True),
+            ("android_vr_nock", {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}}, False),
+        ]:
+            opts = dict(YTDLP_BASE_OPTS)
+            if not use_ck:
+                opts.pop("cookiefile", None)
+            opts.update(extra)
+            opts["ignore_no_formats_error"] = True
+            opts["format"] = None
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                fmts = [
+                    f"{f.get('format_id')}:{f.get('height')}p:{f.get('protocol')}"
+                    for f in (info.get("formats") or [])
+                    if f.get("vcodec") not in (None, "none")
+                ]
+                report[name] = {"video_count": len(fmts), "sample": fmts[-6:]}
+            except Exception as e:
+                report[name] = {"error": re.sub(r"\x1b\[[0-9;]*m", "", str(e))[:220]}
+        return report
+
+    clients = await asyncio.to_thread(_probe)
+    return {
+        "yt_dlp_version": yt_dlp.version.__version__,
+        "node_path": shutil.which("node"),
+        "ffmpeg_path": shutil.which("ffmpeg"),
+        "cookie_entries": cookie_lines,
+        "clients": clients,
+    }
+
+
 @app.get("/api/preview")
 async def api_preview(url: str):
     """Instant YouTube thumbnail & title preview as soon as a user pastes a link."""
