@@ -1,15 +1,24 @@
 import os
+import tempfile
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-TEMP_DIR = DATA_DIR / "temp"
-EXPORTS_DIR = BASE_DIR / "exports"
 FRONTEND_DIR = BASE_DIR / "frontend"
 
-# Ensure required directories exist
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
-EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+# Use local data/temp if writable (localhost), else /tmp/clipyt (cloud containers like HF Spaces)
+try:
+    DATA_DIR = BASE_DIR / "data"
+    TEMP_DIR = DATA_DIR / "temp"
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    _probe = TEMP_DIR / ".write_test"
+    _probe.write_text("ok", encoding="utf-8")
+    _probe.unlink(missing_ok=True)
+except Exception:
+    DATA_DIR = Path(tempfile.gettempdir()) / "clipyt"
+    TEMP_DIR = DATA_DIR / "temp"
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+EXPORTS_DIR = TEMP_DIR
 
 YTDLP_BASE_OPTS = {
     "quiet": True,
