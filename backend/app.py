@@ -89,12 +89,22 @@ async def api_diag(url: str = "https://www.youtube.com/watch?v=B2YhlGTGXpM"):
             ("mweb_ck", {"extractor_args": {"youtube": {"player_client": ["mweb"]}}}, True),
             ("android_vr_nock", {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}}, False),
         ]:
+            warns = []
+
+            class _DiagLogger:
+                def debug(self, msg): pass
+                def info(self, msg): pass
+                def warning(self, msg): warns.append(str(msg)[:160])
+                def error(self, msg): warns.append("ERR: " + str(msg)[:160])
+
             opts = dict(YTDLP_BASE_OPTS)
             if not use_ck:
                 opts.pop("cookiefile", None)
             opts.update(extra)
             opts["ignore_no_formats_error"] = True
             opts["format"] = None
+            opts["no_warnings"] = False
+            opts["logger"] = _DiagLogger()
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=False)
@@ -103,14 +113,15 @@ async def api_diag(url: str = "https://www.youtube.com/watch?v=B2YhlGTGXpM"):
                     for f in (info.get("formats") or [])
                     if f.get("vcodec") not in (None, "none")
                 ]
-                report[name] = {"video_count": len(fmts), "sample": fmts[-6:]}
+                report[name] = {"video_count": len(fmts), "sample": fmts[-6:], "warnings": warns[:4]}
             except Exception as e:
-                report[name] = {"error": re.sub(r"\x1b\[[0-9;]*m", "", str(e))[:220]}
+                report[name] = {"error": re.sub(r"\x1b\[[0-9;]*m", "", str(e))[:220], "warnings": warns[:4]}
         return report
 
     clients = await asyncio.to_thread(_probe)
     return {
         "yt_dlp_version": yt_dlp.version.__version__,
+        "deno_path": shutil.which("deno"),
         "node_path": shutil.which("node"),
         "ffmpeg_path": shutil.which("ffmpeg"),
         "cookie_entries": cookie_lines,

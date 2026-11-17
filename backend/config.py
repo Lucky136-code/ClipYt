@@ -29,7 +29,7 @@ YTDLP_BASE_OPTS = {
     "no_color": True,
     "source_address": "0.0.0.0",
     "cachedir": str(YTDLP_CACHE_DIR),
-    "js_runtimes": {"node": {}},
+    "js_runtimes": {"deno": {}, "node": {}},
     "remote_components": ["ejs:github"],
 }
 
