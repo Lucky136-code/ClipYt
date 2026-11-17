@@ -1,26 +1,34 @@
-# ClipYT — Free YouTube Heatmap Shorts Creator
+# ClipYt — Free YouTube to Shorts, Reels & TikTok Clip Maker
 
-**ClipYT** is a free, local-first web application that turns long YouTube videos into ready-to-post Shorts, Reels, and TikToks. Paste any YouTube link to see its real-time **Engagement & Interaction Map**, inspect actual video frames of the most replayed moments, or manually scrub any range with a 60fps live frame preview — then render at full 1080p HD using GPU hardware acceleration.
+🌐 **Live Website:** [https://clipyt.vercel.app](https://clipyt.vercel.app/)
 
-## Features
-- **YouTube Engagement & Interaction Map**: Reads YouTube's native *"Most Replayed"* viewer interaction heatmap and detects the top non-overlapping high-engagement moments automatically.
-- **Actual Video Frame Previews**: Extracts real video frames from YouTube storyboards for every detected moment so you can immediately see the scene.
-- **Manual Clip Selection (60fps Live Scrubber)**: Dual timeline range sliders with live Start & End video frame previews and editable `MM:SS` / `HH:MM:SS` timestamps.
-- **Climax Teaser Hook**: Optionally prepends the peak 2.5-second climax moment at `0:00` as a viral teaser before playing the buildup, with captions automatically synced.
-- **Custom Aspect Ratios & Framing**: Export in **9:16 Short**, **1:1 Square**, **4:5 Portrait**, or **16:9 Wide** with **Blur Background**, **Center Crop**, or **Black Bars**.
-- **Fast YouTube Auto-Captions**: Uses YouTube's built-in captions (no heavy ML model downloads) with clean bold subtitle presets.
-- **GPU-Accelerated Rendering**: Automatically uses NVIDIA NVENC (`h264_nvenc`), Intel QSV, or AMD AMF (with CPU fallback), stream-copy range downloads, and background stream pre-warming for fast 1080p renders.
+## What is ClipYt?
 
-## Requirements
-- Python 3.10+
-- [FFmpeg](https://ffmpeg.org/) installed and available on `PATH`
-- [Node.js](https://nodejs.org/) (used by `yt-dlp` for YouTube challenge solving)
+**ClipYt** is a **100% free tool** that turns long YouTube videos into short, viral clips for **YouTube Shorts, Instagram Reels, and TikTok** in just a few clicks.
 
-## Quick Start
+You don't need any video editing skills. Just paste a YouTube link, and ClipYt automatically finds the **most replayed and engaging moments** from the video, adds a viral hook and captions, crops it into vertical video (`9:16` or any aspect ratio you pick), and lets you download it right away. You can also manually pick any part of the video yourself.
+
+It's a simple, free alternative to paid clipping tools like Opus Clip — no watermark, no subscriptions, no complicated menus.
+
+## How to Use
+
+1. Choose your clip length and number of clips.
+2. Paste any YouTube video link.
+3. Pick an auto-detected viral moment (or select your own start & end time).
+4. Choose your aspect ratio (`9:16`, `1:1`, `4:5`, or `16:9`), captions, and climax hook.
+5. Click **Create this Short** and download your MP4.
+
+## Run Locally
+
+Make sure you have **Python 3.10+**, **FFmpeg**, and **Node.js** installed, then run:
 
 ```bash
 pip install -r requirements.txt
 python run.py
 ```
 
-Open `http://127.0.0.1:8000` in your browser, select your clip length and number of clips, and paste any YouTube link.
+Open `http://127.0.0.1:8000` in your browser.
+
+---
+
+**Keywords:** free youtube shorts generator, youtube to shorts converter, youtube to reels maker, youtube to tiktok clipper, auto clip youtube videos, free opus clip alternative, viral clip generator, youtube most replayed clipper, vertical 9:16 video cutter, auto captions shorts maker
