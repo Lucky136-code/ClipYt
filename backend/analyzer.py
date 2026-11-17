@@ -180,6 +180,8 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "extract_flat": False,
         "ignore_no_formats_error": True,
         "format": None,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
     })
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -247,6 +249,11 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "heatmap": timeline_chart_data,
         "storyboard": sb_meta,
         "clips": clips,
+        "_caption_info": {
+            "language": info.get("language"),
+            "subtitles": info.get("subtitles") or {},
+            "automatic_captions": info.get("automatic_captions") or {},
+        },
     }
 
 

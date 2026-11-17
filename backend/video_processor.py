@@ -1,4 +1,5 @@
 import copy
+import json
 import time
 import subprocess
 import uuid
@@ -211,6 +212,41 @@ def cleanup_old_temp_files(max_age_sec: int = 900) -> None:
                 pass
 
 
+def _measure_exact_leading_pad(
+    filepath: Path,
+    clip_start: float,
+    pad_start: float,
+) -> float:
+    """
+    Inspect the downloaded segment's PTS start_time via ffprobe so we trim
+    the EXACT keyframe lead-in (eliminating 1-5s A/V & caption drift!).
+    """
+    fallback_pad = max(0.0, clip_start - pad_start)
+    try:
+        res = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=start_time:stream=codec_type,start_time",
+                "-of", "json",
+                str(filepath),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if res.returncode != 0:
+            return fallback_pad
+        meta = json.loads(res.stdout or "{}")
+        fmt_start = float((meta.get("format") or {}).get("start_time") or 0.0)
+        # When -copyts preserved original YouTube PTS (e.g. 592.633s for a clip at 600.0s):
+        # FFmpeg input t=0.0 corresponds to fmt_start, so exact seek to clip_start is clip_start - fmt_start!
+        if fmt_start > 1.0 and fmt_start <= clip_start and (clip_start - fmt_start) < 25.0:
+            return round(clip_start - fmt_start, 3)
+    except Exception:
+        pass
+    return round(fallback_pad, 3)
+
+
 def download_clip_segment(
     url: str,
     video_id: str,
@@ -221,34 +257,37 @@ def download_clip_segment(
 ) -> Tuple[Path, float]:
     """
     Downloads ONLY the requested segment using stream-copy (-c copy, NO CPU re-encode!)
-    and reuses pre-warmed stream metadata when available for near-instant speed.
+    with -copyts so exact original YouTube PTS is preserved for millisecond caption sync.
     """
     if progress_cb:
         progress_cb("Fetching video clip...", 20)
 
     # Pad 1.5s before start so stream-copy hits an earlier keyframe cleanly;
-    # our single GPU FFmpeg pass trims the exact leading_pad accurately.
+    # _measure_exact_leading_pad measures the true keyframe start to 1ms accuracy.
     pad_start = max(0.0, start_time - 1.5)
     pad_end = end_time + 1.0
-    leading_pad = start_time - pad_start
+
+    dl_common = {
+        "download_ranges": download_range_func(None, [(pad_start, pad_end)]),
+        "force_keyframes_at_cuts": False,  # Stream copy (-c copy) -> instant!
+        "external_downloader_args": {"ffmpeg_i": ["-copyts"]},
+        "outtmpl": str(output_path.with_suffix(".%(ext)s")),
+        "merge_output_format": "mp4",
+    }
 
     # Attempt 0: Instant pre-warmed cached metadata (skips webpage + JS solve!)
     cached = STREAM_INFO_CACHE.get(video_id)
     if cached and (time.time() - cached["ts"] < STREAM_CACHE_TTL_SEC):
         ydl_opts = _make_ydl_opts(cached["strat_opts"], cached.get("allow_cookies", True))
-        ydl_opts.update({
-            "download_ranges": download_range_func(None, [(pad_start, pad_end)]),
-            "force_keyframes_at_cuts": False,  # Stream copy (-c copy) -> instant!
-            "outtmpl": str(output_path.with_suffix(".%(ext)s")),
-            "merge_output_format": "mp4",
-        })
+        ydl_opts.update(dl_common)
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.process_ie_result(copy.deepcopy(cached["info"]), download=True)
             candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
             for cand in candidates:
                 if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
-                    return cand, leading_pad
+                    exact_pad = _measure_exact_leading_pad(cand, start_time, pad_start)
+                    return cand, exact_pad
         except Exception:
             # Cache expired or failed; drop cache and fall through to live waterfall
             STREAM_INFO_CACHE.pop(video_id, None)
@@ -266,12 +305,7 @@ def download_clip_segment(
                 pass
 
         ydl_opts = _make_ydl_opts(strat_opts, allow_cookies)
-        ydl_opts.update({
-            "download_ranges": download_range_func(None, [(pad_start, pad_end)]),
-            "force_keyframes_at_cuts": False,  # Stream copy (-c copy) -> instant!
-            "outtmpl": str(output_path.with_suffix(".%(ext)s")),
-            "merge_output_format": "mp4",
-        })
+        ydl_opts.update(dl_common)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -289,7 +323,8 @@ def download_clip_segment(
             candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
             for cand in candidates:
                 if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
-                    return cand, leading_pad
+                    exact_pad = _measure_exact_leading_pad(cand, start_time, pad_start)
+                    return cand, exact_pad
         except Exception as e:
             errors.append(f"{label}: {str(e)[:140]}")
             continue

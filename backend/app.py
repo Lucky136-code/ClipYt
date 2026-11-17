@@ -173,7 +173,8 @@ async def api_analyze(req: AnalyzeRequest, background_tasks: BackgroundTasks):
             max_clips=req.max_clips,
         )
         vid = data["video_id"]
-        transcript = await asyncio.to_thread(fetch_youtube_transcript, vid)
+        caption_info = data.pop("_caption_info", None)
+        transcript = await asyncio.to_thread(fetch_youtube_transcript, vid, caption_info)
         data["has_transcript"] = bool(transcript and len(transcript) > 0)
         TRANSCRIPT_CACHE[vid] = transcript
         HEATMAP_CACHE[vid] = data.get("heatmap") or []
