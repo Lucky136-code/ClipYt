@@ -316,19 +316,23 @@ def _has_audio_stream(filepath: Path) -> bool:
         return True
 
 
+CLIMAX_HOOK_DURATION = 4.5
+CLIMAX_HOOK_MIN_CLIP = 9.0
+
+
 def _choose_climax_teaser_offset(
     clip_start: float,
     clip_end: float,
     peak_time: Optional[float] = None,
     heatmap_points: Optional[list] = None,
-    teaser_dur: float = 2.5,
+    teaser_dur: float = CLIMAX_HOOK_DURATION,
 ) -> Optional[float]:
     """
-    Choose the best relative start offset (inside [0, duration]) for the 2.5s
-    Climax Teaser Hook. Returns None if clip is too short (< 7s).
+    Choose the best relative start offset (inside [0, duration]) for the 4.5s
+    Climax Teaser Hook. Returns None if clip is too short (< 9s).
     """
     duration = clip_end - clip_start
-    if duration < 7.0:
+    if duration < CLIMAX_HOOK_MIN_CLIP:
         return None
 
     min_off = 2.5
@@ -378,7 +382,7 @@ def render_short(
 ) -> Path:
     """
     Ultra-fast single-pass GPU-accelerated render:
-    - Optional 2.5s Climax Teaser Hook prepended at 0:00 (with synced captions!)
+    - Optional 4.5s Climax Teaser Hook prepended at 0:00 (with synced captions!)
     - Keeps foreground at crisp full 1080p/720p quality
     - Uses 1/4-scale blur pass (15x faster, visually identical creamy blur)
     - Uses NVIDIA NVENC / Intel QSV / AMD AMF when available (with CPU fallback)
@@ -389,7 +393,7 @@ def render_short(
     target_h = target_spec["height"]
 
     duration = max(0.5, clip_end - clip_start)
-    teaser_dur = 2.5
+    teaser_dur = CLIMAX_HOOK_DURATION
     teaser_offset: Optional[float] = None
     if climax_hook:
         teaser_offset = _choose_climax_teaser_offset(
@@ -598,8 +602,8 @@ def process_clip_pipeline(
 
         file_size_mb = round(final_output_path.stat().st_size / (1024 * 1024), 2)
         base_dur = round(end_time - start_time, 2)
-        hook_applied = bool(climax_hook and base_dur >= 7.0)
-        final_dur = round(base_dur + (2.5 if hook_applied else 0.0), 2)
+        hook_applied = bool(climax_hook and base_dur >= CLIMAX_HOOK_MIN_CLIP)
+        final_dur = round(base_dur + (CLIMAX_HOOK_DURATION if hook_applied else 0.0), 2)
 
         return {
             "success": True,
