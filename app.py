@@ -1,19 +1,22 @@
 import os
+import uvicorn
 import spaces
 import gradio as gr
-import gradio.routes as gr_routes
 from backend.app import app as clipyt_api
 from backend.video_processor import detect_best_encoder
 
 
 class ClipYtRouteMiddleware:
     """
-    Outermost ASGI middleware that routes /api/*, /clipyt-api/*, and /background*
-    straight to ClipYt's FastAPI backend BEFORE Gradio's built-in /api handler.
+    Wraps the final ASGI app passed into Uvicorn so /api/*, /clipyt-api/*, and
+    /background* ALWAYS reach ClipYt's FastAPI backend before Gradio 6's router.
     """
 
     def __init__(self, inner_app):
         self.inner_app = inner_app
+
+    def __getattr__(self, name):
+        return getattr(self.inner_app, name)
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") == "http":
@@ -26,16 +29,17 @@ class ClipYtRouteMiddleware:
         await self.inner_app(scope, receive, send)
 
 
-_orig_create_app = gr_routes.App.create_app
+# Hook uvicorn.Config so Gradio 6's final server app is wrapped at the outermost ASGI layer
+_orig_uvicorn_config_init = uvicorn.Config.__init__
 
 
-def _patched_create_app(*args, **kwargs):
-    gradio_app = _orig_create_app(*args, **kwargs)
-    gradio_app.add_middleware(ClipYtRouteMiddleware)
-    return gradio_app
+def _patched_uvicorn_config_init(self, app, *args, **kwargs):
+    if callable(app) and not isinstance(app, ClipYtRouteMiddleware):
+        app = ClipYtRouteMiddleware(app)
+    return _orig_uvicorn_config_init(self, app, *args, **kwargs)
 
 
-gr_routes.App.create_app = staticmethod(_patched_create_app)
+uvicorn.Config.__init__ = _patched_uvicorn_config_init
 
 
 @spaces.GPU
