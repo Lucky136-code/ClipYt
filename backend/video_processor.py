@@ -70,7 +70,20 @@ def detect_best_encoder() -> Dict[str, Any]:
 
 def _build_stream_strategies() -> list:
     """Preferred fast H.264 1080p stream strategies (zero AV1 decode slowdown)."""
-    return [
+    strategies = []
+    if YTDLP_BASE_OPTS.get("cookiefile"):
+        strategies.append((
+            "Authenticated HD Stream",
+            {
+                "format": (
+                    "bestvideo[height<=1080][fps<=30][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                    "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                    "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+                ),
+            },
+        ))
+
+    strategies.extend([
         (
             "HD Embedded Stream",
             {
@@ -98,7 +111,8 @@ def _build_stream_strategies() -> list:
                 "format": "best[height<=1080]/best",
             },
         ),
-    ]
+    ])
+    return strategies
 
 
 def prewarm_video_streams(url: str, video_id: str) -> None:
