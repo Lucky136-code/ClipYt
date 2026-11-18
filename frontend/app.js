@@ -79,16 +79,21 @@ let currentQuota = {
 };
 
 async function fetchRateLimitStatus() {
+  const overlay = document.getElementById("server-offline-overlay");
   try {
-    const res = await fetchWithTimeout("/api/rate-limit", {}, 5000);
-    if (!res.ok) return;
+    const res = await fetchWithTimeout("/api/rate-limit", {}, 4000);
+    if (!res.ok) {
+      if (overlay) overlay.classList.remove("hidden");
+      return;
+    }
     const data = await res.json();
     if (data.success) {
       currentQuota = data;
       renderRateLimitUI();
+      if (overlay) overlay.classList.add("hidden");
     }
   } catch (e) {
-    // Non-blocking fallback
+    if (overlay) overlay.classList.remove("hidden");
   }
 }
 
@@ -121,6 +126,13 @@ function setupLiquidGlassEffect() {
 }
 
 function setupEventListeners() {
+  const dismissBtn = document.getElementById("offline-dismiss-btn");
+  if (dismissBtn) {
+    dismissBtn.addEventListener("click", () => {
+      document.getElementById("server-offline-overlay")?.classList.add("hidden");
+    });
+  }
+
   const analyzeForm = document.getElementById("analyze-form");
   const urlInput = document.getElementById("youtube-url");
 

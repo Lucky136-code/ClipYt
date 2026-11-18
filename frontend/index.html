@@ -18,8 +18,8 @@
   <!-- Background Overlay Scrim -->
   <div class="bg-overlay"></div>
 
-  <!-- Server Offline Full-Screen Notice Overlay -->
-  <div id="server-offline-overlay" class="server-offline-overlay">
+  <!-- Server Offline Dynamic Notice Overlay -->
+  <div id="server-offline-overlay" class="server-offline-overlay hidden">
     <div class="glass-card offline-card">
       <div class="offline-badge">
         <span class="offline-pulse-dot"></span>
@@ -36,11 +36,16 @@
       </div>
       <h2 class="offline-title">Server is Currently Off</h2>
       <p class="offline-desc">
-        The ClipYt processing server is currently powered down for maintenance. 
-        Video analysis and clip rendering are temporarily paused.
+        The ClipYt processing server is currently powered down. 
+        Video analysis and clip rendering are temporarily paused until the server is turned back on.
       </p>
       <div class="offline-notice-pill">
-        <span>⚡ Please check back later when the server is online</span>
+        <span>⚡ Check back soon or start the server to continue</span>
+      </div>
+      <div style="margin-top: 1.25rem;">
+        <button type="button" id="offline-dismiss-btn" class="btn-saved" style="font-size: 0.85rem; padding: 0.4rem 1.1rem;">
+          Dismiss & View Site
+        </button>
       </div>
     </div>
   </div>
