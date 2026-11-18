@@ -1,18 +1,52 @@
 // --- ClipYT Simple Frontend ---
 
+// Safe fetch with timeout to prevent frozen/hanging requests
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } catch (err) {
+    if (err.name === "AbortError") {
+      const isVercel = window.location.hostname.includes("vercel.app");
+      if (isVercel) {
+        throw new Error(
+          "Connection timed out. Your AI server is running on your laptop! Please open http://localhost:8000 in your browser."
+        );
+      }
+      throw new Error("Server request timed out. Please check if your backend server is running.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 // Safe API JSON parser: catches HTML error pages and displays a clean, helpful message
 async function parseApiResponse(res) {
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  const isVercel = window.location.hostname.includes("vercel.app");
   if (!contentType.includes("application/json")) {
     const text = await res.text().catch(() => "");
-    if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+    if (
+      text.includes("<!DOCTYPE") ||
+      text.includes("<html") ||
+      res.status === 502 ||
+      res.status === 503 ||
+      res.status === 504 ||
+      res.status === 404
+    ) {
+      if (isVercel) {
+        throw new Error(
+          "Backend is running on your laptop! Please open http://localhost:8000 in your browser to process videos with your laptop GPU."
+        );
+      }
       throw new Error(
-        "Backend server is offline. Please launch the server on your laptop using 'start_clipyt.bat' (local) or 'start_public_server.bat' (for public web access)."
-      );
-    }
-    if (res.status === 502 || res.status === 503 || res.status === 504) {
-      throw new Error(
-        `Server temporarily unavailable (${res.status} Bad Gateway). Please make sure 'start_clipyt.bat' or 'start_public_server.bat' is running on your laptop.`
+        "Backend server is offline. Please launch the server on your laptop using 'python run.py'."
       );
     }
     throw new Error(`Server returned unexpected response (${res.status} ${res.statusText || "Error"}).`);
@@ -311,7 +345,7 @@ async function runFullAnalysis(url, force = false) {
   const maxClips = parseInt(document.getElementById("max-clips").value);
 
   try {
-    const res = await fetch("/api/analyze", {
+    const res = await fetchWithTimeout("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -319,7 +353,7 @@ async function runFullAnalysis(url, force = false) {
         clip_duration: duration,
         max_clips: maxClips,
       }),
-    });
+    }, 45000);
 
     const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
@@ -341,7 +375,7 @@ async function fetchInstantPreview(url) {
   const indicator = document.getElementById("analyzing-indicator");
 
   try {
-    const res = await fetch(`/api/preview?url=${encodeURIComponent(url)}`);
+    const res = await fetchWithTimeout(`/api/preview?url=${encodeURIComponent(url)}`, {}, 10000);
     if (!res.ok) return;
     const info = await parseApiResponse(res);
 
@@ -834,11 +868,11 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
   showProgressModal("Starting...");
 
   try {
-    const res = await fetch("/api/generate", {
+    const res = await fetchWithTimeout("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    });
+    }, 20000);
 
     const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
@@ -855,7 +889,7 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
 function pollTaskProgress(taskId) {
   const timer = setInterval(async () => {
     try {
-      const res = await fetch(`/api/task/${taskId}`);
+      const res = await fetchWithTimeout(`/api/task/${taskId}`, {}, 8000);
       if (!res.ok) {
         clearInterval(timer);
         hideProgressModal();
@@ -1490,11 +1524,11 @@ async function inspectLiveStream(url, forceRefresh = false) {
   }
 
   try {
-    const res = await fetch("/api/pro/inspect", {
+    const res = await fetchWithTimeout("/api/pro/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, force_refresh: forceRefresh }),
-    });
+    }, 25000);
     const json = await parseApiResponse(res);
     if (!res.ok || !json.success) {
       throw new Error(json.detail || "Could not load stream.");
@@ -1671,7 +1705,7 @@ async function loadSelectedBoundaryFrames(manualClick = false) {
   const endUtc = isLive && proState.firstPdtUtc ? (proState.firstPdtUtc + proState.endSec) : null;
 
   try {
-    const res = await fetch("/api/pro/frames", {
+    const res = await fetchWithTimeout("/api/pro/frames", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1683,7 +1717,7 @@ async function loadSelectedBoundaryFrames(manualClick = false) {
         start_time: proState.startSec,
         end_time: proState.endSec,
       }),
-    });
+    }, 15000);
     const json = await parseApiResponse(res);
     if (mySeq !== proState.framesFetchSeq) return; // newer request superseded this one
     if (res.ok && json.success && json.data) {
@@ -1871,11 +1905,11 @@ async function submitLiveClipExport() {
   showProgressModal("Fetching your exact selected clip window...");
 
   try {
-    const res = await fetch("/api/pro/generate", {
+    const res = await fetchWithTimeout("/api/pro/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    });
+    }, 25000);
     const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
       throw new Error(data.detail || "Could not start clip export.");
@@ -1908,11 +1942,11 @@ async function scanAutoViralClips(url) {
   statusEl.textContent = "Analyzing live chat message frequency & hype spikes...";
 
   try {
-    const res = await fetch("/api/auto-viral/scan", {
+    const res = await fetchWithTimeout("/api/auto-viral/scan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, max_peaks: 5, clip_duration: 30.0, hook_duration: 3.0 }),
-    });
+    }, 35000);
     const json = await parseApiResponse(res);
     if (!res.ok || !json.success) {
       throw new Error(json.detail || "Could not scan chat spikes.");
@@ -2066,11 +2100,11 @@ async function generateAutoViralShort(peak, btnEl) {
   showProgressModal("Extracting 3s hook & 30s clip from live chat spike...");
 
   try {
-    const res = await fetch("/api/auto-viral/generate", {
+    const res = await fetchWithTimeout("/api/auto-viral/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    });
+    }, 30000);
     const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
       throw new Error(data.detail || "Could not launch auto-viral render.");
