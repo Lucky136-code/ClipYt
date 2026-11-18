@@ -2200,32 +2200,88 @@ function loadProHlsPlayer(hlsProxyUrl, videoId) {
   if (window.Hls && window.Hls.isSupported()) {
     const hls = new window.Hls({
       lowLatencyMode: false,
+      startPosition: -1,
       backBufferLength: 600,
       maxBufferLength: 25,
+      maxMaxBufferLength: 40,
       liveSyncDurationCount: 3,
-      enableWorker: true,
+      liveMaxLatencyDurationCount: 12,
+      enableWorker: false,
     });
     proState.hlsInstance = hls;
-    hls.loadSource(hlsProxyUrl);
-    hls.attachMedia(vid);
+    let didInitialSync = false;
+
+    const snapToBufferedLive = () => {
+      if (didInitialSync || proState.hlsScrubbing) return;
+      if (vid.buffered && vid.buffered.length > 0) {
+        const bStart = vid.buffered.start(vid.buffered.length - 1);
+        const bEnd = vid.buffered.end(vid.buffered.length - 1);
+        if (bEnd > bStart + 0.2) {
+          didInitialSync = true;
+          if (vid.currentTime < bStart || vid.currentTime > bEnd) {
+            vid.currentTime = Math.max(bStart + 0.1, bEnd - 6);
+          }
+          vid.play().catch(() => {});
+          startHlsPreviewLoop();
+        }
+      }
+    };
+
+    hls.on(window.Hls.Events.MEDIA_ATTACHED, () => {
+      hls.loadSource(hlsProxyUrl);
+    });
+
     hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-      vid.play().catch(() => {});
       startPlayerClockSync();
       startHlsPreviewLoop();
+      if (typeof hls.liveSyncPosition === "number" && hls.liveSyncPosition > 2) {
+        vid.currentTime = hls.liveSyncPosition;
+      }
+      vid.play().catch(() => {});
     });
+
+    hls.on(window.Hls.Events.LEVEL_LOADED, () => {
+      if (!didInitialSync && vid.currentTime < 1 && typeof hls.liveSyncPosition === "number" && hls.liveSyncPosition > 2) {
+        vid.currentTime = hls.liveSyncPosition;
+      }
+    });
+
+    hls.on(window.Hls.Events.FRAG_BUFFERED, () => {
+      snapToBufferedLive();
+    });
+
+    vid.onloadeddata = () => {
+      snapToBufferedLive();
+      startHlsPreviewLoop();
+    };
+    vid.onplaying = () => {
+      startHlsPreviewLoop();
+    };
+
     hls.on(window.Hls.Events.ERROR, (_ev, data) => {
-      if (data && data.fatal) {
+      if (!data) return;
+      if (data.details === "bufferStalledError" && vid.buffered && vid.buffered.length > 0) {
+        const bStart = vid.buffered.start(vid.buffered.length - 1);
+        if (vid.currentTime < bStart) {
+          vid.currentTime = bStart + 0.15;
+          vid.play().catch(() => {});
+        }
+        return;
+      }
+      if (data.fatal) {
         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
           hls.startLoad();
         } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
           hls.recoverMediaError();
         } else {
-          // Graceful fallback to YouTube player only on unrecoverable fatal error
           stopProHlsPlayer();
           loadProYouTubePlayer(videoId);
         }
       }
     });
+
+    // Official hls.js order: attachMedia FIRST, then loadSource on MEDIA_ATTACHED!
+    hls.attachMedia(vid);
   } else if (vid.canPlayType("application/vnd.apple.mpegurl")) {
     // Native HLS (Safari / iOS)
     vid.src = hlsProxyUrl;
