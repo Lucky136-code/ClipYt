@@ -1014,7 +1014,7 @@ function setupSiteUnlockGate() {
 
     let secs = 5;
     ytWaitStatus.classList.remove("hidden", "ready");
-    ytWaitStatus.textContent = `Opening YouTube channel... please tap Subscribe (${secs}s)`;
+    ytWaitStatus.textContent = `Opening @Annieplaysgta6... please tap Subscribe (${secs}s)`;
 
     siteUnlockState.ytTimerId = setInterval(() => {
       secs -= 1;
@@ -1023,12 +1023,12 @@ function setupSiteUnlockGate() {
         siteUnlockState.ytTimerId = null;
         siteUnlockState.ytTimerReady = true;
         ytWaitStatus.classList.add("ready");
-        ytWaitStatus.textContent = "✓ YouTube opened! Enter your YouTube name/handle below.";
+        ytWaitStatus.textContent = "✓ Channel opened! Enter your YouTube name/handle below.";
         ytPill.textContent = "SUBSCRIBED?";
         ytPill.className = "task-status-pill ready";
         ytInput.focus();
       } else {
-        ytWaitStatus.textContent = `Opening YouTube channel... please tap Subscribe (${secs}s)`;
+        ytWaitStatus.textContent = `Opening @Annieplaysgta6... please tap Subscribe (${secs}s)`;
       }
     }, 1000);
   });
@@ -1076,7 +1076,7 @@ function setupSiteUnlockGate() {
 
     // Check YouTube Handle input
     const ytVal = ytInput.value.trim().replace(/^@+/, "");
-    const blocked = new Set(["test", "testing", "asdf", "abcd", "1234", "none", "fake", "user", "youtube", "instagram", "gta6.insider_"]);
+    const blocked = new Set(["test", "testing", "asdf", "abcd", "1234", "none", "fake", "user", "youtube", "instagram", "gta6.insider_", "annieplaysgta6", "anniegta"]);
     if (ytVal.length < 2 || blocked.has(ytVal.toLowerCase())) {
       errEl.textContent = "Please enter your valid YouTube username or handle in Task 1.";
       errEl.classList.remove("hidden");
