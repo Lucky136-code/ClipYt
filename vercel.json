@@ -1,8 +1,20 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/frontend/index.html" },
-    { "source": "/static/:path*", "destination": "/frontend/:path*" },
-    { "source": "/background-blur.jpg", "destination": "/frontend/background-blur.jpg" },
-    { "source": "/api/:path*", "destination": "http://127.0.0.1:8000/api/:path*" }
+    {
+      "source": "/",
+      "destination": "/frontend/index.html"
+    },
+    {
+      "source": "/static/:path*",
+      "destination": "/frontend/:path*"
+    },
+    {
+      "source": "/background-blur.jpg",
+      "destination": "/frontend/background-blur.jpg"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://faqs-arbitrary-sullivan-holes.trycloudflare.com/api/:path*"
+    }
   ]
 }
