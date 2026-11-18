@@ -284,6 +284,21 @@ body::before {
   display: block;
 }
 
+@media (max-width: 640px) {
+  .site-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 1rem 1rem 1.25rem;
+  }
+
+  .corner-credit {
+    position: static;
+    align-self: flex-end;
+  }
+}
+
 .site-footer strong {
   color: var(--text-main);
   font-weight: 700;
