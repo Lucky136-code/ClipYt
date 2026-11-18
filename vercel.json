@@ -14,7 +14,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://all-squad-done-bucks.trycloudflare.com/api/:path*"
+      "destination": "https://transparent-treasures-fruits-synthesis.trycloudflare.com/api/:path*"
     }
   ]
 }
