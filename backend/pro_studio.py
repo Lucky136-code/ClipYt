@@ -268,6 +268,82 @@ def _parse_hls_segments(
         return [], 0.0, None
 
 
+def _download_dvr_by_sequence(
+    m3u8_url: str,
+    start_time: Optional[float],
+    duration_sec: float,
+    rewind_sec: float,
+    out_ts_path: Path,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[Tuple[Path, float, float]]:
+    """
+    Direct Sequence-Based DVR Downloader:
+    Uses YouTube's underlying `/sq/<sequence_number>/` chunk addressing to download the exact
+    segments requested from the broadcast timeline.
+    Works for ANY point in the stream (even 8+ hours into the past), completely bypassing the
+    rolling 2-hour manifest window!
+    Returns (out_ts_path, sub_offset, available_duration) or None if format is not sequence-based.
+    """
+    segments, total_dur, _pdt = _parse_hls_segments(m3u8_url, headers)
+    if not segments:
+        return None
+
+    last_dur, last_url = segments[-1]
+    m_sq = re.search(r'/sq/(\d+)/', last_url)
+    if not m_sq:
+        return None
+
+    last_sq = int(m_sq.group(1))
+    chunk_dur = float(last_dur) if (last_dur and last_dur > 0.1) else 2.0
+    live_edge_sec = (last_sq + 1) * chunk_dur
+
+    req_dur = max(3.0, min(120.0, float(duration_sec)))
+    if start_time is not None and float(start_time) >= 0:
+        st = float(start_time)
+        # If user is at live edge (within 4s of live), record trailing req_dur
+        if st >= (live_edge_sec - 4.0):
+            target_start_sec = max(0.0, live_edge_sec - req_dur)
+        else:
+            # User rewound into the past: record forward starting from this exact second!
+            target_start_sec = st
+    elif rewind_sec is not None and float(rewind_sec) >= 3.0:
+        target_start_sec = max(0.0, live_edge_sec - float(rewind_sec))
+    else:
+        target_start_sec = max(0.0, live_edge_sec - req_dur)
+
+    target_sq = max(0, int(target_start_sec / chunk_dur))
+    chunks_needed = max(2, math.ceil(req_dur / chunk_dur) + 1)
+    chunk_start_sec = target_sq * chunk_dur
+    sub_offset = max(0.0, round(target_start_sec - chunk_start_sec, 3))
+
+    urls = [re.sub(r'/sq/\d+/', f'/sq/{sq}/', last_url) for sq in range(target_sq, target_sq + chunks_needed)]
+
+    req_headers = {}
+    if headers and headers.get("User-Agent"):
+        req_headers["User-Agent"] = headers["User-Agent"]
+
+    def _fetch_chunk(u: str) -> Optional[bytes]:
+        for _ in range(2):
+            try:
+                r = requests.get(u, headers=req_headers, timeout=12)
+                if r.status_code == 200 and len(r.content) > 512:
+                    return r.content
+            except Exception:
+                continue
+        return None
+
+    with ThreadPoolExecutor(max_workers=min(12, len(urls))) as ex:
+        chunks = list(ex.map(_fetch_chunk, urls))
+
+    valid_chunks = [c for c in chunks if c is not None]
+    if len(valid_chunks) < 2:
+        return None
+
+    out_ts_path.write_bytes(b"".join(valid_chunks))
+    avail_dur = len(valid_chunks) * chunk_dur
+    return out_ts_path, sub_offset, max(1.0, avail_dur - sub_offset)
+
+
 def _download_dvr_ts_slice(
     m3u8_url: str,
     rewind_sec: float,
@@ -708,17 +784,22 @@ def inspect_pro_source(
         preview_hls_url, preview_headers = _pick_preview_hls_url(info)
         segs, hls_total, first_pdt_utc = _parse_hls_segments(preview_hls_url or v_url, preview_headers or headers)
         dvr_window_sec = round(hls_total, 1) if hls_total > 0 else _measure_hls_dvr_seconds(v_url, headers)
-        if dvr_window_sec >= 10.0:
-            live_elapsed_sec = dvr_window_sec
-            live_min_sec = 0.0
-            if first_pdt_utc is None:
-                # Fallback anchor if playlist omitted PDT
-                first_pdt_utc = round(now - dvr_window_sec - 15.0, 2)
-        else:
-            rel_ts = info.get("release_timestamp") or info.get("timestamp")
-            raw_elapsed = (now - float(rel_ts)) if (rel_ts and now > float(rel_ts)) else 300.0
-            live_elapsed_sec = round(min(43200.0, max(60.0, raw_elapsed)), 1)
-            dvr_window_sec = live_elapsed_sec
+        # Calculate full broadcast elapsed time from sequence index or release timestamp
+        broadcast_elapsed = 0.0
+        if segs:
+            last_dur, last_url = segs[-1]
+            m_sq = re.search(r'/sq/(\d+)/', last_url)
+            if m_sq:
+                last_sq = int(m_sq.group(1))
+                cdur = float(last_dur) if (last_dur and last_dur > 0.1) else 2.0
+                broadcast_elapsed = round((last_sq + 1) * cdur, 1)
+
+        rel_ts = info.get("release_timestamp") or info.get("timestamp")
+        raw_elapsed = (now - float(rel_ts)) if (rel_ts and now > float(rel_ts)) else 0.0
+
+        live_elapsed_sec = max(broadcast_elapsed, raw_elapsed, dvr_window_sec, 300.0)
+        live_min_sec = 0.0
+        if first_pdt_utc is None:
             first_pdt_utc = round(now - dvr_window_sec - 15.0, 2)
 
     effective_total = live_elapsed_sec if is_live else duration
@@ -801,6 +882,7 @@ def download_live_dvr_segment(
     progress_cb: Optional[Callable[[str, int], None]] = None,
     start_utc_ts: Optional[float] = None,
     end_utc_ts: Optional[float] = None,
+    start_time: Optional[float] = None,
 ) -> Tuple[Path, float]:
     """
     Download an EXACT historical slice from an active YouTube Live Stream (via direct
@@ -819,7 +901,9 @@ def download_live_dvr_segment(
         raise RuntimeError("Could not find a live HLS stream URL for this broadcast.")
 
     if progress_cb:
-        if start_utc_ts is not None and end_utc_ts is not None:
+        if start_time is not None and start_time >= 0:
+            progress_cb(f"Grabbing exact {int(duration_sec)}s recorded slice from {format_timestamp(start_time)}...", 24)
+        elif start_utc_ts is not None and end_utc_ts is not None:
             progress_cb(f"Grabbing exact {int(duration_sec)}s recorded slice in 1080p HD...", 24)
         elif rewind_sec >= 5:
             mins = int(rewind_sec // 60)
@@ -837,18 +921,29 @@ def download_live_dvr_segment(
     v_ts_local = TEMP_DIR / f"dvr_v_{video_id}_{uuid.uuid4().hex[:6]}.ts"
     a_ts_local = TEMP_DIR / f"dvr_a_{video_id}_{uuid.uuid4().hex[:6]}.ts"
     try:
-        v_slice = _download_dvr_ts_slice(
-            v_url, rewind_sec, duration_sec, v_ts_local, headers,
-            start_utc_ts=start_utc_ts, end_utc_ts=end_utc_ts,
+        # Priority 1: Direct sequence-based DVR downloader (works for ANY time from 00:00:00 to 12+ hours!)
+        v_slice = _download_dvr_by_sequence(
+            v_url, start_time, duration_sec, rewind_sec, v_ts_local, headers
         )
+        if v_slice is None:
+            # Priority 2: Standard rolling manifest slice
+            v_slice = _download_dvr_ts_slice(
+                v_url, rewind_sec, duration_sec, v_ts_local, headers,
+                start_utc_ts=start_utc_ts, end_utc_ts=end_utc_ts,
+            )
+
         if v_slice is not None:
             v_file, sub_offset, _avail = v_slice
             a_file = None
             if a_url:
-                a_slice = _download_dvr_ts_slice(
-                    a_url, rewind_sec, duration_sec, a_ts_local, headers,
-                    start_utc_ts=start_utc_ts, end_utc_ts=end_utc_ts,
+                a_slice = _download_dvr_by_sequence(
+                    a_url, start_time, duration_sec, rewind_sec, a_ts_local, headers
                 )
+                if a_slice is None:
+                    a_slice = _download_dvr_ts_slice(
+                        a_url, rewind_sec, duration_sec, a_ts_local, headers,
+                        start_utc_ts=start_utc_ts, end_utc_ts=end_utc_ts,
+                    )
                 if a_slice is not None:
                     a_file = a_slice[0]
 
@@ -1220,6 +1315,7 @@ def process_pro_split_pipeline(
                 progress_cb=progress_cb,
                 start_utc_ts=start_utc_ts,
                 end_utc_ts=end_utc_ts,
+                start_time=float(start_time) if start_time is not None else None,
             )
         else:
             clip_start = max(0.0, float(start_time))

@@ -1964,10 +1964,8 @@ async function submitLiveClipExport() {
     access_key: proState.accessKey,
   };
 
-  const timeDesc = isLive && rewindSec >= 5
-    ? `${Math.floor(rewindSec / 60)}m ${rewindSec % 60}s ago`
-    : formatTime(startSec);
-  showProgressModal(`Recording & rendering ${dur}s Short from ${timeDesc}...`);
+  const timeDesc = formatTime(startSec, (playerDur || proState.totalSec || 0) >= 3600);
+  showProgressModal(`Recording & rendering ${dur}s Short from ${timeDesc} (exact on-screen scene)...`);
 
   try {
     const res = await fetchWithTimeout("/api/pro/generate", {
