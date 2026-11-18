@@ -45,12 +45,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Lightly pre-blurred background.png — clearly visible artwork with zero live blur lag (60fps+) */
+/* Sharp, completely visible background.png (zero background blur, locked 60fps+) */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background-image: url('/background-blur.jpg');
+  background-image: url('/background.png');
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
@@ -60,13 +60,8 @@ body::before {
   z-index: 0;
 }
 
-/* Soft airy lavender tint so foreground text stays super legible while background stays clear */
 .bg-overlay {
-  position: fixed;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(253, 250, 255, 0.30) 0%, rgba(244, 236, 255, 0.18) 55%, rgba(232, 218, 255, 0.28) 100%);
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 .navbar,
