@@ -1,5 +1,0 @@
-ffmpeg
-nodejs
-fontconfig
-fonts-dejavu-core
-fonts-liberation

@@ -1,18 +1,17 @@
 // --- ClipYT Simple Frontend ---
 
-// Safe API JSON parser: catches HTML error pages (Hugging Face paused, 502 Bad Gateway, 404s)
-// and displays a clear, actionable message instead of "Unexpected token '<', <!DOCTYPE... is not valid JSON"
+// Safe API JSON parser: catches HTML error pages and displays a clean message
 async function parseApiResponse(res) {
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
   if (!contentType.includes("application/json")) {
     const text = await res.text().catch(() => "");
-    if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("huggingface")) {
+    if (text.includes("<!DOCTYPE") || text.includes("<html")) {
       throw new Error(
-        "Backend server is offline or paused on Hugging Face. Please open https://huggingface.co/spaces/Lucky136/ClipYt and click 'Restart this space' (or wait 20 seconds if it is booting). If testing locally, run 'python run.py'."
+        "Backend server is offline. Please make sure the server is running on your laptop ('python run.py')."
       );
     }
     if (res.status === 502 || res.status === 503 || res.status === 504) {
-      throw new Error(`Server temporarily unavailable (${res.status} Bad Gateway). Backend is restarting, please retry in 10 seconds.`);
+      throw new Error(`Server temporarily unavailable (${res.status} Bad Gateway). Please make sure 'python run.py' is running.`);
     }
     throw new Error(`Server returned unexpected response (${res.status} ${res.statusText || "Error"}).`);
   }
