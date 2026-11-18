@@ -294,19 +294,28 @@ def _download_dvr_ts_slice(
         and end_utc_ts is not None
         and end_utc_ts > start_utc_ts + 1.0
         and first_pdt is not None
+        and start_utc_ts >= (first_pdt - 5.0)
+        and start_utc_ts <= (first_pdt + total_dur + 10.0)
     ):
         req_dur = max(3.0, min(125.0, float(end_utc_ts - start_utc_ts)))
         win_start = max(0.0, float(start_utc_ts) - first_pdt)
         win_end = min(total_dur, win_start + req_dur)
-        if win_start >= total_dur - 1.0:
-            win_end = total_dur
-            win_start = max(0.0, total_dur - req_dur)
     else:
         eff_rewind = max(0.0, float(rewind_sec))
-        win_end = max(min(total_dur, duration_sec), total_dur - eff_rewind)
-        win_start = max(0.0, win_end - float(duration_sec))
-        if win_end - win_start < 1.0:
-            win_start = max(0.0, total_dur - float(duration_sec))
+        req_dur = max(3.0, min(120.0, float(duration_sec)))
+        if eff_rewind >= 3.0:
+            # User rewound into the stream's past:
+            # The playhead on screen is at `total_dur - eff_rewind`.
+            # We record FORWARD from that exact moment for `req_dur`!
+            win_start = max(0.0, total_dur - eff_rewind)
+            win_end = min(total_dur, win_start + req_dur)
+            # If the requested clip extends past the current live edge, pull back win_start
+            if (win_end - win_start < req_dur) and win_end >= (total_dur - 0.5):
+                win_start = max(0.0, total_dur - req_dur)
+                win_end = total_dur
+        else:
+            # User is at the live edge: record the trailing `req_dur` that just happened!
+            win_start = max(0.0, total_dur - req_dur)
             win_end = total_dur
 
     selected: List[Tuple[float, str]] = []
@@ -376,10 +385,15 @@ def _build_local_dvr_vod_m3u8(
 
     # Compute exact requested window [win_start, win_end] inside [0, total_dur]
     eff_rewind = max(0.0, float(rewind_sec))
-    win_end = max(min(total_dur, duration_sec), total_dur - eff_rewind)
-    win_start = max(0.0, win_end - float(duration_sec))
-    if win_end - win_start < 1.0:
-        win_start = max(0.0, total_dur - float(duration_sec))
+    req_dur = max(3.0, min(120.0, float(duration_sec)))
+    if eff_rewind >= 3.0:
+        win_start = max(0.0, total_dur - eff_rewind)
+        win_end = min(total_dur, win_start + req_dur)
+        if (win_end - win_start < req_dur) and win_end >= (total_dur - 0.5):
+            win_start = max(0.0, total_dur - req_dur)
+            win_end = total_dur
+    else:
+        win_start = max(0.0, total_dur - req_dur)
         win_end = total_dur
 
     # Select all segments overlapping [win_start, win_end] (plus 1 tiny trailing buffer seg for safety)
@@ -787,11 +801,12 @@ def download_live_dvr_segment(
     progress_cb: Optional[Callable[[str, int], None]] = None,
     start_utc_ts: Optional[float] = None,
     end_utc_ts: Optional[float] = None,
-) -> Path:
+) -> Tuple[Path, float]:
     """
     Download an EXACT historical slice from an active YouTube Live Stream (via direct
     parallel `.ts` DVR chunk downloading matched to exact UTC `#EXT-X-PROGRAM-DATE-TIME`)
     so rewound recordings ALWAYS cut the exact recorded frame!
+    Returns (raw_downloaded_path, exact_sub_offset).
     """
     if progress_cb:
         progress_cb("Connecting to live stream DVR buffer...", 14)
@@ -849,17 +864,14 @@ def download_live_dvr_segment(
             else:
                 cmd.extend(["-map", "0:v:0", "-map", "0:a:0?"])
 
-            if sub_offset > 0.05:
-                cmd.extend(["-ss", f"{sub_offset:.3f}"])
             cmd.extend([
-                "-t", f"{duration_sec:.2f}",
                 "-c", "copy",
                 "-movflags", "+faststart",
                 str(output_path),
             ])
             res_ts = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
             if res_ts.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
-                return output_path
+                return output_path, sub_offset
     finally:
         for tmp_ts in (v_ts_local, a_ts_local):
             try:
@@ -897,17 +909,14 @@ def download_live_dvr_segment(
             else:
                 cmd.extend(["-map", "0:v:0", "-map", "0:a:0?"])
 
-            if sub_offset > 0.05:
-                cmd.extend(["-ss", f"{sub_offset:.3f}"])
             cmd.extend([
-                "-t", f"{duration_sec:.2f}",
                 "-c", "copy",
                 "-movflags", "+faststart",
                 str(output_path),
             ])
             res_slice = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
             if res_slice.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
-                return output_path
+                return output_path, sub_offset
     finally:
         for tmp_m3u8 in (v_m3u8_local, a_m3u8_local):
             try:
@@ -947,13 +956,13 @@ def download_live_dvr_segment(
 
     res = _run_live_ffmpeg(start_idx if start_idx is not None else -max(4, math.ceil(seconds_back / 5.0)))
     if res.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
-        return output_path
+        return output_path, 0.0
 
     if progress_cb:
         progress_cb(f"DVR disabled on this stream — capturing {int(duration_sec)}s live...", 28)
     res2 = _run_live_ffmpeg(None)
     if res2.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
-        return output_path
+        return output_path, 0.0
 
     err_msg = (res2.stderr or res.stderr or "FFmpeg live download failed").strip()[:260]
     raise RuntimeError(f"Could not capture live stream clip: {err_msg}")
@@ -1202,7 +1211,7 @@ def process_pro_split_pipeline(
                 clip_duration = max(5.0, min(120.0, float(end_utc_ts - start_utc_ts)))
             else:
                 clip_duration = max(5.0, min(120.0, float(duration_sec)))
-            downloaded_raw = download_live_dvr_segment(
+            downloaded_raw, exact_pad = download_live_dvr_segment(
                 url=url,
                 video_id=video_id,
                 duration_sec=clip_duration,
@@ -1212,7 +1221,6 @@ def process_pro_split_pipeline(
                 start_utc_ts=start_utc_ts,
                 end_utc_ts=end_utc_ts,
             )
-            exact_pad = 0.0
         else:
             clip_start = max(0.0, float(start_time))
             clip_end = max(clip_start + 5.0, float(end_time))

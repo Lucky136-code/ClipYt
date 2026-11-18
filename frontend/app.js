@@ -1590,8 +1590,16 @@ function startPlayerTracking() {
     if (proState.isDraggingScrubber) return;
 
     let cur = null;
-    if (ytLivePlayer && typeof ytLivePlayer.getCurrentTime === "function") {
-      try { cur = ytLivePlayer.getCurrentTime(); } catch (e) {}
+    let dur = null;
+    if (ytLivePlayer) {
+      try {
+        if (typeof ytLivePlayer.getCurrentTime === "function") cur = ytLivePlayer.getCurrentTime();
+        if (typeof ytLivePlayer.getDuration === "function") dur = ytLivePlayer.getDuration();
+      } catch (e) {}
+    }
+
+    if (typeof dur === "number" && !isNaN(dur) && dur > 10) {
+      proState.totalSec = Math.floor(dur);
     }
 
     if (typeof cur === "number" && !isNaN(cur) && cur >= 0) {
@@ -1662,6 +1670,18 @@ function syncScrubberUI(currentSec) {
 
   const curEl = document.getElementById("pro-tl-current");
   if (curEl) curEl.textContent = formatTime(clamped, useH);
+
+  const maxEl = document.getElementById("pro-tl-max");
+  if (maxEl) {
+    const behind = Math.max(0, Math.round(total - clamped));
+    if (behind > 5) {
+      const mins = Math.floor(behind / 60);
+      const secs = behind % 60;
+      maxEl.textContent = `⏪ -${mins > 0 ? mins + "m " : ""}${secs}s`;
+    } else {
+      maxEl.textContent = "🔴 LIVE";
+    }
+  }
 
   const dur = proState.clipDuration || 35;
   const endSec = Math.min(total, clamped + dur);
@@ -1891,30 +1911,46 @@ async function submitLiveClipExport() {
   const dur = proState.clipDuration || 35;
 
   let currentSec = proState.currentPlaySec;
-  if (ytLivePlayer && typeof ytLivePlayer.getCurrentTime === "function") {
+  let playerDur = proState.totalSec || 0;
+  if (ytLivePlayer) {
     try {
-      const liveCur = ytLivePlayer.getCurrentTime();
-      if (typeof liveCur === "number" && !isNaN(liveCur) && liveCur >= 0) {
-        currentSec = liveCur;
+      if (typeof ytLivePlayer.getCurrentTime === "function") {
+        const liveCur = ytLivePlayer.getCurrentTime();
+        if (typeof liveCur === "number" && !isNaN(liveCur) && liveCur >= 0) {
+          currentSec = liveCur;
+        }
+      }
+      if (typeof ytLivePlayer.getDuration === "function") {
+        const liveDur = ytLivePlayer.getDuration();
+        if (typeof liveDur === "number" && !isNaN(liveDur) && liveDur > 0) {
+          playerDur = liveDur;
+          proState.totalSec = Math.floor(liveDur);
+        }
       }
     } catch (e) {}
   }
 
+  // Calculate rewind_sec: how many seconds behind the live edge the player is right now
+  let rewindSec = 0;
+  if (isLive) {
+    if (playerDur > 0 && typeof currentSec === "number") {
+      rewindSec = Math.max(0, Math.round(playerDur - currentSec));
+    } else {
+      rewindSec = Math.max(0, Math.round((proState.totalSec || 0) - (proState.currentPlaySec || 0)));
+    }
+  }
+
   const startSec = Math.max(0, Math.floor(currentSec || 0));
   const endSec = startSec + dur;
-
-  const startUtc = isLive && proState.firstPdtUtc ? (proState.firstPdtUtc + startSec) : null;
-  const endUtc = isLive && proState.firstPdtUtc ? (proState.firstPdtUtc + endSec) : null;
-  const fallbackRewind = isLive ? Math.max(0, (proState.totalSec || 0) - endSec) : 0;
 
   const payload = {
     url: document.getElementById("pro-youtube-url").value.trim(),
     video_id: proState.source.video_id,
     is_live: isLive,
     duration_sec: dur,
-    rewind_sec: fallbackRewind,
-    start_utc_ts: startUtc,
-    end_utc_ts: endUtc,
+    rewind_sec: rewindSec,
+    start_utc_ts: null,
+    end_utc_ts: null,
     start_time: startSec,
     end_time: endSec,
     cam_box: proState.boxes.cam,
@@ -1928,7 +1964,10 @@ async function submitLiveClipExport() {
     access_key: proState.accessKey,
   };
 
-  showProgressModal(`Recording & rendering ${dur}s Short from ${formatTime(startSec)}...`);
+  const timeDesc = isLive && rewindSec >= 5
+    ? `${Math.floor(rewindSec / 60)}m ${rewindSec % 60}s ago`
+    : formatTime(startSec);
+  showProgressModal(`Recording & rendering ${dur}s Short from ${timeDesc}...`);
 
   try {
     const res = await fetchWithTimeout("/api/pro/generate", {
