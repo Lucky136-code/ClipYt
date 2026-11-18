@@ -295,7 +295,7 @@ body::before {
 
   .corner-credit {
     position: static;
-    align-self: flex-end;
+    align-self: center;
   }
 }
 
