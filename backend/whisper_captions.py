@@ -37,29 +37,61 @@ def get_whisper_status() -> Dict[str, Any]:
 
 # Hinglish-primed prompt steers Whisper toward natural Roman Hindi + English gaming/creator speech
 HINGLISH_PROMPT = (
-    "Bhai kya scene hai, let's go! Yaar ye kya clutch tha, "
-    "arey bhai dekho abhi kya hone wala hai, awesome gameplay bro, no way!"
+    "Arey bhai kya scene hai, let's go! Yaar ye kya clutch tha, OP bhai OP! "
+    "Dekho abhi kya hone wala hai, rush karo, cover do! Awesome gameplay bro, no way! "
+    "Bhai sahab ye kya kill tha, ekdum mast, like and subscribe karo dosto!"
 )
 
 # High-frequency Hindi words spelled the way Indian creators actually write Hinglish
 _COMMON_HINGLISH = {
-    "मैं": "main", "मेरा": "mera", "मेरी": "meri", "मेरे": "mere", "मुझे": "mujhe",
-    "तुम": "tum", "तुम्हारा": "tumhara", "तुम्हें": "tumhe", "तू": "tu", "तेरा": "tera",
-    "आप": "aap", "हम": "hum", "हमारा": "hamara", "वो": "wo", "वह": "woh", "ये": "ye", "यह": "yeh",
+    # Pronouns
+    "मैं": "main", "मेरा": "mera", "मेरी": "meri", "मेरे": "mere", "मुझे": "mujhe", "मुझसे": "mujhse",
+    "तुम": "tum", "तुम्हारा": "tumhara", "तुम्हारी": "tumhari", "तुम्हारे": "tumhare", "तुम्हें": "tumhe",
+    "तू": "tu", "तेरा": "tera", "तेरी": "teri", "तेरे": "tere", "तुझे": "tujhe",
+    "आप": "aap", "आपका": "aapka", "आपकी": "aapki", "आपके": "aapke", "आपको": "aapko",
+    "हम": "hum", "हमारा": "hamara", "हमारी": "hamari", "हमारे": "hamare", "हमें": "humein",
+    "वो": "wo", "वह": "woh", "उसका": "uska", "उसकी": "uski", "उसके": "uske", "उसे": "use", "उसने": "usne",
+    "ये": "ye", "यह": "yeh", "इसका": "iska", "इसकी": "iski", "इसके": "iske", "इसे": "ise", "इसने": "isne",
+    "वे": "ve", "उनका": "unka", "उनकी": "unki", "उनके": "unke", "उन्हें": "unhein", "उन्होंने": "unhone",
+
+    # Auxiliaries / Verbs
     "है": "hai", "हैं": "hain", "था": "tha", "थी": "thi", "थे": "the", "हो": "ho", "हूँ": "hoon", "हूं": "hoon",
     "नहीं": "nahi", "नही": "nahi", "ना": "na", "मत": "mat",
-    "क्या": "kya", "क्यों": "kyun", "क्योंकि": "kyunki", "कैसे": "kaise", "कैसा": "kaisa", "कहाँ": "kahan", "कहां": "kahan", "कब": "kab", "कौन": "kaun",
-    "की": "ki", "के": "ke", "का": "ka", "को": "ko", "से": "se", "में": "mein", "पर": "par", "पे": "pe",
+    "क्या": "kya", "क्यों": "kyun", "क्योंकि": "kyunki", "कैसे": "kaise", "कैसा": "kaisa", "कैसी": "kaisi",
+    "कहाँ": "kahan", "कहां": "kahan", "कब": "kab", "कौन": "kaun", "किसका": "kiska", "किस": "kis",
+    "की": "ki", "के": "ke", "का": "ka", "को": "ko", "से": "se", "में": "mein", "पर": "par", "पे": "pe", "तक": "tak",
     "और": "aur", "या": "ya", "तो": "toh", "भी": "bhi", "ही": "hi", "बस": "bas", "अब": "ab", "अभी": "abhi",
-    "यहाँ": "yahan", "यहां": "yahan", "वहाँ": "wahan", "वहां": "wahan",
-    "भाई": "bhai", "यार": "yaar", "अरे": "arey", "देखो": "dekho", "देख": "dekh",
-    "बहुत": "bahut", "ज़्यादा": "zyada", "ज्यादा": "zyada", "थोड़ा": "thoda", "पूरा": "poora",
-    "अच्छा": "accha", "बढ़िया": "badhiya", "मस्त": "mast", "सही": "sahi", "गलत": "galat",
-    "चलो": "chalo", "रुको": "ruko", "जाओ": "jao", "आओ": "aao", "करो": "karo", "कर": "kar", "रहा": "raha", "रही": "rahi", "रहे": "rahe",
+    "यहाँ": "yahan", "यहां": "yahan", "वहाँ": "wahan", "वहां": "wahan", "जहाँ": "jahan", "कहीं": "kahin",
+
+    # Creator & Social Talk
+    "भाई": "bhai", "भैया": "bhaiya", "यार": "yaar", "अरे": "arey", "अबे": "abe",
+    "देखो": "dekho", "देख": "dekh", "देखा": "dekha", "देखना": "dekhna",
+    "सुनो": "suno", "सुन": "sun", "सुना": "suna",
+    "बोलो": "bolo", "बोल": "bol", "बोला": "bola", "कहो": "kaho", "कहा": "kaha",
+    "बताओ": "batao", "बता": "bata", "बताया": "bataya",
+    "समझे": "samjhe", "समझ": "samajh", "समझा": "samjha",
+    "जानते": "jaante", "जाना": "jaana", "पता": "pata", "लगा": "laga", "लग": "lag",
+    "बहुत": "bahut", "ज़्यादा": "zyada", "ज्यादा": "zyada", "थोड़ा": "thoda", "पूरा": "poora", "कम": "kam",
+    "अच्छा": "accha", "बढ़िया": "badhiya", "मस्त": "mast", "सही": "sahi", "गलत": "galat", "खतरनाक": "khatarnak",
+    "चलो": "chalo", "चल": "chal", "रुको": "ruko", "रुक": "ruk", "जाओ": "jao", "जा": "ja", "आओ": "aao", "आ": "aa",
+    "करो": "karo", "कर": "kar", "करना": "karna", "करते": "karte", "रहा": "raha", "रही": "rahi", "रहे": "rahe",
     "गया": "gaya", "गई": "gayi", "गए": "gaye", "दिया": "diya", "लिया": "liya", "किया": "kiya",
-    "बोल": "bol", "बोला": "bola", "पता": "pata", "लग": "lag", "लगा": "laga",
-    "लोग": "log", "सब": "sab", "कुछ": "kuch", "कोई": "koi", "किसी": "kisi",
+    "आया": "aaya", "आई": "aayi", "आए": "aaye", "होगा": "hoga", "होगी": "hogi", "होंगे": "honge",
+    "करेगा": "karega", "करेगी": "karegi", "करेंगे": "karenge", "जाएगा": "jaayega", "आएगा": "aayega",
+    "लोग": "log", "सब": "sab", "सभी": "sabhi", "कुछ": "kuch", "कोई": "koi", "किसी": "kisi",
     "एक": "ek", "दो": "do", "तीन": "teen", "चार": "chaar", "पाँच": "paanch",
+    "पहला": "pehla", "दूसरा": "doosra", "आखिरी": "aakhiri",
+    "सामने": "saamne", "पीछे": "peeche", "ऊपर": "upar", "नीचे": "neeche", "अंदर": "andar", "बाहर": "bahar",
+    "दोस्त": "dost", "दोस्तों": "dosto", "गाइज": "guys", "गाइज़": "guys", "ब्रो": "bro",
+    "ओपी": "OP", "ओ भाई": "O Bhai", "मजा": "maza", "मज़ा": "maza", "धमाका": "dhamaka",
+    "मारो": "maro", "मारा": "mara", "मरेगा": "marega", "बचो": "bacho", "बचाओ": "bachao", "भागो": "bhago",
+    "लाइव": "live", "स्ट्रीम": "stream", "वीडियो": "video", "शॉर्ट": "short", "कमेंट": "comment",
+    "गेम": "game", "गेमप्ले": "gameplay", "गेमिंग": "gaming", "किल": "kill", "किल्स": "kills",
+    "रश": "rush", "क्लच": "clutch", "हेडशॉट": "headshot", "मिशन": "mission", "लेवल": "level",
+    "ट्रेलर": "trailer", "रिएक्शन": "reaction", "गाड़ी": "gaadi", "कार": "car",
+    "लाइक": "like", "शेयर": "share", "सब्सक्राइब": "subscribe", "फॉलो": "follow",
+    "चैनल": "channel", "शॉर्ट्स": "shorts", "सुपर": "super", "फन": "fun", "प्लेयर": "player",
+    "फाइट": "fight", "टीम": "team", "स्क्वाड": "squad", "जोन": "zone",
     "जी": "ji", "सी": "si", "सा": "sa", "वाला": "wala", "वाली": "wali", "वाले": "wale",
 }
 
@@ -254,9 +286,9 @@ def _get_whisper_model():
             raise RuntimeError(_LAST_WHISPER_ERROR) from e
 
         is_hf_space = bool(os.environ.get("SPACE_ID"))
-        default_size = "base" if is_hf_space else "small"
+        default_size = "base" if is_hf_space else "large-v3-turbo"
         requested_size = os.environ.get("CLIPYT_WHISPER_MODEL", default_size)
-        candidate_sizes = [requested_size] + ([s for s in ("base", "tiny") if s != requested_size])
+        candidate_sizes = [requested_size] + ([s for s in ("large-v3-turbo", "small", "base", "tiny") if s != requested_size])
 
         whisper_cache = TEMP_DIR / "whisper_cache"
         whisper_cache.mkdir(parents=True, exist_ok=True)
@@ -274,15 +306,17 @@ def _get_whisper_model():
 
         last_err = ""
         for model_size in candidate_sizes:
+            comp_type = "int8_float16" if "large" in model_size else "float16"
+            target = str(whisper_cache) if (whisper_cache / "model.bin").exists() and "large" in model_size else model_size
             if use_cuda:
                 try:
                     _WHISPER_MODEL = WhisperModel(
-                        model_size,
+                        target,
                         device="cuda",
-                        compute_type="float16",
+                        compute_type=comp_type,
                         download_root=str(whisper_cache),
                     )
-                    _WHISPER_MODEL_NAME = f"{model_size}-cuda-fp16"
+                    _WHISPER_MODEL_NAME = f"{model_size}-cuda-{comp_type}"
                     _LAST_WHISPER_ERROR = ""
                     return _WHISPER_MODEL
                 except Exception as e:
@@ -290,7 +324,7 @@ def _get_whisper_model():
 
             try:
                 _WHISPER_MODEL = WhisperModel(
-                    model_size,
+                    target,
                     device="cpu",
                     compute_type="int8",
                     cpu_threads=min(4, os.cpu_count() or 2),
