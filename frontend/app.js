@@ -1292,6 +1292,9 @@ function closeProUnlockModal() {
 }
 
 function setupProStudio() {
+  const proBtn = document.getElementById("studio-btn-pro");
+  if (!proBtn) return;
+
   proState.unlocked = isProUnlocked();
   refreshProBadgeUI();
 
