@@ -164,6 +164,132 @@ def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[s
     return None, None, headers
 
 
+def _parse_hls_segments(
+    m3u8_url: str,
+    headers: Optional[Dict[str, str]] = None,
+) -> Tuple[List[Tuple[float, str]], float]:
+    """
+    Download a live HLS media playlist (.m3u8) and parse every (duration_sec, segment_url)
+    in chronological order. Resolves master playlists automatically if needed.
+    Returns (segments_list, total_duration_sec).
+    """
+    from urllib.parse import urljoin
+
+    req_headers = {}
+    if headers and headers.get("User-Agent"):
+        req_headers["User-Agent"] = headers["User-Agent"]
+
+    try:
+        resp = requests.get(m3u8_url, headers=req_headers, timeout=8)
+        if resp.status_code != 200:
+            return [], 0.0
+        text = resp.text
+        base_url = resp.url or m3u8_url
+
+        # If this is a master playlist (#EXT-X-STREAM-INF), pick the best <=1080p media playlist
+        if "#EXT-X-STREAM-INF" in text:
+            lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+            best_sub = None
+            best_bw = -1
+            for i, ln in enumerate(lines):
+                if ln.startswith("#EXT-X-STREAM-INF") and i + 1 < len(lines) and not lines[i + 1].startswith("#"):
+                    res_m = re.search(r"RESOLUTION=\d+x(\d+)", ln)
+                    h = int(res_m.group(1)) if res_m else 720
+                    bw_m = re.search(r"BANDWIDTH=(\d+)", ln)
+                    bw = int(bw_m.group(1)) if bw_m else h * 1000
+                    if h <= 1080 and bw > best_bw:
+                        best_bw = bw
+                        best_sub = urljoin(base_url, lines[i + 1])
+            if best_sub:
+                resp = requests.get(best_sub, headers=req_headers, timeout=8)
+                if resp.status_code != 200:
+                    return [], 0.0
+                text = resp.text
+                base_url = resp.url or best_sub
+
+        segments: List[Tuple[float, str]] = []
+        pending_dur: Optional[float] = None
+        for raw_ln in text.splitlines():
+            ln = raw_ln.strip()
+            if not ln:
+                continue
+            if ln.startswith("#EXTINF:"):
+                m = re.match(r"#EXTINF:([0-9.]+)", ln)
+                if m:
+                    pending_dur = float(m.group(1))
+            elif not ln.startswith("#"):
+                if pending_dur is not None:
+                    segments.append((pending_dur, urljoin(base_url, ln)))
+                    pending_dur = None
+
+        total_dur = sum(d for d, _ in segments)
+        return segments, total_dur
+    except Exception:
+        return [], 0.0
+
+
+def _build_local_dvr_vod_m3u8(
+    m3u8_url: str,
+    rewind_sec: float,
+    duration_sec: float,
+    out_m3u8_path: Path,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[Tuple[Path, float, float]]:
+    """
+    Slice ONLY the exact historical DVR segments from YouTube's live HLS playlist
+    for `[live_edge - rewind_sec - duration_sec .. live_edge - rewind_sec]` and write
+    a finite local VOD `.m3u8` file (`#EXT-X-PLAYLIST-TYPE:VOD` + `#EXT-X-ENDLIST`).
+    Makes it physically impossible for FFmpeg to jump to the live edge!
+    Returns (out_m3u8_path, sub_offset_sec, actual_available_dur) or None.
+    """
+    segments, total_dur = _parse_hls_segments(m3u8_url, headers)
+    if not segments or total_dur < 2.0:
+        return None
+
+    # Compute exact requested window [win_start, win_end] inside [0, total_dur]
+    eff_rewind = max(0.0, float(rewind_sec))
+    win_end = max(min(total_dur, duration_sec), total_dur - eff_rewind)
+    win_start = max(0.0, win_end - float(duration_sec))
+    if win_end - win_start < 1.0:
+        win_start = max(0.0, total_dur - float(duration_sec))
+        win_end = total_dur
+
+    # Select all segments overlapping [win_start, win_end] (plus 1 tiny trailing buffer seg for safety)
+    selected: List[Tuple[float, str]] = []
+    slice_start_t: Optional[float] = None
+    cur_t = 0.0
+    for idx, (seg_dur, seg_url) in enumerate(segments):
+        seg_start = cur_t
+        seg_end = cur_t + seg_dur
+        if seg_end > win_start and seg_start < (win_end + 1.0):
+            if slice_start_t is None:
+                slice_start_t = seg_start
+            selected.append((seg_dur, seg_url))
+        cur_t = seg_end
+
+    if not selected:
+        selected = segments[-max(2, math.ceil(duration_sec / 5.0) + 1):]
+        slice_start_t = max(0.0, total_dur - sum(d for d, _ in selected))
+
+    max_seg_dur = max(1, int(math.ceil(max(d for d, _ in selected))))
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        f"#EXT-X-TARGETDURATION:{max_seg_dur}",
+        "#EXT-X-MEDIA-SEQUENCE:0",
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+    ]
+    for seg_dur, seg_url in selected:
+        lines.append(f"#EXTINF:{seg_dur:.3f},")
+        lines.append(seg_url)
+    lines.append("#EXT-X-ENDLIST")
+
+    out_m3u8_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    sub_offset = max(0.0, round(win_start - (slice_start_t or 0.0), 3))
+    slice_total = sum(d for d, _ in selected)
+    return out_m3u8_path, sub_offset, max(1.0, slice_total - sub_offset)
+
+
 def _grab_frame_b64(
     video_url: Optional[str],
     is_live: bool,
@@ -176,11 +302,12 @@ def _grab_frame_b64(
     Grab a crisp 16:9 JPEG frame from the live stream or VOD so the creator can
     position the Streamer Facecam box & Stream box with pixel accuracy.
     If `preview_offset_sec` is set:
-      - For LIVE streams: grabs the frame `preview_offset_sec` seconds ago from Live DVR!
+      - For LIVE streams: grabs the exact historical `.ts` segment from `preview_offset_sec` ago!
       - For VODs: grabs the frame at exact timestamp `preview_offset_sec` seconds!
     Returns (data_uri_base64, source_kind).
     """
     if video_url:
+        target_input = video_url
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
         if headers and headers.get("User-Agent"):
             cmd.extend(["-user_agent", headers["User-Agent"]])
@@ -194,15 +321,24 @@ def _grab_frame_b64(
             if seek_sec > 0.1:
                 cmd.extend(["-ss", f"{seek_sec:.2f}"])
         else:
-            # Live stream: jump back in DVR if preview_offset_sec > 0, else near live edge
-            if preview_offset_sec is not None and preview_offset_sec > 4.0:
-                idx = _estimate_hls_live_start_index(video_url, float(preview_offset_sec), headers)
-                cmd.extend(["-live_start_index", str(idx if idx is not None else -max(2, math.ceil(preview_offset_sec / 5.0)))])
+            # Live stream: pick the EXACT single `.ts` segment URL from the HLS playlist!
+            segments, total_dur = _parse_hls_segments(video_url, headers)
+            if segments:
+                secs_back = float(preview_offset_sec) if (preview_offset_sec is not None and preview_offset_sec > 2.0) else 2.0
+                target_t = max(0.0, total_dur - secs_back)
+                acc = 0.0
+                picked_url = segments[-1][1]
+                for seg_dur, seg_url in segments:
+                    if acc + seg_dur >= target_t:
+                        picked_url = seg_url
+                        break
+                    acc += seg_dur
+                target_input = picked_url
             else:
                 cmd.extend(["-live_start_index", "-2"])
 
         cmd.extend([
-            "-i", video_url,
+            "-i", target_input,
             "-frames:v", "1",
             "-vf", "scale=960:-2:flags=lanczos",
             "-q:v", "3",
@@ -399,8 +535,9 @@ def download_live_dvr_segment(
     progress_cb: Optional[Callable[[str, int], None]] = None,
 ) -> Path:
     """
-    Download a crisp recent slice from an active YouTube Live Stream (via Live DVR HLS)
-    so creators can publish viral clips while the streamer is still live!
+    Download an EXACT historical slice from an active YouTube Live Stream (via local VOD
+    HLS segment slicing) so rewound recordings ALWAYS cut the exact rewound moment —
+    never accidentally grabbing the current live edge!
     """
     if progress_cb:
         progress_cb("Connecting to live stream DVR buffer...", 14)
@@ -412,19 +549,72 @@ def download_live_dvr_segment(
     if not v_url:
         raise RuntimeError("Could not find a live HLS stream URL for this broadcast.")
 
-    seconds_back = max(duration_sec + 2.0, rewind_sec + duration_sec + 2.0)
-    start_idx = _estimate_hls_live_start_index(v_url, seconds_back, headers)
-
     if progress_cb:
-        if rewind_sec > 0:
-            progress_cb(f"Grabbing {int(duration_sec)}s clip from {int(rewind_sec)}s ago in live DVR...", 24)
+        if rewind_sec >= 5:
+            mins = int(rewind_sec // 60)
+            secs = int(rewind_sec % 60)
+            ago_txt = f"{mins}m {secs:02d}s ago" if mins > 0 else f"{secs}s ago"
+            progress_cb(f"Grabbing exact {int(duration_sec)}s clip from {ago_txt} in Live DVR...", 24)
         else:
             progress_cb(f"Grabbing latest {int(duration_sec)}s from live stream...", 24)
 
+    ua_args = ["-user_agent", headers["User-Agent"]] if (headers and headers.get("User-Agent")) else []
+    timeout_s = max(45, int(duration_sec * 2.5) + 25)
+
+    # Strategy 1 (EXACT DVR SLICING): Build finite local VOD .m3u8 containing ONLY the rewound segments!
+    v_m3u8_local = TEMP_DIR / f"dvr_v_{video_id}_{uuid.uuid4().hex[:6]}.m3u8"
+    a_m3u8_local = TEMP_DIR / f"dvr_a_{video_id}_{uuid.uuid4().hex[:6]}.m3u8"
+    try:
+        v_slice = _build_local_dvr_vod_m3u8(v_url, rewind_sec, duration_sec, v_m3u8_local, headers)
+        if v_slice is not None:
+            v_file, sub_offset, _avail = v_slice
+            a_file = None
+            if a_url:
+                a_slice = _build_local_dvr_vod_m3u8(a_url, rewind_sec, duration_sec, a_m3u8_local, headers)
+                if a_slice is not None:
+                    a_file = a_slice[0]
+
+            cmd = [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+                *ua_args,
+                "-i", str(v_file.resolve()),
+            ]
+            if a_file:
+                cmd.extend([
+                    "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+                    *ua_args,
+                    "-i", str(a_file.resolve()),
+                    "-map", "0:v:0", "-map", "1:a:0",
+                ])
+            else:
+                cmd.extend(["-map", "0:v:0", "-map", "0:a:0?"])
+
+            if sub_offset > 0.05:
+                cmd.extend(["-ss", f"{sub_offset:.3f}"])
+            cmd.extend([
+                "-t", f"{duration_sec:.2f}",
+                "-c", "copy",
+                "-movflags", "+faststart",
+                str(output_path),
+            ])
+            res_slice = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+            if res_slice.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
+                return output_path
+    finally:
+        for tmp_m3u8 in (v_m3u8_local, a_m3u8_local):
+            try:
+                if tmp_m3u8.exists():
+                    tmp_m3u8.unlink()
+            except Exception:
+                pass
+
+    # Fallback Strategy 2: FFmpeg native -live_start_index / direct live edge
+    seconds_back = max(duration_sec + 2.0, rewind_sec + duration_sec + 2.0)
+    start_idx = _estimate_hls_live_start_index(v_url, seconds_back, headers)
+
     def _run_live_ffmpeg(use_start_index: Optional[int]) -> subprocess.CompletedProcess:
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
-        ua_args = ["-user_agent", headers["User-Agent"]] if (headers and headers.get("User-Agent")) else []
-
         cmd.extend(ua_args)
         if use_start_index is not None:
             cmd.extend(["-live_start_index", str(use_start_index)])
@@ -446,15 +636,12 @@ def download_live_dvr_segment(
             "-movflags", "+faststart",
             str(output_path),
         ])
-        timeout_s = max(45, int(duration_sec * 2.5) + 25)
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
 
-    # Attempt 1: Fast DVR jump using computed live_start_index
     res = _run_live_ffmpeg(start_idx if start_idx is not None else -max(4, math.ceil(seconds_back / 5.0)))
     if res.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
         return output_path
 
-    # Attempt 2: Direct live edge capture (for streams with DVR disabled)
     if progress_cb:
         progress_cb(f"DVR disabled on this stream — capturing {int(duration_sec)}s live...", 28)
     res2 = _run_live_ffmpeg(None)

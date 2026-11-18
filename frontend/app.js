@@ -956,6 +956,8 @@ const proState = {
   ytPlayer: null,
   ytApiReady: false,
   pendingYtVideoId: null,
+  ytLiveEdgeAnchor: 0,
+  ytLiveEdgeAnchorMs: 0,
   playerClockTimer: null,
   boxesLocked: false,
   isRecording: false,
@@ -2249,6 +2251,10 @@ window.clipFromRadarSpike = function (secondsAgo) {
 function loadProYouTubePlayer(videoId) {
   if (!videoId) return;
 
+  // Reset live-edge anchor for this new stream
+  proState.ytLiveEdgeAnchor = 0;
+  proState.ytLiveEdgeAnchorMs = 0;
+
   if (window.YT && window.YT.Player) {
     proState.ytApiReady = true;
   }
@@ -2314,6 +2320,24 @@ function safeGetPlayerDuration() {
   return 0;
 }
 
+function getExactYouTubeLiveEdge() {
+  const cur = safeGetPlayerTime();
+  const dur = safeGetPlayerDuration();
+  const nowMs = Date.now();
+  const est = proState.ytLiveEdgeAnchor > 0
+    ? proState.ytLiveEdgeAnchor + Math.max(0, (nowMs - proState.ytLiveEdgeAnchorMs) / 1000)
+    : 0;
+
+  // Live player always starts at live edge on load; keep highest observed edge ticking forward
+  // even when YouTube IFrame API returns getDuration() === 0 on live streams!
+  const best = Math.max(est, dur, cur);
+  if (best > 5 && (proState.ytLiveEdgeAnchor === 0 || best > est + 0.8)) {
+    proState.ytLiveEdgeAnchor = best;
+    proState.ytLiveEdgeAnchorMs = nowMs;
+  }
+  return best > 5 ? best : getCurrentLiveElapsed();
+}
+
 function startPlayerClockSync() {
   if (proState.playerClockTimer) clearInterval(proState.playerClockTimer);
   proState.playerClockTimer = setInterval(() => {
@@ -2323,11 +2347,12 @@ function startPlayerClockSync() {
 
     const cur = safeGetPlayerTime();
     const dur = safeGetPlayerDuration();
-    const useH = Math.max(cur, dur) >= 3600;
 
     if (proState.source.is_live) {
-      if (dur > 10 && cur > 0) {
-        const behind = Math.max(0, Math.round(dur - cur));
+      const liveEdge = getExactYouTubeLiveEdge();
+      const useH = Math.max(cur, liveEdge) >= 3600;
+      if (cur > 0 && liveEdge > 5) {
+        const behind = Math.max(0, Math.round(liveEdge - cur));
         if (behind <= 8) {
           clockEl.textContent = `YouTube: ${formatTime(cur, useH)} • 🔴 LIVE`;
         } else {
@@ -2339,6 +2364,7 @@ function startPlayerClockSync() {
       }
     } else {
       const total = dur > 0 ? dur : (proState.source.duration || 0);
+      const useH = Math.max(cur, total) >= 3600;
       clockEl.textContent = `YouTube: ${formatTime(cur, useH)} / ${formatTime(total, useH)}`;
     }
   }, 500);
@@ -2408,7 +2434,7 @@ function stopAndCreateRecordedClip() {
   if (!proState.isRecording || !proState.source) return;
 
   const endTime = safeGetPlayerTime();
-  const liveEdge = safeGetPlayerDuration();
+  const liveEdge = getExactYouTubeLiveEdge();
   const wallElapsed = (Date.now() - proState.recStartWallMs) / 1000;
   const startTime = proState.recStartTime;
 
@@ -2423,9 +2449,9 @@ function stopAndCreateRecordedClip() {
   const clipDur = Math.max(5.0, Math.min(120.0, Math.round(rawDur * 10) / 10));
 
   if (proState.source.is_live) {
-    // Exact distance from the live edge right now (works both at LIVE NOW and if rewound earlier in the stream!)
+    // Exact distance from YouTube's live edge right now (works even when getDuration() returns 0!)
     let rewindSec = 0;
-    if (liveEdge > 10 && endTime > 0 && liveEdge >= endTime) {
+    if (liveEdge > 5 && endTime > 0 && liveEdge >= endTime) {
       rewindSec = Math.max(0, Math.round(liveEdge - endTime));
     }
     // Sync manual timing display to match what the user just recorded
