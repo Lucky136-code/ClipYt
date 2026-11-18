@@ -281,6 +281,12 @@ function looksLikeYouTubeUrl(url) {
   return /(youtube\.com\/|youtu\.be\/)/i.test(url);
 }
 
+function extractYtVideoId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:live\/|v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
 // -------------------------------------------------------------
 // Time Formatting & Parsing (HH:MM:SS for >= 1 hr, MM:SS for < 1 hr)
 // -------------------------------------------------------------
@@ -1220,16 +1226,14 @@ function setupSiteUnlockGate() {
 
 
 // =============================================================
-// LIVE STUDIO: INSTAGRAM GATE + EXACT TIMESTAMP + 60/40 SPLIT
+// LIVE STUDIO: TELEGRAM 6-HOUR KEY GATE + STREAM PLAYER + DUAL BOX
 // =============================================================
-const PRO_UNLOCK_KEY = "clipyt_pro_unlocked_v1";
+const LIVE_KEY_STORAGE = "clipyt_live_key_session";
 
 const proState = {
   unlocked: false,
+  accessKey: null,
   mode: "standard", // "standard" | "pro"
-  followClicked: false,
-  followTimerReady: false,
-  followCountdownId: null,
   source: null,          // data from /api/pro/inspect
   firstPdtUtc: null,     // exact UTC epoch of 00:00 on the DVR timeline
   totalSec: 300,         // total selectable DVR/video seconds
@@ -1237,33 +1241,138 @@ const proState = {
   endSec: 300,           // selected clip End (relative to 00:00)
   framesDebounceId: null,
   framesFetchSeq: 0,
+  cam_position: "top",   // "top" or "bottom"
+  cam_ratio: 0.40,       // 0.25 to 0.65
   boxes: {
-    cam: { x: 0.72, y: 0.62, w: 0.25, h: 0.32 },    // Streamer (Bottom 40%)
-    stream: { x: 0.03, y: 0.04, w: 0.68, h: 0.92 }, // Display (Top 60%)
+    cam: { x: 0.72, y: 0.62, w: 0.25, h: 0.32 },    // Streamer (Facecam)
+    stream: { x: 0.03, y: 0.04, w: 0.68, h: 0.92 }, // Display (Screen)
   },
 };
 
-function isProUnlocked() {
-  if (isSiteUnlocked()) return true;
+function getLiveKeySession() {
   try {
-    const raw = localStorage.getItem(PRO_UNLOCK_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    return Boolean(parsed && parsed.handle);
+    const raw = localStorage.getItem(LIVE_KEY_STORAGE);
+    if (!raw) return null;
+    const sess = JSON.parse(raw);
+    if (!sess || !sess.expiresAt) return null;
+    if (Date.now() > sess.expiresAt) {
+      localStorage.removeItem(LIVE_KEY_STORAGE);
+      return null;
+    }
+    return sess;
   } catch (e) {
-    return false;
+    return null;
   }
 }
 
-function refreshProBadgeUI() {
-  const badge = document.getElementById("pro-badge-pill");
-  if (!badge) return;
-  if (proState.unlocked) {
-    badge.textContent = "✓ LIVE";
-    badge.classList.add("unlocked");
+function isLiveStudioUnlocked() {
+  return Boolean(getLiveKeySession());
+}
+
+function refreshLiveKeyUI() {
+  const sess = getLiveKeySession();
+  const badgePill = document.getElementById("pro-badge-pill");
+  const activeBadge = document.getElementById("live-key-active-badge");
+  const countdownEl = document.getElementById("live-key-countdown");
+
+  if (sess) {
+    proState.unlocked = true;
+    proState.accessKey = sess.key;
+    if (badgePill) {
+      badgePill.textContent = "✓ 6h ACTIVE";
+      badgePill.classList.add("unlocked");
+    }
+    if (activeBadge && countdownEl) {
+      activeBadge.classList.remove("hidden");
+      const remSec = Math.max(0, Math.floor((sess.expiresAt - Date.now()) / 1000));
+      const hrs = Math.floor(remSec / 3600);
+      const mins = Math.floor((remSec % 3600) / 60);
+      countdownEl.textContent = `${String(hrs).padStart(2, "0")}h ${String(mins).padStart(2, "0")}m left`;
+    }
   } else {
-    badge.textContent = "🔒 LIVE";
-    badge.classList.remove("unlocked");
+    proState.unlocked = false;
+    proState.accessKey = null;
+    if (badgePill) {
+      badgePill.textContent = "🔒 6h KEY";
+      badgePill.classList.remove("unlocked");
+    }
+    if (activeBadge) {
+      activeBadge.classList.add("hidden");
+    }
+  }
+}
+
+function openLiveKeyModal() {
+  const modal = document.getElementById("live-key-modal");
+  const errEl = document.getElementById("live-key-error");
+  if (errEl) errEl.classList.add("hidden");
+  if (modal) {
+    modal.classList.remove("hidden");
+    const input = document.getElementById("live-access-key-input");
+    if (input) setTimeout(() => input.focus(), 80);
+  }
+}
+
+function closeLiveKeyModal() {
+  const modal = document.getElementById("live-key-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function submitLiveAccessKey() {
+  const input = document.getElementById("live-access-key-input");
+  const errEl = document.getElementById("live-key-error");
+  const submitBtn = document.getElementById("live-key-submit-btn");
+  if (!input || !submitBtn) return;
+
+  const keyVal = input.value.trim();
+  if (errEl) errEl.classList.add("hidden");
+
+  if (!keyVal) {
+    if (errEl) {
+      errEl.textContent = "Please enter the 6-hour access key from Telegram.";
+      errEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  const btnTxt = submitBtn.querySelector(".btn-text");
+  const sp = submitBtn.querySelector(".spinner");
+  submitBtn.disabled = true;
+  if (btnTxt) btnTxt.textContent = "Verifying Key...";
+  if (sp) sp.classList.remove("hidden");
+
+  try {
+    const res = await fetchWithTimeout("/api/live/verify-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: keyVal }),
+    }, 12000);
+    const json = await parseApiResponse(res);
+
+    if (!res.ok || !json.valid) {
+      const msg = (json && (json.message || json.detail?.message)) || "Invalid key. Get the active key on Telegram!";
+      throw new Error(msg);
+    }
+
+    const expSec = json.expires_in_sec || (6 * 3600);
+    localStorage.setItem(LIVE_KEY_STORAGE, JSON.stringify({
+      key: keyVal,
+      unlockedAt: Date.now(),
+      expiresAt: Date.now() + (expSec * 1000),
+    }));
+
+    refreshLiveKeyUI();
+    closeLiveKeyModal();
+    switchStudioMode("pro");
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message || "Invalid access key. Check Telegram channel!";
+      errEl.classList.remove("hidden");
+    }
+  } finally {
+    submitBtn.disabled = false;
+    if (btnTxt) btnTxt.textContent = "⚡ Unlock Live Studio (6 Hours)";
+    if (sp) sp.classList.add("hidden");
   }
 }
 
@@ -1273,136 +1382,118 @@ function switchStudioMode(targetMode) {
   const stdWrap = document.getElementById("standard-workspace");
   const proWrap = document.getElementById("pro-studio-section");
 
-  if (targetMode === "pro" && !proState.unlocked) {
-    openProUnlockModal();
+  if (targetMode === "pro" && !isLiveStudioUnlocked()) {
+    openLiveKeyModal();
     return;
   }
 
   proState.mode = targetMode;
   const isPro = targetMode === "pro";
-  stdBtn.classList.toggle("active", !isPro);
-  proBtn.classList.toggle("active", isPro);
-  stdWrap.classList.toggle("hidden", isPro);
-  proWrap.classList.toggle("hidden", !isPro);
+  if (stdBtn) stdBtn.classList.toggle("active", !isPro);
+  if (proBtn) proBtn.classList.toggle("active", isPro);
+  if (stdWrap) stdWrap.classList.toggle("hidden", isPro);
+  if (proWrap) proWrap.classList.toggle("hidden", !isPro);
 
   if (isPro && proState.source) {
     requestAnimationFrame(syncBoxesToDOM);
   }
 }
 
-function openProUnlockModal() {
-  const modal = document.getElementById("pro-unlock-modal");
-  document.getElementById("insta-verify-error").classList.add("hidden");
-  modal.classList.remove("hidden");
-}
+function updateRatioBadgeUI() {
+  const r = proState.cam_ratio || 0.40;
+  const pos = proState.cam_position || "top";
+  const dispPct = Math.round((1 - r) * 100);
+  const camPct = Math.round(r * 100);
 
-function closeProUnlockModal() {
-  document.getElementById("pro-unlock-modal").classList.add("hidden");
+  const textEl = document.getElementById("ratio-slider-text");
+  if (textEl) {
+    textEl.textContent = `Display: ${dispPct}% • Streamer: ${camPct}%`;
+  }
+  const badge = document.getElementById("pro-ratio-badge");
+  if (badge) {
+    const posStr = pos === "top" ? "Streamer Top" : "Streamer Bottom";
+    badge.textContent = `9:16 • ${dispPct}% Display / ${camPct}% Streamer (${posStr})`;
+  }
 }
 
 function setupProStudio() {
   const proBtn = document.getElementById("studio-btn-pro");
   if (!proBtn) return;
 
-  proState.unlocked = isProUnlocked();
-  refreshProBadgeUI();
+  refreshLiveKeyUI();
+  setInterval(refreshLiveKeyUI, 30000);
 
   // Top mode switcher
-  document.getElementById("studio-btn-standard").addEventListener("click", () => {
-    switchStudioMode("standard");
-  });
-  document.getElementById("studio-btn-pro").addEventListener("click", () => {
-    switchStudioMode("pro");
-  });
+  const stdBtn = document.getElementById("studio-btn-standard");
+  if (stdBtn) {
+    stdBtn.addEventListener("click", () => switchStudioMode("standard"));
+  }
+  proBtn.addEventListener("click", () => switchStudioMode("pro"));
 
-  // Unlock modal close
-  document.getElementById("pro-unlock-close-x").addEventListener("click", closeProUnlockModal);
-  document.getElementById("pro-unlock-modal").addEventListener("click", (e) => {
-    if (e.target.id === "pro-unlock-modal") closeProUnlockModal();
-  });
+  // Key Modal controls
+  const keyCloseBtn = document.getElementById("live-key-close-x");
+  if (keyCloseBtn) keyCloseBtn.addEventListener("click", closeLiveKeyModal);
 
-  // Step 1: Instagram Follow Link -> 4s wait before enabling Step 2
-  const followBtn = document.getElementById("insta-follow-btn");
-  const waitStatus = document.getElementById("insta-wait-status");
-  const step2El = document.getElementById("unlock-step-2");
-  const handleInput = document.getElementById("insta-username-input");
-  const verifyBtn = document.getElementById("insta-verify-btn");
+  const keyModal = document.getElementById("live-key-modal");
+  if (keyModal) {
+    keyModal.addEventListener("click", (e) => {
+      if (e.target.id === "live-key-modal") closeLiveKeyModal();
+    });
+  }
 
-  followBtn.addEventListener("click", () => {
-    proState.followClicked = true;
-    if (proState.followTimerReady) return;
-    if (proState.followCountdownId) clearInterval(proState.followCountdownId);
+  const keySubmitBtn = document.getElementById("live-key-submit-btn");
+  if (keySubmitBtn) keySubmitBtn.addEventListener("click", submitLiveAccessKey);
 
-    let secs = 4;
-    waitStatus.classList.remove("hidden", "ready");
-    waitStatus.textContent = `Opening @gta6.insider_... please tap Follow (${secs}s)`;
-
-    proState.followCountdownId = setInterval(() => {
-      secs -= 1;
-      if (secs <= 0) {
-        clearInterval(proState.followCountdownId);
-        proState.followCountdownId = null;
-        proState.followTimerReady = true;
-        waitStatus.classList.add("ready");
-        waitStatus.textContent = "✓ Profile opened! Now enter your Instagram username below.";
-        step2El.classList.remove("unlock-step-locked");
-        handleInput.disabled = false;
-        verifyBtn.disabled = false;
-        handleInput.focus();
-      } else {
-        waitStatus.textContent = `Opening @gta6.insider_... please tap Follow (${secs}s)`;
+  const keyInput = document.getElementById("live-access-key-input");
+  if (keyInput) {
+    keyInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitLiveAccessKey();
       }
-    }, 1000);
+    });
+  }
+
+  // Renew key button
+  const renewBtn = document.getElementById("btn-renew-key");
+  if (renewBtn) renewBtn.addEventListener("click", openLiveKeyModal);
+
+  // Streamer Position Controls (Top vs Bottom)
+  document.querySelectorAll("#pro-pos-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#pro-pos-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      proState.cam_position = btn.dataset.pos || "top";
+      updateRatioBadgeUI();
+    });
   });
 
-  // Step 2: Verify Instagram username & unlock Live Studio
-  const doVerify = () => {
-    const errEl = document.getElementById("insta-verify-error");
-    errEl.classList.add("hidden");
-
-    if (!proState.followClicked || !proState.followTimerReady) {
-      errEl.textContent = "Please follow @gta6.insider_ in Step 1 first.";
-      errEl.classList.remove("hidden");
-      return;
-    }
-
-    const raw = handleInput.value.trim().replace(/^@+/, "");
-    const blocked = new Set(["test", "testing", "asdf", "abcd", "1234", "12345", "none", "fake", "user", "instagram", "gta6.insider_"]);
-    if (!/^[a-zA-Z0-9._]{2,30}$/.test(raw) || blocked.has(raw.toLowerCase())) {
-      errEl.textContent = "Please enter your valid Instagram username (without spaces).";
-      errEl.classList.remove("hidden");
-      return;
-    }
-
-    const btnTxt = verifyBtn.querySelector(".btn-text");
-    const btnSp = verifyBtn.querySelector(".spinner");
-    verifyBtn.disabled = true;
-    handleInput.disabled = true;
-    btnTxt.textContent = "Verifying...";
-    btnSp.classList.remove("hidden");
-
-    setTimeout(() => {
-      try {
-        localStorage.setItem(PRO_UNLOCK_KEY, JSON.stringify({ handle: raw, unlockedAt: Date.now() }));
-      } catch (e) {}
-      proState.unlocked = true;
-      refreshProBadgeUI();
-      verifyBtn.disabled = false;
-      handleInput.disabled = false;
-      btnTxt.textContent = "Verify & Unlock";
-      btnSp.classList.add("hidden");
-      closeProUnlockModal();
-      switchStudioMode("pro");
-    }, 950);
-  };
-
-  verifyBtn.addEventListener("click", doVerify);
-  handleInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doVerify();
-    }
+  // Split Ratio with Respect to Display Controls
+  document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const r = parseFloat(btn.dataset.ratio) || 0.40;
+      proState.cam_ratio = r;
+      const slider = document.getElementById("pro-cam-ratio-slider");
+      if (slider) slider.value = Math.round(r * 100);
+      updateRatioBadgeUI();
+    });
   });
+
+  // Ratio Slider
+  const ratioSlider = document.getElementById("pro-cam-ratio-slider");
+  if (ratioSlider) {
+    ratioSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value, 10);
+      const r = val / 100;
+      proState.cam_ratio = r;
+      document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((b) => {
+        b.classList.toggle("active", Math.round(parseFloat(b.dataset.ratio) * 100) === val);
+      });
+      updateRatioBadgeUI();
+    });
+  }
 
   // Load Stream form & Paste button
   const proUrlInput = document.getElementById("pro-youtube-url");
@@ -1527,6 +1618,13 @@ async function inspectLiveStream(url, forceRefresh = false) {
     return;
   }
 
+  // Start playing live stream immediately!
+  const earlyVidId = extractYtVideoId(url);
+  const liveIframe = document.getElementById("pro-live-iframe");
+  if (liveIframe && earlyVidId) {
+    liveIframe.src = `https://www.youtube.com/embed/${earlyVidId}?autoplay=1&enablejsapi=1`;
+  }
+
   hideProError();
   setProLoadSpinner(true);
   const refreshBtn = document.getElementById("pro-refresh-frame-btn");
@@ -1539,7 +1637,11 @@ async function inspectLiveStream(url, forceRefresh = false) {
     const res = await fetchWithTimeout("/api/pro/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, force_refresh: forceRefresh }),
+      body: JSON.stringify({
+        url,
+        force_refresh: forceRefresh,
+        access_key: proState.accessKey,
+      }),
     }, 25000);
     const json = await parseApiResponse(res);
     if (!res.ok || !json.success) {
@@ -1905,13 +2007,13 @@ async function submitLiveClipExport() {
     end_time: proState.endSec,
     cam_box: proState.boxes.cam,
     stream_box: proState.boxes.stream,
-    // Fixed 9:16 layout: 60% Display ABOVE + 40% Streamer BELOW!
-    cam_ratio: 0.40,
-    cam_position: "bottom",
+    cam_ratio: proState.cam_ratio || 0.40,
+    cam_position: proState.cam_position || "top",
     resolution: document.getElementById("pro-resolution").value,
     burn_subtitles: document.getElementById("pro-burn-subs").checked,
     subtitle_style: document.getElementById("pro-sub-style").value,
     subtitle_position: document.getElementById("pro-sub-pos").value,
+    access_key: proState.accessKey,
   };
 
   showProgressModal("Fetching your exact selected clip window...");
@@ -2099,8 +2201,8 @@ async function generateAutoViralShort(peak, btnEl) {
     end_time: peak.clip_end_sec || 30.0,
     cam_box: camBox,
     stream_box: streamBox,
-    cam_ratio: 0.40,
-    cam_position: "bottom",
+    cam_ratio: proState.cam_ratio || 0.40,
+    cam_position: proState.cam_position || "top",
     resolution: document.getElementById("pro-resolution")?.value || "1080p",
     burn_subtitles: document.getElementById("pro-burn-subs")?.checked ?? true,
     subtitle_style: document.getElementById("pro-sub-style")?.value || "viral_pop",

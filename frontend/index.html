@@ -19,6 +19,20 @@
   <div class="bg-overlay"></div>
 
   <main class="main-container">
+    <!-- Studio Mode Switcher Bar -->
+    <div class="studio-bar-wrap">
+      <div class="studio-pill-bar">
+        <button type="button" id="studio-btn-standard" class="studio-pill active">
+          <span>Standard Studio</span>
+        </button>
+        <button type="button" id="studio-btn-pro" class="studio-pill">
+          <span class="live-dot" style="margin-right:2px;"></span>
+          <span>Live Studio</span>
+          <span id="pro-badge-pill" class="pro-lock-tag">🔒 6h KEY</span>
+        </button>
+      </div>
+    </div>
+
     <!-- ==================== STANDARD WORKSPACE ==================== -->
     <div id="standard-workspace">
     <!-- Simple Hero: Paste Your YouTube Link -->
@@ -270,6 +284,280 @@
     </section>
     </div><!-- /#standard-workspace -->
 
+    <!-- ==================== LIVE YOUTUBE STUDIO ==================== -->
+    <section id="pro-studio-section" class="hidden">
+      <!-- Live Studio Hero Banner -->
+      <section class="hero-section pro-hero">
+        <div class="pro-hero-badge">
+          <span class="live-dot"></span>
+          <span>LIVE YOUTUBE STUDIO • 9:16 DUAL BOX • 6-HR KEY PROTECTED</span>
+        </div>
+        <div class="pro-key-status-row">
+          <div id="live-key-active-badge" class="live-key-active-pill hidden">
+            <span>🔑 6-Hour Access Active</span>
+            <span id="live-key-countdown" class="key-countdown-text">05h 59m left</span>
+            <button type="button" id="btn-renew-key" class="btn-renew-link" title="Change or renew key">Change Key</button>
+          </div>
+        </div>
+        <h1 class="hero-title">Live YouTube Studio</h1>
+        <p class="section-sub pro-hero-desc">
+          Paste any live YouTube stream, position the Streamer & Display boxes, pick your layout ratio, and start recording 9:16 vertical Shorts at any past timestamp!
+        </p>
+
+        <!-- Live Link Input Card -->
+        <div class="glass-card input-card">
+          <form id="pro-inspect-form" class="url-form">
+            <div class="url-row">
+              <div class="url-input-wrap">
+                <input type="text" id="pro-youtube-url" placeholder="Paste YouTube Live Stream link here..."
+                  required autocomplete="off">
+                <button type="button" id="pro-paste-btn" class="btn-paste">Paste</button>
+              </div>
+              <button type="submit" id="pro-load-btn" class="btn-red">
+                <span class="btn-text">Load Stream</span>
+                <div class="spinner hidden"></div>
+              </button>
+            </div>
+            <p class="url-note" style="margin-top:0.6rem;">
+              <strong>Live Stream Tip:</strong> Works on active YouTube live streams & DVR broadcasts. Pasting automatically starts stream playback!
+            </p>
+          </form>
+        </div>
+      </section>
+
+      <!-- Live Studio Error Banner -->
+      <div id="pro-error-banner" class="error-banner hidden">
+        <span id="pro-error-message"></span>
+        <button type="button" class="banner-close" onclick="this.parentElement.classList.add('hidden')">×</button>
+      </div>
+
+      <!-- Live Studio Workspace (Shown after stream loads) -->
+      <div id="pro-editor-wrap" class="hidden">
+        <!-- Stream Status & Live Bar -->
+        <div class="glass-card pro-source-bar">
+          <div class="pro-source-left">
+            <span id="pro-live-badge" class="pro-status-live">🔴 LIVE NOW</span>
+            <div class="pro-source-titles">
+              <h2 id="pro-source-title" class="pro-source-title">Stream Title</h2>
+              <span id="pro-source-author" class="pro-source-author">Channel</span>
+            </div>
+          </div>
+          <button type="button" id="pro-refresh-frame-btn" class="btn-saved pro-refresh-btn">
+            ↻ Refresh Live Edge
+          </button>
+        </div>
+
+        <!-- 📺 Live Video Player: Plays the live stream immediately on paste! -->
+        <div class="glass-card pro-player-card" style="margin-bottom:1.25rem;">
+          <div class="pro-card-head" style="margin-bottom:0.75rem;">
+            <div>
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span class="live-dot"></span>
+                <h3 class="section-title" style="margin:0;">Live Stream Video</h3>
+              </div>
+              <p class="section-sub">Playing live broadcast. You can watch the stream and check what's happening live.</p>
+            </div>
+          </div>
+          <div class="pro-yt-player-wrap">
+            <iframe id="pro-live-iframe" class="pro-live-iframe" src="" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+          </div>
+        </div>
+
+        <!-- 🎯 Step 1: Place Your Streamer & Display Boxes + Select Ratio & Position -->
+        <div class="glass-card pro-canvas-card" style="margin-bottom:1.25rem;">
+          <div class="pro-card-head">
+            <div>
+              <h3 class="section-title">1. Place Streamer & Display Boxes</h3>
+              <p class="section-sub">Drag and resize <strong class="tag-cam">Streamer Box (Facecam)</strong> and <strong class="tag-stream">Display Box (Gameplay / Screen)</strong>.</p>
+            </div>
+            <span id="pro-ratio-badge" class="status-pill">9:16 • 60% Display / 40% Streamer</span>
+          </div>
+
+          <div id="pro-stage" class="pro-stage">
+            <img id="pro-frame-img" class="pro-frame-fallback" src="" alt="Selected stream frame" draggable="false">
+            <div id="pro-boxes-overlay" class="pro-boxes-overlay">
+              <!-- Display / Gameplay Box -->
+              <div id="box-stream" class="crop-box crop-box-stream" data-box="stream">
+                <div class="crop-drag-body"></div>
+                <div class="crop-box-label label-stream">Display (Screen)</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+              <!-- Streamer Facecam Box -->
+              <div id="box-cam" class="crop-box crop-box-cam" data-box="cam">
+                <div class="crop-drag-body"></div>
+                <div class="crop-box-label label-cam">Streamer (Cam)</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="pro-presets-row">
+            <span class="preset-label">Quick Streamer Box:</span>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('tl')">Top-Left</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('tr')">Top-Right</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('bl')">Bottom-Left</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('br')">Bottom-Right</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('reset')">Reset</button>
+          </div>
+
+          <!-- Position on Screen & Ratio with Respect to Display Controls -->
+          <div class="pro-layout-controls-card">
+            <div class="pro-layout-row">
+              <!-- Streamer Position: Top vs Bottom -->
+              <div class="setting-block">
+                <label class="block-label">Streamer Position on Short</label>
+                <div class="pill-group" id="pro-pos-picker">
+                  <button type="button" class="choice-pill active" data-pos="top">🔝 Streamer on Top</button>
+                  <button type="button" class="choice-pill" data-pos="bottom">⬇️ Streamer on Bottom</button>
+                </div>
+              </div>
+
+              <!-- Ratio with Respect to Display -->
+              <div class="setting-block">
+                <label class="block-label">Split Ratio (Display / Streamer)</label>
+                <div class="pill-group" id="pro-ratio-picker">
+                  <button type="button" class="choice-pill active" data-ratio="0.40">60% Display / 40% Streamer</button>
+                  <button type="button" class="choice-pill" data-ratio="0.50">50% / 50% Equal</button>
+                  <button type="button" class="choice-pill" data-ratio="0.30">70% Display / 30% Streamer</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Custom Ratio Slider -->
+            <div class="pro-ratio-slider-wrap">
+              <div class="ratio-slider-header">
+                <span class="slider-label">Fine-tune Ratio:</span>
+                <span id="ratio-slider-text" class="ratio-slider-val">Display: 60% • Streamer: 40%</span>
+              </div>
+              <input type="range" id="pro-cam-ratio-slider" min="25" max="65" step="1" value="40" class="ratio-slider">
+            </div>
+          </div>
+        </div>
+
+        <!-- ⏱️ Step 2: Go Back to Any Timestamp & Boundary Verification -->
+        <div class="glass-card pro-timing-card">
+          <div class="pro-card-head" style="margin-bottom:0.85rem;">
+            <div>
+              <h3 class="section-title">2. Scrub Timeline & Select Recording Window</h3>
+              <p class="section-sub">Go back to <strong>any past timestamp</strong> in the live stream, pick <strong>From</strong> & <strong>To</strong>, and verify the exact boundary frames.</p>
+            </div>
+            <button type="button" id="pro-load-frames-btn" class="btn-saved pro-refresh-btn">
+              👁 Check Start & End Frames
+            </button>
+          </div>
+
+          <!-- Dual-Range Timeline Slider (00:00 -> LIVE NOW) -->
+          <div class="pro-dvr-scale-labels">
+            <span id="pro-tl-min">00:00</span>
+            <span id="pro-tl-mid">50%</span>
+            <span id="pro-tl-max" class="dvr-live-edge">🔴 LIVE 00:00</span>
+          </div>
+          <div class="dual-slider-wrap">
+            <div class="dual-slider-track">
+              <div id="pro-tl-fill" class="dual-slider-fill"></div>
+            </div>
+            <input type="range" id="pro-tl-start" class="dual-range" min="0" max="300" step="1" value="265">
+            <input type="range" id="pro-tl-end" class="dual-range" min="0" max="300" step="1" value="300">
+          </div>
+
+          <!-- Exact From / To Inputs & Quick Nudges -->
+          <div class="pro-vod-controls" style="margin-top:0.75rem;">
+            <div class="timing-field">
+              <span id="pro-from-label" class="timing-label">From (mm:ss)</span>
+              <div class="timing-controls">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', -5)" title="-5s">−5</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', -1)" title="-1s">−</button>
+                <input type="text" id="pro-from-input" class="time-text-input" value="00:00">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', 1)" title="+1s">+</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', 5)" title="+5s">+5</button>
+              </div>
+            </div>
+
+            <div class="timing-field">
+              <span id="pro-to-label" class="timing-label">To (mm:ss)</span>
+              <div class="timing-controls">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', -5)" title="-5s">−5</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', -1)" title="-1s">−</button>
+                <input type="text" id="pro-to-input" class="time-text-input" value="00:35">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', 1)" title="+1s">+</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', 5)" title="+5s">+5</button>
+              </div>
+            </div>
+
+            <div class="manual-summary-box">
+              <span>Clip Length: <strong id="pro-clip-len-display">00:35</strong></span>
+              <span id="pro-frames-status" class="setting-hint">Exact live DVR lock (5s–120s)</span>
+            </div>
+          </div>
+
+          <!-- Exact Start & End Boundary Frames Preview -->
+          <div class="pro-boundary-grid">
+            <div class="pro-boundary-col">
+              <div class="manual-frame-label">
+                <span>Clip Starts Here</span>
+                <span id="pro-start-frame-badge" class="peak-pill">00:00</span>
+              </div>
+              <div class="pro-boundary-box">
+                <img id="pro-start-frame-img" src="" alt="Start frame">
+              </div>
+            </div>
+            <div class="pro-boundary-col">
+              <div class="manual-frame-label">
+                <span>Clip Ends Here</span>
+                <span id="pro-end-frame-badge" class="peak-pill">00:35</span>
+              </div>
+              <div class="pro-boundary-box">
+                <img id="pro-end-frame-img" src="" alt="End frame">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⚡ Step 3: AI Captions & "Start Recording" -->
+        <div class="glass-card pro-settings-card">
+          <div class="pro-settings-grid">
+            <div class="setting-block">
+              <div class="caption-top-row">
+                <label class="block-label" style="margin:0;">AI Captions (English / Hinglish)</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="pro-burn-subs" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="compact-selects" id="pro-sub-options">
+                <select id="pro-sub-style" class="simple-select">
+                  <option value="viral_pop" selected>White Bold</option>
+                  <option value="neon_yellow">Yellow Bold</option>
+                  <option value="clean_modern">Dark Box</option>
+                </select>
+                <select id="pro-sub-pos" class="simple-select">
+                  <option value="seam" selected>Center Seam</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="top">Top</option>
+                </select>
+                <select id="pro-resolution" class="simple-select">
+                  <option value="1080p" selected>1080p HD</option>
+                  <option value="720p">720p Fast</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" id="pro-create-btn" class="btn-create-short pro-create-btn">
+            <span class="rec-dot-pulse"></span>
+            <span>🔴 Start Recording & Export 9:16 Short</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <footer class="site-footer">
@@ -395,6 +683,49 @@
         <div class="unlock-gate-footer-note">
           <span>🔒 One-time verification • Free lifetime access on this device</span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔒 Telegram 6-Hour Access Key Modal for Live Studio -->
+  <div id="live-key-modal" class="modal-backdrop hidden">
+    <div class="glass-card live-key-card">
+      <div class="modal-result-head">
+        <div class="live-key-badge">
+          <span class="live-dot"></span>
+          <span>LIVE STUDIO ACCESS KEY • 6-HOUR PASS</span>
+        </div>
+        <button type="button" id="live-key-close-x" class="banner-close" title="Close">×</button>
+      </div>
+
+      <h3 class="live-key-title">🔒 Password Protected Live Studio</h3>
+      <p class="live-key-desc">
+        Live clipping runs dedicated GPU acceleration to capture and render real-time live streams into 9:16 Shorts. 
+        Each access key is valid for <strong>6 hours</strong> and is posted on our Telegram channel!
+      </p>
+
+      <!-- Telegram Channel Link Button -->
+      <a href="https://t.me/+PqPmXBG4M8A2MDJl" target="_blank" rel="noopener noreferrer" class="btn-telegram-link">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#ffffff" class="tg-svg-icon">
+          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z"/>
+        </svg>
+        <span>👉 Get Key on Telegram Channel ↗</span>
+      </a>
+
+      <!-- Key Input Form -->
+      <form id="live-key-form" class="live-key-form" onsubmit="return false;">
+        <div class="live-key-input-wrap">
+          <input type="text" id="live-access-key-input" placeholder="Enter 6-Hour Access Key (e.g. LUCKY6H)" autocomplete="off">
+        </div>
+        <div id="live-key-error" class="unlock-gate-error hidden"></div>
+        <button type="button" id="live-key-submit-btn" class="btn-red" style="width:100%; margin-top:0.75rem;">
+          <span class="btn-text">⚡ Unlock Live Studio (6 Hours)</span>
+          <div class="spinner hidden"></div>
+        </button>
+      </form>
+
+      <div class="live-key-footer-note">
+        <span>🕒 Once unlocked, you get full access for 6 hours on this device.</span>
       </div>
     </div>
   </div>

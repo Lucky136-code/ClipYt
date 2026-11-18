@@ -72,3 +72,77 @@ ASPECT_RATIOS_720 = {
     "4:5": {"width": 720, "height": 900},
     "16:9": {"width": 1280, "height": 720},
 }
+
+# ==============================================================================
+# Telegram 6-Hour Access Key System for Live YouTube Studio
+# ==============================================================================
+TELEGRAM_CHANNEL_URL = "https://t.me/+PqPmXBG4M8A2MDJl"
+LIVE_KEYS_FILE = DATA_DIR / "live_keys.json"
+DEFAULT_LIVE_KEYS = [
+    "LUCKY6H",
+    "CLIP6H",
+    "GTA6LIVE",
+    "STREAM2026",
+    "VIRAL2026",
+    "TELEGRAM6H",
+    "LIVE6H",
+]
+
+
+def get_rolling_6h_slot(offset: int = 0) -> int:
+    """Returns the current 6-hour time slot index."""
+    import time
+    return int((time.time() // (6 * 3600)) + offset)
+
+
+def get_rolling_6h_key(offset: int = 0) -> str:
+    """Deterministic 6-hour rolling code for Telegram channel announcements (e.g. CLIP4891)."""
+    slot = get_rolling_6h_slot(offset)
+    code = (abs(hash((slot, "clipyt_telegram_key_2026"))) % 90000) + 10000
+    return f"CLIP{code}"
+
+
+def get_all_valid_live_keys() -> list[str]:
+    """Retrieves all currently active valid keys (admin list + custom JSON + rolling 6h keys)."""
+    import json
+    keys = set(k.upper().strip() for k in DEFAULT_LIVE_KEYS)
+
+    # Add rolling 6h key for current slot and previous slot (grace period)
+    keys.add(get_rolling_6h_key(0).upper())
+    keys.add(get_rolling_6h_key(-1).upper())
+
+    # Check custom keys file
+    if LIVE_KEYS_FILE.exists():
+        try:
+            custom_data = json.loads(LIVE_KEYS_FILE.read_text(encoding="utf-8"))
+            if isinstance(custom_data, list):
+                for k in custom_data:
+                    if isinstance(k, str) and k.strip():
+                        keys.add(k.upper().strip())
+            elif isinstance(custom_data, dict):
+                for k in custom_data.get("keys", []):
+                    if isinstance(k, str) and k.strip():
+                        keys.add(k.upper().strip())
+        except Exception:
+            pass
+
+    return sorted(list(keys))
+
+
+def verify_live_key(candidate: str) -> tuple[bool, str, int]:
+    """
+    Validates a submitted key.
+    Returns (is_valid, message, expires_in_sec).
+    Valid keys grant 6 hours (21600 seconds) of access.
+    """
+    if not candidate:
+        return False, "Please enter the 6-hour access key from our Telegram channel.", 0
+
+    clean = candidate.strip().upper()
+    valid_keys = get_all_valid_live_keys()
+
+    if clean in valid_keys:
+        return True, "Key verified! Live Studio unlocked for 6 hours.", 6 * 3600
+
+    return False, "Invalid or expired key. Please get the latest key on our Telegram channel.", 0
+

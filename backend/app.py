@@ -12,7 +12,14 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.config import BASE_DIR, TEMP_DIR, FRONTEND_DIR
+from backend.config import (
+    BASE_DIR,
+    TEMP_DIR,
+    FRONTEND_DIR,
+    TELEGRAM_CHANNEL_URL,
+    verify_live_key,
+    get_rolling_6h_key,
+)
 from backend.analyzer import analyze_youtube_video, extract_video_id
 from backend.subtitles import fetch_youtube_transcript
 from backend.video_processor import (
@@ -176,10 +183,15 @@ class BoxModel(BaseModel):
     h: float = Field(ge=0.05, le=1.0)
 
 
+class LiveKeyVerifyRequest(BaseModel):
+    key: str
+
+
 class ProInspectRequest(BaseModel):
     url: str
     force_refresh: bool = False
     preview_offset_sec: Optional[float] = Field(default=None, ge=0.0)
+    access_key: Optional[str] = None
 
 
 class ProFramesRequest(BaseModel):
@@ -190,6 +202,7 @@ class ProFramesRequest(BaseModel):
     end_utc_ts: Optional[float] = None
     start_time: float = Field(default=0.0, ge=0.0)
     end_time: float = Field(default=35.0, ge=0.0)
+    access_key: Optional[str] = None
 
 
 class ProGenerateRequest(BaseModel):
@@ -210,6 +223,7 @@ class ProGenerateRequest(BaseModel):
     burn_subtitles: bool = True
     subtitle_style: str = "viral_pop"
     subtitle_position: str = "seam"
+    access_key: Optional[str] = None
 
 
 class AutoViralScanRequest(BaseModel):
@@ -496,6 +510,27 @@ async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
     }
     background_tasks.add_task(_run_generate_task, task_id, req)
     return {"success": True, "task_id": task_id}
+
+
+@app.post("/api/live/verify-key")
+async def api_live_verify_key(req: LiveKeyVerifyRequest):
+    """Validate 6-hour access key obtained from Telegram channel."""
+    is_valid, msg, expires_in_sec = verify_live_key(req.key)
+    if not is_valid:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": msg,
+                "telegram_url": TELEGRAM_CHANNEL_URL,
+            },
+        )
+    return {
+        "success": True,
+        "valid": True,
+        "message": msg,
+        "expires_in_sec": expires_in_sec,
+        "telegram_url": TELEGRAM_CHANNEL_URL,
+    }
 
 
 @app.post("/api/pro/inspect")

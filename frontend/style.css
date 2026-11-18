@@ -3022,3 +3022,220 @@ input:checked + .slider:before {
   background: #ef4444;
   box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
 }
+
+/* ==========================================================================
+   Telegram 6-Hour Access Key System & Live Studio Enhancements
+   ========================================================================== */
+
+.live-key-card {
+  max-width: 480px;
+  width: 90%;
+  padding: 1.75rem 1.5rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1.5px solid rgba(139, 92, 246, 0.35);
+  box-shadow: 0 24px 64px rgba(15, 12, 41, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.8);
+  animation: modalPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.live-key-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+  padding: 4px 12px;
+  border-radius: 9999px;
+}
+
+.live-key-title {
+  margin: 0.85rem 0 0.4rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1e1b4b;
+}
+
+.live-key-desc {
+  font-size: 0.88rem;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.btn-telegram-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0.85rem 1.25rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #229ED9 0%, #1781b5 100%);
+  color: #ffffff !important;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 4px 16px rgba(34, 158, 217, 0.38);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  margin-bottom: 1.25rem;
+}
+
+.btn-telegram-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(34, 158, 217, 0.48);
+}
+
+.live-key-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.live-key-input-wrap input {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border-radius: 10px;
+  border: 1.5px solid rgba(139, 92, 246, 0.3);
+  background: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.live-key-input-wrap input:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+.live-key-footer-note {
+  margin-top: 0.85rem;
+  font-size: 0.78rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.pro-key-status-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+}
+
+.live-key-active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #065f46;
+}
+
+.key-countdown-text {
+  font-family: var(--font-mono, monospace);
+  color: #047857;
+  font-weight: 800;
+}
+
+.btn-renew-link {
+  border: none;
+  background: transparent;
+  color: #7c3aed;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 4px;
+}
+
+/* 📺 Live Player Frame */
+.pro-yt-player-wrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b0716;
+  box-shadow: 0 8px 24px rgba(45, 20, 95, 0.2);
+}
+
+.pro-live-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Controls: Position & Ratio */
+.pro-layout-controls-card {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(139, 92, 246, 0.18);
+}
+
+.pro-layout-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 680px) {
+  .pro-layout-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pro-ratio-slider-wrap {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed rgba(139, 92, 246, 0.2);
+}
+
+.ratio-slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.84rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.ratio-slider-val {
+  color: #7c3aed;
+  font-weight: 800;
+  font-family: var(--font-mono, monospace);
+}
+
+.ratio-slider {
+  width: 100%;
+  accent-color: #7c3aed;
+  cursor: pointer;
+}
+
+.rec-dot-pulse {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+  animation: recPulse 1.2s infinite ease-in-out;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+@keyframes recPulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 14px rgba(239, 68, 68, 1); }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
