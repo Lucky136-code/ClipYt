@@ -14,7 +14,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://transparent-treasures-fruits-synthesis.trycloudflare.com/api/:path*"
+      "destination": "https://andrew-waters-universe-even.trycloudflare.com/api/:path*"
     }
   ]
 }
