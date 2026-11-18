@@ -263,7 +263,16 @@ body::before {
   font-size: 0.76rem;
   font-weight: 600;
   color: var(--text-soft);
+  text-decoration: none;
   text-shadow: none;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+}
+
+.corner-credit:hover {
+  transform: translate3d(0, -1px, 0);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--accent);
 }
 
 .corner-avatar {
