@@ -2628,3 +2628,362 @@ input:checked + .slider:before {
 .btn-edit-peak:hover {
   background: rgba(0, 0, 0, 0.04);
 }
+
+/* =====================================================================
+   MANDATORY 2-TASK SITE UNLOCK GATE & LIVE VERIFIER
+   ===================================================================== */
+.unlock-gate-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 12, 28, 0.82);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px);
+  padding: 1.25rem;
+  overflow-y: auto;
+  transition: opacity 0.32s ease, visibility 0.32s ease;
+}
+
+.unlock-gate-card {
+  max-width: 520px;
+  width: 100%;
+  border-radius: 24px;
+  padding: 2.2rem 2.2rem 1.8rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
+  box-shadow: 0 24px 64px rgba(15, 12, 41, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.7);
+  animation: gatePopIn 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes gatePopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.unlock-gate-header {
+  text-align: center;
+  margin-bottom: 1.35rem;
+}
+
+.unlock-gate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  margin-bottom: 0.75rem;
+}
+
+.gate-lock-icon {
+  font-size: 0.85rem;
+}
+
+.unlock-gate-title {
+  font-size: 1.62rem;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  color: #0f172a;
+  margin-bottom: 0.45rem;
+}
+
+.unlock-gate-subtitle {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.unlock-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  margin-bottom: 1.25rem;
+}
+
+.unlock-task-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1.5px solid rgba(139, 92, 246, 0.18);
+  border-radius: 16px;
+  padding: 1.05rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.unlock-task-card.active-working {
+  border-color: #8b5cf6;
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.15);
+}
+
+.unlock-task-card.task-done {
+  border-color: #10b981;
+  background: rgba(240, 253, 244, 0.88);
+}
+
+.unlock-task-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 0.75rem;
+}
+
+.unlock-task-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.yt-icon {
+  background: rgba(255, 0, 0, 0.09);
+}
+
+.ig-icon {
+  background: rgba(221, 42, 123, 0.09);
+}
+
+.unlock-task-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.unlock-task-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.unlock-task-name {
+  font-size: 0.94rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.unlock-task-desc {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.task-status-pill {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: rgba(100, 116, 139, 0.12);
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  transition: all 0.2s ease;
+}
+
+.task-status-pill.ready {
+  background: rgba(245, 158, 11, 0.18);
+  color: #d97706;
+}
+
+.task-status-pill.verified {
+  background: rgba(16, 185, 129, 0.2);
+  color: #059669;
+}
+
+.btn-task-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0.74rem 1rem;
+  border-radius: 11px;
+  font-size: 0.91rem;
+  font-weight: 800;
+  text-decoration: none;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.btn-yt {
+  background: linear-gradient(135deg, #ff0000 0%, #d90429 100%);
+  box-shadow: 0 4px 14px rgba(255, 0, 0, 0.28);
+}
+
+.btn-yt:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 0, 0, 0.38);
+}
+
+.btn-ig {
+  background: linear-gradient(135deg, #f58529 0%, #dd2a7b 50%, #8134af 100%);
+  box-shadow: 0 4px 14px rgba(221, 42, 123, 0.28);
+}
+
+.btn-ig:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(221, 42, 123, 0.38);
+}
+
+.task-handle-wrap {
+  margin-top: 0.65rem;
+}
+
+.task-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.68rem 0.9rem;
+  border-radius: 10px;
+  border: 1.5px solid rgba(0, 0, 0, 0.14);
+  background: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.task-input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.14);
+}
+
+.task-hint-status {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #7c3aed;
+  text-align: center;
+}
+
+.task-hint-status.ready {
+  color: #059669;
+}
+
+.unlock-verifier-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.verifier-live-card {
+  background: #0f172a;
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  color: #ffffff;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.verifier-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #10b981;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.verifier-steps-log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.81rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.verifier-step-line {
+  color: #94a3b8;
+  transition: color 0.2s ease;
+}
+
+.verifier-step-line.active {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.verifier-step-line.done {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.btn-verify-master {
+  width: 100%;
+  padding: 0.95rem 1.4rem;
+  border: none;
+  border-radius: 12px;
+  font-family: var(--font-sans);
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.btn-verify-master:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 28px rgba(16, 185, 129, 0.45);
+}
+
+.btn-verify-master:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.unlock-gate-error {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #dc2626;
+  text-align: center;
+  margin: 0;
+  background: rgba(239, 68, 68, 0.08);
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+}
+
+.unlock-gate-footer-note {
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+@media (max-width: 600px) {
+  .unlock-gate-card {
+    padding: 1.5rem 1.25rem 1.3rem;
+    border-radius: 18px;
+  }
+  .unlock-gate-title {
+    font-size: 1.35rem;
+  }
+}

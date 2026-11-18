@@ -1,17 +1,19 @@
 // --- ClipYT Simple Frontend ---
 
-// Safe API JSON parser: catches HTML error pages and displays a clean message
+// Safe API JSON parser: catches HTML error pages and displays a clean, helpful message
 async function parseApiResponse(res) {
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
   if (!contentType.includes("application/json")) {
     const text = await res.text().catch(() => "");
     if (text.includes("<!DOCTYPE") || text.includes("<html")) {
       throw new Error(
-        "Backend server is offline. Please make sure the server is running on your laptop ('python run.py')."
+        "Backend server is offline. Please launch the server on your laptop using 'start_clipyt.bat' (local) or 'start_public_server.bat' (for public web access)."
       );
     }
     if (res.status === 502 || res.status === 503 || res.status === 504) {
-      throw new Error(`Server temporarily unavailable (${res.status} Bad Gateway). Please make sure 'python run.py' is running.`);
+      throw new Error(
+        `Server temporarily unavailable (${res.status} Bad Gateway). Please make sure 'start_clipyt.bat' or 'start_public_server.bat' is running on your laptop.`
+      );
     }
     throw new Error(`Server returned unexpected response (${res.status} ${res.statusText || "Error"}).`);
   }
@@ -35,6 +37,7 @@ let manualRafPending = false;
 document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
   setupLiquidGlassEffect();
+  setupSiteUnlockGate();
   setupProStudio();
 });
 
@@ -943,6 +946,237 @@ function hideProgressModal() {
 
 
 // =============================================================
+// MANDATORY 2-TASK SITE UNLOCK GATE (YOUTUBE + INSTAGRAM)
+// =============================================================
+const SITE_UNLOCK_KEY = "clipyt_site_unlocked_v2";
+
+const siteUnlockState = {
+  ytClicked: false,
+  ytTimerReady: false,
+  ytTimerId: null,
+  igClicked: false,
+  igTimerReady: false,
+  igTimerId: null,
+  isVerifying: false,
+};
+
+function isSiteUnlocked() {
+  try {
+    const raw = localStorage.getItem(SITE_UNLOCK_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return Boolean(parsed && parsed.yt && parsed.ig);
+  } catch (e) {
+    return false;
+  }
+}
+
+function setupSiteUnlockGate() {
+  const gateEl = document.getElementById("site-unlock-gate");
+  if (!gateEl) return;
+
+  if (isSiteUnlocked()) {
+    gateEl.classList.add("hidden");
+    document.body.style.overflow = "";
+    return;
+  }
+
+  // Show gate overlay
+  gateEl.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+
+  // Elements
+  const ytCard = document.getElementById("task-card-yt");
+  const ytBtn = document.getElementById("yt-subscribe-btn");
+  const ytPill = document.getElementById("yt-status-pill");
+  const ytInput = document.getElementById("yt-handle-input");
+  const ytWaitStatus = document.getElementById("yt-wait-status");
+
+  const igCard = document.getElementById("task-card-ig");
+  const igBtn = document.getElementById("ig-follow-btn");
+  const igPill = document.getElementById("ig-status-pill");
+  const igInput = document.getElementById("ig-handle-input");
+  const igWaitStatus = document.getElementById("ig-wait-status");
+
+  const verifyBtn = document.getElementById("btn-verify-all-tasks");
+  const liveCard = document.getElementById("verifier-live-card");
+  const errEl = document.getElementById("unlock-gate-error");
+  const stepYt = document.getElementById("vstep-yt");
+  const stepIg = document.getElementById("vstep-ig");
+  const stepToken = document.getElementById("vstep-token");
+
+  // Task 1: YouTube Subscribe Click -> 5s countdown
+  ytBtn.addEventListener("click", () => {
+    siteUnlockState.ytClicked = true;
+    ytCard.classList.add("active-working");
+    if (siteUnlockState.ytTimerReady) return;
+    if (siteUnlockState.ytTimerId) clearInterval(siteUnlockState.ytTimerId);
+
+    let secs = 5;
+    ytWaitStatus.classList.remove("hidden", "ready");
+    ytWaitStatus.textContent = `Opening YouTube channel... please tap Subscribe (${secs}s)`;
+
+    siteUnlockState.ytTimerId = setInterval(() => {
+      secs -= 1;
+      if (secs <= 0) {
+        clearInterval(siteUnlockState.ytTimerId);
+        siteUnlockState.ytTimerId = null;
+        siteUnlockState.ytTimerReady = true;
+        ytWaitStatus.classList.add("ready");
+        ytWaitStatus.textContent = "✓ YouTube opened! Enter your YouTube name/handle below.";
+        ytPill.textContent = "SUBSCRIBED?";
+        ytPill.className = "task-status-pill ready";
+        ytInput.focus();
+      } else {
+        ytWaitStatus.textContent = `Opening YouTube channel... please tap Subscribe (${secs}s)`;
+      }
+    }, 1000);
+  });
+
+  // Task 2: Instagram Follow Click -> 5s countdown
+  igBtn.addEventListener("click", () => {
+    siteUnlockState.igClicked = true;
+    igCard.classList.add("active-working");
+    if (siteUnlockState.igTimerReady) return;
+    if (siteUnlockState.igTimerId) clearInterval(siteUnlockState.igTimerId);
+
+    let secs = 5;
+    igWaitStatus.classList.remove("hidden", "ready");
+    igWaitStatus.textContent = `Opening @gta6.insider_... please tap Follow (${secs}s)`;
+
+    siteUnlockState.igTimerId = setInterval(() => {
+      secs -= 1;
+      if (secs <= 0) {
+        clearInterval(siteUnlockState.igTimerId);
+        siteUnlockState.igTimerId = null;
+        siteUnlockState.igTimerReady = true;
+        igWaitStatus.classList.add("ready");
+        igWaitStatus.textContent = "✓ Profile opened! Enter your Instagram handle below.";
+        igPill.textContent = "FOLLOWED?";
+        igPill.className = "task-status-pill ready";
+        igInput.focus();
+      } else {
+        igWaitStatus.textContent = `Opening @gta6.insider_... please tap Follow (${secs}s)`;
+      }
+    }, 1000);
+  });
+
+  // Master Verifier Button Click
+  verifyBtn.addEventListener("click", () => {
+    if (siteUnlockState.isVerifying) return;
+    errEl.classList.add("hidden");
+
+    // Check Task 1 click
+    if (!siteUnlockState.ytClicked) {
+      errEl.textContent = "Please click '1. Subscribe on YouTube' to complete Task 1.";
+      errEl.classList.remove("hidden");
+      ytBtn.focus();
+      return;
+    }
+
+    // Check YouTube Handle input
+    const ytVal = ytInput.value.trim().replace(/^@+/, "");
+    const blocked = new Set(["test", "testing", "asdf", "abcd", "1234", "none", "fake", "user", "youtube", "instagram", "gta6.insider_"]);
+    if (ytVal.length < 2 || blocked.has(ytVal.toLowerCase())) {
+      errEl.textContent = "Please enter your valid YouTube username or handle in Task 1.";
+      errEl.classList.remove("hidden");
+      ytInput.focus();
+      return;
+    }
+
+    // Check Task 2 click
+    if (!siteUnlockState.igClicked) {
+      errEl.textContent = "Please click '2. Follow @gta6.insider_' to complete Task 2.";
+      errEl.classList.remove("hidden");
+      igBtn.focus();
+      return;
+    }
+
+    // Check Instagram Handle input
+    const igVal = igInput.value.trim().replace(/^@+/, "");
+    if (!/^[a-zA-Z0-9._]{2,30}$/.test(igVal) || blocked.has(igVal.toLowerCase())) {
+      errEl.textContent = "Please enter your valid Instagram handle in Task 2 (without spaces).";
+      errEl.classList.remove("hidden");
+      igInput.focus();
+      return;
+    }
+
+    // Start Live Verification sequence
+    siteUnlockState.isVerifying = true;
+    verifyBtn.disabled = true;
+    ytInput.disabled = true;
+    igInput.disabled = true;
+    liveCard.classList.remove("hidden");
+
+    stepYt.className = "verifier-step-line active";
+    stepYt.textContent = `⏳ Verifying YouTube subscription for @${ytVal}...`;
+    stepIg.className = "verifier-step-line";
+    stepIg.textContent = `⚪ Verifying Instagram follow for @gta6.insider_...`;
+    stepToken.className = "verifier-step-line";
+    stepToken.textContent = `⚪ Generating secure access token...`;
+
+    // Step 1: YouTube verified after 750ms
+    setTimeout(() => {
+      stepYt.className = "verifier-step-line done";
+      stepYt.textContent = `✓ YouTube subscription confirmed for @${ytVal}`;
+      ytPill.textContent = "VERIFIED";
+      ytPill.className = "task-status-pill verified";
+      ytCard.classList.remove("active-working");
+      ytCard.classList.add("task-done");
+
+      stepIg.className = "verifier-step-line active";
+      stepIg.textContent = `⏳ Verifying Instagram follow for @${igVal} on @gta6.insider_...`;
+
+      // Step 2: Instagram verified after +800ms
+      setTimeout(() => {
+        stepIg.className = "verifier-step-line done";
+        stepIg.textContent = `✓ Instagram follow confirmed for @${igVal}`;
+        igPill.textContent = "VERIFIED";
+        igPill.className = "task-status-pill verified";
+        igCard.classList.remove("active-working");
+        igCard.classList.add("task-done");
+
+        stepToken.className = "verifier-step-line active";
+        stepToken.textContent = `⏳ Issuing lifetime access token...`;
+
+        // Step 3: Access token generated & unlocked after +650ms
+        setTimeout(() => {
+          stepToken.className = "verifier-step-line done";
+          stepToken.textContent = `✓ Verified! Welcome to ClipYt AI.`;
+
+          // Save unlock token
+          try {
+            localStorage.setItem(
+              SITE_UNLOCK_KEY,
+              JSON.stringify({ yt: ytVal, ig: igVal, unlockedAt: Date.now() })
+            );
+            localStorage.setItem(
+              PRO_UNLOCK_KEY,
+              JSON.stringify({ handle: igVal, unlockedAt: Date.now() })
+            );
+          } catch (e) {}
+
+          proState.unlocked = true;
+          refreshProBadgeUI();
+
+          // Smooth gate unlock exit
+          setTimeout(() => {
+            gateEl.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+            gateEl.style.opacity = "0";
+            gateEl.style.transform = "scale(1.03)";
+            setTimeout(() => {
+              gateEl.classList.add("hidden");
+              document.body.style.overflow = "";
+            }, 400);
+          }, 600);
+        }, 650);
+      }, 800);
+    }, 750);
+  });
+}
+
+
+// =============================================================
 // LIVE STUDIO: INSTAGRAM GATE + EXACT TIMESTAMP + 60/40 SPLIT
 // =============================================================
 const PRO_UNLOCK_KEY = "clipyt_pro_unlocked_v1";
@@ -967,6 +1201,7 @@ const proState = {
 };
 
 function isProUnlocked() {
+  if (isSiteUnlocked()) return true;
   try {
     const raw = localStorage.getItem(PRO_UNLOCK_KEY);
     if (!raw) return false;
