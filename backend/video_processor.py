@@ -319,6 +319,8 @@ def download_clip_segment(
         "external_downloader_args": {"ffmpeg_i": ["-copyts"]},
         "outtmpl": str(output_path.with_suffix(".%(ext)s")),
         "merge_output_format": "mp4",
+        "nopart": True,
+        "overwrites": True,
         "concurrent_fragment_downloads": 4,
         "buffersize": 8 * 1024 * 1024,
     }
@@ -345,14 +347,11 @@ def download_clip_segment(
         if idx > 1 and progress_cb:
             progress_cb(f"Switching to {label}...", min(48, 22 + idx * 3))
 
-        for leftover in output_path.parent.glob(f"{output_path.stem}.*"):
-            try:
-                leftover.unlink()
-            except Exception:
-                pass
-
+        # Use strategy-specific isolated path stem on Windows to prevent WinError 32 file collisions
+        attempt_path = output_path.parent / f"{output_path.stem}_s{idx}"
         ydl_opts = _make_ydl_opts(strat_opts, allow_cookies)
         ydl_opts.update(dl_common)
+        ydl_opts["outtmpl"] = str(attempt_path.with_suffix(".%(ext)s"))
 
         try:
             info = _download_with_guard(ydl_opts, url, is_info_dict=False, timeout_sec=14)
@@ -366,7 +365,7 @@ def download_clip_segment(
                     "ts": time.time(),
                 }
 
-            candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
+            candidates = list(output_path.parent.glob(f"{attempt_path.stem}.*"))
             for cand in candidates:
                 if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
                     exact_pad = _measure_exact_leading_pad(cand, start_time, pad_start)

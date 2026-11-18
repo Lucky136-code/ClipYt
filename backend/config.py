@@ -31,6 +31,8 @@ YTDLP_BASE_OPTS = {
     "cachedir": str(YTDLP_CACHE_DIR),
     "js_runtimes": {"deno": {}, "node": {}},
     "remote_components": ["ejs:github"],
+    "nopart": True,
+    "overwrites": True,
     "concurrent_fragment_downloads": 4,
     "buffersize": 8 * 1024 * 1024,
     "socket_timeout": 12,
