@@ -88,7 +88,7 @@ class ProGenerateRequest(BaseModel):
     video_id: str
     is_live: bool = False
     duration_sec: float = Field(default=35.0, ge=5.0, le=120.0)
-    rewind_sec: float = Field(default=0.0, ge=0.0, le=3600.0)
+    rewind_sec: float = Field(default=0.0, ge=0.0, le=43200.0)
     start_time: float = Field(default=0.0, ge=0.0)
     end_time: float = Field(default=35.0, ge=5.0)
     cam_box: BoxModel

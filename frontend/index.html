@@ -361,7 +361,7 @@
                 <button type="button" id="pro-live-tab-quick" class="mode-tab active">⚡ Quick Presets</button>
                 <button type="button" id="pro-live-tab-manual" class="mode-tab">🎛️ Manual Timing</button>
               </div>
-              <span class="pro-timing-hint">00:00 = Live right now • rewind up to 60 min in Live DVR</span>
+              <span id="pro-live-timing-hint" class="pro-timing-hint">Select exact stream timing from 00:00 to ongoing live</span>
             </div>
 
             <!-- Live Sub-tab 1: Quick Presets -->
@@ -387,36 +387,36 @@
               </div>
             </div>
 
-            <!-- Live Sub-tab 2: Manual Timing from Live Stream DVR -->
+            <!-- Live Sub-tab 2: Manual Timing (Stream Start 00:00 -> Ongoing Live) -->
             <div id="pro-live-manual-panel" class="pro-manual-panel hidden">
               <div class="pro-dvr-scale-labels">
-                <span>−15:00 ago</span>
-                <span>−07:30 ago</span>
-                <span class="dvr-live-edge">🔴 LIVE NOW (00:00)</span>
+                <span id="pro-live-min-label">00:00</span>
+                <span id="pro-live-mid-label">50%</span>
+                <span id="pro-live-now-label" class="dvr-live-edge">🔴 LIVE 00:00</span>
               </div>
               <div class="dual-slider-wrap">
                 <div class="dual-slider-track">
                   <div id="pro-live-slider-fill" class="dual-slider-fill"></div>
                 </div>
-                <input type="range" id="pro-live-slider-start" class="dual-range" min="0" max="900" step="1" value="865">
-                <input type="range" id="pro-live-slider-end" class="dual-range" min="0" max="900" step="1" value="900">
+                <input type="range" id="pro-live-slider-start" class="dual-range" min="0" max="300" step="1" value="265">
+                <input type="range" id="pro-live-slider-end" class="dual-range" min="0" max="300" step="1" value="300">
               </div>
 
               <div class="pro-vod-controls">
                 <div class="timing-field">
-                  <span class="timing-label">Start (Time Ago mm:ss)</span>
+                  <span id="pro-live-start-label" class="timing-label">Start (mm:ss)</span>
                   <div class="timing-controls">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', 5)">−</button>
-                    <input type="text" id="pro-live-start-input" class="time-text-input" value="00:35">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', -5)">+</button>
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', -1)">−</button>
+                    <input type="text" id="pro-live-start-input" class="time-text-input" value="00:00">
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', 1)">+</button>
                   </div>
                 </div>
                 <div class="timing-field">
-                  <span class="timing-label">End (Time Ago mm:ss)</span>
+                  <span id="pro-live-end-label" class="timing-label">End (mm:ss)</span>
                   <div class="timing-controls">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', 5)">−</button>
-                    <input type="text" id="pro-live-end-input" class="time-text-input" value="00:00">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', -5)">+</button>
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', -1)">−</button>
+                    <input type="text" id="pro-live-end-input" class="time-text-input" value="00:35">
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', 1)">+</button>
                   </div>
                 </div>
                 <div class="manual-summary-box">

@@ -236,6 +236,26 @@ def _grab_frame_b64(
     return "", "none"
 
 
+def _measure_hls_dvr_seconds(
+    m3u8_url: Optional[str],
+    headers: Optional[Dict[str, str]] = None,
+) -> float:
+    """Measure total available DVR seconds currently present in a live HLS playlist."""
+    if not m3u8_url:
+        return 0.0
+    try:
+        req_headers = {}
+        if headers and headers.get("User-Agent"):
+            req_headers["User-Agent"] = headers["User-Agent"]
+        resp = requests.get(m3u8_url, headers=req_headers, timeout=6)
+        if resp.status_code != 200:
+            return 0.0
+        extinfs = [float(x) for x in re.findall(r"#EXTINF:([0-9.]+)", resp.text)]
+        return round(sum(extinfs), 1) if extinfs else 0.0
+    except Exception:
+        return 0.0
+
+
 def inspect_pro_source(
     url: str,
     force_refresh: bool = False,
@@ -244,7 +264,7 @@ def inspect_pro_source(
     """
     Inspect a YouTube Live Stream or normal video for Pro Studio:
     - Supports watch?v=, /live/ID, youtu.be/ID, AND @Channel/live links!
-    - Detects live vs VOD status
+    - Detects live vs VOD status + exact live elapsed clock (from stream start to ongoing!)
     - Grabs a fresh 16:9 frame (at live edge, DVR rewind offset, or exact VOD timestamp!)
     - Caches stream URLs so clicking 'Create Pro Short' is super fast
     """
@@ -266,12 +286,43 @@ def inspect_pro_source(
 
     is_live = bool(info.get("is_live")) or (info.get("live_status") == "is_live")
     duration = float(info.get("duration") or 0.0)
-    use_hours = duration >= 3600
     title = info.get("title") or "YouTube Stream"
     author = info.get("uploader") or info.get("channel") or "Creator"
     thumbnail = info.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
 
     v_url, _a_url, headers = _extract_media_urls(info)
+
+    # For active live streams, compute stream elapsed duration (from 00:00 to ongoing now)
+    live_elapsed_sec = 0.0
+    dvr_window_sec = 0.0
+    live_min_sec = 0.0
+    if is_live:
+        dvr_window_sec = _measure_hls_dvr_seconds(v_url, headers)
+        rel_ts = info.get("release_timestamp") or info.get("timestamp")
+        raw_elapsed = (now - float(rel_ts)) if (rel_ts and now > float(rel_ts)) else 0.0
+
+        # If stream has been running for days (e.g. 24/7 radio) beyond YouTube's DVR window,
+        # anchor the selectable timeline cleanly to [0 .. dvr_window_sec] so 00:00..LIVE matches YouTube's scrubber!
+        if dvr_window_sec >= 60.0:
+            if raw_elapsed > 0 and raw_elapsed <= (dvr_window_sec + 300.0):
+                live_elapsed_sec = round(raw_elapsed, 1)
+                live_min_sec = 0.0
+            else:
+                live_elapsed_sec = round(dvr_window_sec, 1)
+                live_min_sec = 0.0
+        elif raw_elapsed > 30.0 and raw_elapsed <= 43200.0:
+            live_elapsed_sec = round(raw_elapsed, 1)
+            dvr_window_sec = live_elapsed_sec
+            live_min_sec = 0.0
+        else:
+            # Fallback if DVR metadata isn't exposed yet
+            live_elapsed_sec = 300.0
+            dvr_window_sec = 300.0
+            live_min_sec = 0.0
+
+    effective_total = live_elapsed_sec if is_live else duration
+    use_hours = effective_total >= 3600
+
     frame_image, frame_source = _grab_frame_b64(
         video_url=v_url,
         is_live=is_live,
@@ -288,7 +339,14 @@ def inspect_pro_source(
         "is_live": is_live,
         "live_status": info.get("live_status") or ("is_live" if is_live else "not_live"),
         "duration": round(duration, 2),
-        "duration_str": "LIVE" if is_live else format_timestamp(duration, force_hours=use_hours),
+        "live_elapsed_sec": round(live_elapsed_sec, 1),
+        "dvr_window_sec": round(dvr_window_sec, 1),
+        "live_min_sec": round(live_min_sec, 1),
+        "duration_str": (
+            f"LIVE • {format_timestamp(live_elapsed_sec, force_hours=use_hours)}"
+            if is_live
+            else format_timestamp(duration, force_hours=use_hours)
+        ),
         "use_hours": use_hours,
         "thumbnail": thumbnail,
         "frame_image": frame_image,

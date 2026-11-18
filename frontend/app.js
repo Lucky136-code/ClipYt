@@ -932,8 +932,11 @@ const proState = {
   liveTimingMode: "quick", // "quick" | "manual"
   liveDuration: 35,
   liveRewind: 0,
-  liveManualStartAgo: 35, // seconds ago where clip starts (must be > endAgo)
-  liveManualEndAgo: 0,    // seconds ago where clip ends (0 = live right now)
+  liveBaseElapsed: 300,   // elapsed seconds from stream start at inspect time
+  liveInspectedAtMs: 0,   // Date.now() at inspect time so live clock ticks forward
+  liveManualStart: 265,   // forward timestamp from stream start (00:00 -> LIVE NOW)
+  liveManualEnd: 300,     // forward timestamp from stream start (00:00 -> LIVE NOW)
+  liveClockTimer: null,
   vodStart: 0,
   vodEnd: 35,
   camRatio: 0.40,
@@ -1196,44 +1199,38 @@ function setupProStudio() {
     });
   }
 
-  // Live Manual Dual-Range Sliders (0 = -15:00 ago, 900 = LIVE NOW)
+  // Live Manual Dual-Range Sliders (00:00 stream start -> Ongoing Live Clock)
   const liveSStart = document.getElementById("pro-live-slider-start");
   const liveSEnd = document.getElementById("pro-live-slider-end");
   if (liveSStart && liveSEnd) {
-    const LIVE_SLIDER_MAX = 900;
     liveSStart.addEventListener("input", () => {
-      let posStart = parseInt(liveSStart.value, 10);
-      let posEnd = parseInt(liveSEnd.value, 10);
-      if (posStart > posEnd - 5) {
-        posStart = Math.max(0, posEnd - 5);
-        liveSStart.value = posStart;
+      const liveNow = getCurrentLiveElapsed();
+      let s = parseInt(liveSStart.value, 10);
+      let e = proState.liveManualEnd;
+      if (s > e - 5) {
+        e = Math.min(liveNow, s + 5);
+        if (e - s < 5) s = Math.max(0, e - 5);
       }
-      if (posEnd - posStart > 120) {
-        posEnd = posStart + 120;
-        liveSEnd.value = posEnd;
-      }
-      proState.liveManualStartAgo = LIVE_SLIDER_MAX - posStart;
-      proState.liveManualEndAgo = LIVE_SLIDER_MAX - posEnd;
+      if (e - s > 120) e = s + 120;
+      proState.liveManualStart = s;
+      proState.liveManualEnd = e;
       syncProLiveManualUI();
     });
     liveSEnd.addEventListener("input", () => {
-      let posStart = parseInt(liveSStart.value, 10);
-      let posEnd = parseInt(liveSEnd.value, 10);
-      if (posEnd < posStart + 5) {
-        posEnd = Math.min(LIVE_SLIDER_MAX, posStart + 5);
-        liveSEnd.value = posEnd;
+      let s = proState.liveManualStart;
+      let e = parseInt(liveSEnd.value, 10);
+      if (e < s + 5) {
+        s = Math.max(0, e - 5);
+        if (e - s < 5) e = s + 5;
       }
-      if (posEnd - posStart > 120) {
-        posStart = posEnd - 120;
-        liveSStart.value = posStart;
-      }
-      proState.liveManualStartAgo = LIVE_SLIDER_MAX - posStart;
-      proState.liveManualEndAgo = LIVE_SLIDER_MAX - posEnd;
+      if (e - s > 120) s = e - 120;
+      proState.liveManualStart = s;
+      proState.liveManualEnd = e;
       syncProLiveManualUI();
     });
   }
 
-  // Live Manual exact mm:ss text inputs
+  // Live Manual exact mm:ss / hh:mm:ss text inputs
   const liveStartIn = document.getElementById("pro-live-start-input");
   const liveEndIn = document.getElementById("pro-live-end-input");
   if (liveStartIn) liveStartIn.addEventListener("change", () => onProLiveManualInput("start"));
@@ -1245,7 +1242,10 @@ function setupProStudio() {
     livePrevFrameBtn.addEventListener("click", () => {
       onProLiveManualInput("start");
       const val = document.getElementById("pro-youtube-url").value.trim();
-      if (val) inspectProStream(val, false, proState.liveManualStartAgo);
+      if (val) {
+        const secsAgo = Math.max(0, getCurrentLiveElapsed() - proState.liveManualStart);
+        inspectProStream(val, false, secsAgo);
+      }
     });
   }
 
@@ -1418,7 +1418,18 @@ async function inspectProStream(url, forceRefresh = false, previewOffsetSec = nu
       const badgeEl = document.getElementById("pro-live-badge");
       const radarCard = document.getElementById("pro-radar-card");
       if (src.is_live) {
-        badgeEl.textContent = "🔴 LIVE NOW";
+        const elapsed = Math.max(35, Math.floor(src.live_elapsed_sec || 300));
+        proState.liveBaseElapsed = elapsed;
+        proState.liveInspectedAtMs = Date.now();
+        proState.liveManualEnd = elapsed;
+        proState.liveManualStart = Math.max(0, elapsed - 35);
+
+        const useH = elapsed >= 3600;
+        const fmtHint = useH ? "(hh:mm:ss)" : "(mm:ss)";
+        document.getElementById("pro-live-start-label").textContent = `Start ${fmtHint}`;
+        document.getElementById("pro-live-end-label").textContent = `End ${fmtHint}`;
+
+        badgeEl.textContent = `🔴 LIVE • ${formatTime(elapsed, useH)}`;
         badgeEl.classList.remove("is-vod");
         document.getElementById("pro-live-controls").classList.remove("hidden");
         document.getElementById("pro-vod-controls").classList.add("hidden");
@@ -1429,8 +1440,10 @@ async function inspectProStream(url, forceRefresh = false, previewOffsetSec = nu
         const toggleBtn = document.getElementById("pro-radar-toggle-btn");
         if (toggleBtn) toggleBtn.textContent = "Pause";
         startLiveRadar(src.video_id, !forceRefresh);
+        startLiveClock();
         syncProLiveManualUI();
       } else {
+        stopLiveClock();
         badgeEl.textContent = `🎬 VIDEO • ${src.duration_str}`;
         badgeEl.classList.add("is-vod");
         document.getElementById("pro-live-controls").classList.add("hidden");
@@ -1496,82 +1509,130 @@ async function inspectProStream(url, forceRefresh = false, previewOffsetSec = nu
   }
 }
 
-function syncProLiveManualUI() {
-  const LIVE_SLIDER_MAX = 900;
-  let startAgo = Math.max(5, Math.min(3600, Math.round(proState.liveManualStartAgo)));
-  let endAgo = Math.max(0, Math.min(startAgo - 5, Math.round(proState.liveManualEndAgo)));
-  if (startAgo - endAgo > 120) {
-    startAgo = endAgo + 120;
+function getCurrentLiveElapsed() {
+  if (!proState.liveInspectedAtMs) return Math.max(35, Math.floor(proState.liveBaseElapsed || 300));
+  const delta = Math.max(0, Math.floor((Date.now() - proState.liveInspectedAtMs) / 1000));
+  return Math.max(35, Math.floor(proState.liveBaseElapsed + delta));
+}
+
+function stopLiveClock() {
+  if (proState.liveClockTimer) {
+    clearInterval(proState.liveClockTimer);
+    proState.liveClockTimer = null;
   }
-  proState.liveManualStartAgo = startAgo;
-  proState.liveManualEndAgo = endAgo;
+}
+
+function startLiveClock() {
+  stopLiveClock();
+  proState.liveClockTimer = setInterval(() => {
+    if (!proState.source || !proState.source.is_live) {
+      stopLiveClock();
+      return;
+    }
+    const liveNow = getCurrentLiveElapsed();
+    const useH = liveNow >= 3600;
+    const badgeEl = document.getElementById("pro-live-badge");
+    if (badgeEl) badgeEl.textContent = `🔴 LIVE • ${formatTime(liveNow, useH)}`;
+
+    const minLbl = document.getElementById("pro-live-min-label");
+    const midLbl = document.getElementById("pro-live-mid-label");
+    const nowLbl = document.getElementById("pro-live-now-label");
+    if (minLbl) minLbl.textContent = formatTime(0, useH);
+    if (midLbl) midLbl.textContent = formatTime(Math.floor(liveNow / 2), useH);
+    if (nowLbl) nowLbl.textContent = `🔴 LIVE ${formatTime(liveNow, useH)}`;
+
+    const sStart = document.getElementById("pro-live-slider-start");
+    const sEnd = document.getElementById("pro-live-slider-end");
+    const fill = document.getElementById("pro-live-slider-fill");
+    if (sStart && sEnd && fill) {
+      sStart.max = liveNow;
+      sEnd.max = liveNow;
+      const leftPct = (proState.liveManualStart / Math.max(1, liveNow)) * 100;
+      const widthPct = Math.max(0.8, ((proState.liveManualEnd - proState.liveManualStart) / Math.max(1, liveNow)) * 100);
+      fill.style.left = `${leftPct}%`;
+      fill.style.width = `${widthPct}%`;
+    }
+  }, 1000);
+}
+
+function syncProLiveManualUI() {
+  const liveNow = getCurrentLiveElapsed();
+  const useH = liveNow >= 3600;
+
+  let s = Math.max(0, Math.min(liveNow - 5, Math.round(proState.liveManualStart)));
+  let e = Math.max(s + 5, Math.min(liveNow, Math.round(proState.liveManualEnd)));
+  if (e - s > 120) {
+    e = Math.min(liveNow, s + 120);
+  }
+  proState.liveManualStart = s;
+  proState.liveManualEnd = e;
 
   const startIn = document.getElementById("pro-live-start-input");
   const endIn = document.getElementById("pro-live-end-input");
   const durDisp = document.getElementById("pro-live-dur-display");
-  if (startIn) startIn.value = formatTime(startAgo, false);
-  if (endIn) endIn.value = formatTime(endAgo, false);
-  if (durDisp) durDisp.textContent = formatTime(Math.max(5, startAgo - endAgo), false);
+  if (startIn) startIn.value = formatTime(s, useH);
+  if (endIn) endIn.value = formatTime(e, useH);
+  if (durDisp) durDisp.textContent = formatTime(Math.max(5, e - s), false);
+
+  const minLbl = document.getElementById("pro-live-min-label");
+  const midLbl = document.getElementById("pro-live-mid-label");
+  const nowLbl = document.getElementById("pro-live-now-label");
+  if (minLbl) minLbl.textContent = formatTime(0, useH);
+  if (midLbl) midLbl.textContent = formatTime(Math.floor(liveNow / 2), useH);
+  if (nowLbl) nowLbl.textContent = `🔴 LIVE ${formatTime(liveNow, useH)}`;
 
   const sStart = document.getElementById("pro-live-slider-start");
   const sEnd = document.getElementById("pro-live-slider-end");
   const fill = document.getElementById("pro-live-slider-fill");
   if (sStart && sEnd && fill) {
-    const posStart = Math.max(0, Math.min(LIVE_SLIDER_MAX, LIVE_SLIDER_MAX - startAgo));
-    const posEnd = Math.max(0, Math.min(LIVE_SLIDER_MAX, LIVE_SLIDER_MAX - endAgo));
-    sStart.value = posStart;
-    sEnd.value = posEnd;
-    const leftPct = (posStart / LIVE_SLIDER_MAX) * 100;
-    const widthPct = Math.max(0.8, ((posEnd - posStart) / LIVE_SLIDER_MAX) * 100);
+    sStart.max = liveNow;
+    sEnd.max = liveNow;
+    sStart.value = s;
+    sEnd.value = e;
+    const leftPct = (s / Math.max(1, liveNow)) * 100;
+    const widthPct = Math.max(0.8, ((e - s) / Math.max(1, liveNow)) * 100);
     fill.style.left = `${leftPct}%`;
     fill.style.width = `${widthPct}%`;
   }
 }
 
 function onProLiveManualInput(field) {
+  const liveNow = getCurrentLiveElapsed();
   const input = document.getElementById(field === "start" ? "pro-live-start-input" : "pro-live-end-input");
   if (!input) return;
   const parsed = parseTime(input.value);
   if (!isNaN(parsed)) {
-    const clamped = Math.max(0, Math.min(3600, Math.round(parsed)));
+    const clamped = Math.max(0, Math.min(liveNow, Math.round(parsed)));
     if (field === "start") {
-      proState.liveManualStartAgo = Math.max(5, clamped);
-      if (proState.liveManualEndAgo > proState.liveManualStartAgo - 5) {
-        proState.liveManualEndAgo = Math.max(0, proState.liveManualStartAgo - 35);
+      proState.liveManualStart = Math.min(clamped, Math.max(0, liveNow - 5));
+      if (proState.liveManualEnd < proState.liveManualStart + 5) {
+        proState.liveManualEnd = Math.min(liveNow, proState.liveManualStart + 35);
       }
-      if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
-        proState.liveManualEndAgo = proState.liveManualStartAgo - 120;
+      if (proState.liveManualEnd - proState.liveManualStart > 120) {
+        proState.liveManualEnd = Math.min(liveNow, proState.liveManualStart + 120);
       }
     } else {
-      proState.liveManualEndAgo = Math.max(0, Math.min(3595, clamped));
-      if (proState.liveManualStartAgo < proState.liveManualEndAgo + 5) {
-        proState.liveManualStartAgo = Math.min(3600, proState.liveManualEndAgo + 35);
+      proState.liveManualEnd = Math.max(5, clamped);
+      if (proState.liveManualStart > proState.liveManualEnd - 5) {
+        proState.liveManualStart = Math.max(0, proState.liveManualEnd - 35);
       }
-      if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
-        proState.liveManualStartAgo = proState.liveManualEndAgo + 120;
+      if (proState.liveManualEnd - proState.liveManualStart > 120) {
+        proState.liveManualStart = Math.max(0, proState.liveManualEnd - 120);
       }
     }
   }
   syncProLiveManualUI();
 }
 
-window.stepProLiveManual = function (field, deltaAgo) {
+window.stepProLiveManual = function (field, delta) {
+  const liveNow = getCurrentLiveElapsed();
   if (field === "start") {
-    proState.liveManualStartAgo = Math.max(5, Math.min(3600, proState.liveManualStartAgo + deltaAgo));
-    if (proState.liveManualEndAgo > proState.liveManualStartAgo - 5) {
-      proState.liveManualEndAgo = Math.max(0, proState.liveManualStartAgo - 5);
-    }
-    if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
-      proState.liveManualEndAgo = proState.liveManualStartAgo - 120;
+    proState.liveManualStart = Math.max(0, Math.min(proState.liveManualEnd - 5, proState.liveManualStart + delta));
+    if (proState.liveManualEnd - proState.liveManualStart > 120) {
+      proState.liveManualEnd = proState.liveManualStart + 120;
     }
   } else {
-    proState.liveManualEndAgo = Math.max(0, Math.min(3595, proState.liveManualEndAgo + deltaAgo));
-    if (proState.liveManualStartAgo < proState.liveManualEndAgo + 5) {
-      proState.liveManualStartAgo = Math.min(3600, proState.liveManualEndAgo + 5);
-    }
-    if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
-      proState.liveManualStartAgo = proState.liveManualEndAgo + 120;
-    }
+    proState.liveManualEnd = Math.max(proState.liveManualStart + 5, Math.min(liveNow, Math.min(proState.liveManualStart + 120, proState.liveManualEnd + delta)));
   }
   syncProLiveManualUI();
 };
@@ -1883,8 +1944,9 @@ async function submitProGenerate(liveOverride = null) {
     } else if (proState.liveTimingMode === "manual") {
       onProLiveManualInput("start");
       onProLiveManualInput("end");
-      liveDur = Math.max(5, Math.min(120, proState.liveManualStartAgo - proState.liveManualEndAgo));
-      liveRew = Math.max(0, proState.liveManualEndAgo);
+      const liveNow = getCurrentLiveElapsed();
+      liveDur = Math.max(5, Math.min(120, proState.liveManualEnd - proState.liveManualStart));
+      liveRew = Math.max(0, liveNow - proState.liveManualEnd);
     }
   } else {
     onProVodInputChange("start");
@@ -2114,7 +2176,7 @@ window.clipFromRadarSpike = function (secondsAgo) {
   // Position the Live DVR clip so the spike lands cleanly inside the clip (with ~8s reaction after!)
   const rewind = Math.max(0, Math.min(360, Math.round(secondsAgo - 8)));
   const dur = proState.liveTimingMode === "manual"
-    ? Math.max(10, Math.min(90, proState.liveManualStartAgo - proState.liveManualEndAgo))
+    ? Math.max(10, Math.min(90, proState.liveManualEnd - proState.liveManualStart))
     : proState.liveDuration;
   proState.liveRewind = rewind;
   // Clear preset active highlight on rewind pills since this is an exact spike timestamp
