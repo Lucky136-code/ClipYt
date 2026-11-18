@@ -9,9 +9,11 @@ import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,6 +28,33 @@ if not CLOUDFLARED_PATH.exists():
         print("[ERROR] cloudflared.exe not found.")
         print("Please install cloudflared or place cloudflared.exe in your PATH.")
         sys.exit(1)
+
+
+def is_port_open(port: int = 8000) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.8)
+        return s.connect_ex(('127.0.0.1', port)) == 0
+
+
+def is_server_healthy(port: int = 8000) -> bool:
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/")
+        with urllib.request.urlopen(req, timeout=1.5) as res:
+            return res.status in (200, 404)
+    except Exception:
+        return False
+
+
+def kill_process_on_port(port: int = 8000):
+    try:
+        out = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True, text=True)
+        for line in out.strip().splitlines():
+            if "LISTENING" in line:
+                pid = line.strip().split()[-1]
+                subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+        time.sleep(1.2)
+    except Exception:
+        pass
 
 
 def update_vercel_json_destination(tunnel_url: str) -> bool:
@@ -78,11 +107,21 @@ def main():
     print("=" * 72)
 
     # 1. Start local FastAPI Uvicorn server on port 8000
-    print("[1/3] Starting backend server on port 8000...")
-    server_cmd = [sys.executable, "-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "8000"]
-    server_proc = subprocess.Popen(server_cmd, cwd=str(BASE_DIR))
-
-    time.sleep(1.5)
+    server_proc = None
+    if is_port_open(8000):
+        if is_server_healthy(8000):
+            print("[1/3] Backend server is already running and healthy on port 8000. Reusing it! ✓")
+        else:
+            print("[1/3] Port 8000 is occupied by an unresponsive process. Restarting it cleanly...")
+            kill_process_on_port(8000)
+            server_cmd = [sys.executable, "-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "8000"]
+            server_proc = subprocess.Popen(server_cmd, cwd=str(BASE_DIR))
+            time.sleep(1.5)
+    else:
+        print("[1/3] Starting backend server on port 8000...")
+        server_cmd = [sys.executable, "-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "8000"]
+        server_proc = subprocess.Popen(server_cmd, cwd=str(BASE_DIR))
+        time.sleep(1.5)
 
     # 2. Start Cloudflare Tunnel to expose port 8000 to public HTTPS
     print("[2/3] Establishing Cloudflare HTTPS public tunnel...")
@@ -108,7 +147,8 @@ def main():
 
     if not tunnel_url:
         print("[ERROR] Failed to obtain Cloudflare tunnel URL.")
-        server_proc.terminate()
+        if server_proc:
+            server_proc.terminate()
         tunnel_proc.terminate()
         sys.exit(1)
 
@@ -129,28 +169,40 @@ def main():
     print("  All user requests on clipyt.vercel.app are being processed")
     print("  directly on your laptop (zero cloud limits, zero bans!).")
     print()
-    print("  [Press Ctrl+C to stop the server when you are done]")
+    print("  [KEEP THIS TERMINAL WINDOW OPEN while serving users]")
+    print("  [Press Ctrl+C when you want to stop]")
     print("=" * 72)
     print()
 
     # Handle graceful shutdown
-    def _shutdown(sig, frame):
-        print("\n[INFO] Shutting down server and tunnel...")
+    def _shutdown(sig=None, frame=None):
+        print("\n[INFO] Shutting down Cloudflare tunnel...")
         try:
             tunnel_proc.terminate()
-            server_proc.terminate()
         except Exception:
             pass
-        print("[OK] Stopped cleanly. Goodbye!")
+        if server_proc:
+            try:
+                server_proc.terminate()
+            except Exception:
+                pass
+        print("[OK] Public server stopped cleanly. Goodbye!")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
 
     try:
-        server_proc.wait()
+        while True:
+            time.sleep(1)
+            if server_proc and server_proc.poll() is not None:
+                print("\n[WARN] Local backend server stopped.")
+                break
+            if tunnel_proc.poll() is not None:
+                print("\n[WARN] Cloudflare tunnel stopped.")
+                break
     except KeyboardInterrupt:
-        _shutdown(None, None)
+        _shutdown()
 
 
 if __name__ == "__main__":
