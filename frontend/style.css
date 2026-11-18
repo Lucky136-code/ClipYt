@@ -1837,6 +1837,90 @@ input:checked + .slider:before {
   border-radius: 9999px;
 }
 
+.pro-rec-ready-pill {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #047857;
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 4px 11px;
+  border-radius: 9999px;
+}
+
+/* Simple 4-Step Live Studio Guide Bar */
+.live-steps-bar {
+  padding: 0.78rem 1.15rem;
+  margin-bottom: 1.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.live-step-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0.36rem 0.82rem;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(139, 92, 246, 0.16);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.live-step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.16);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.live-step-item.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+
+.live-step-item.active .live-step-num {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+.live-step-item.done {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.34);
+}
+
+.live-step-item.done .live-step-num {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.live-step-arrow {
+  color: var(--text-muted);
+  font-weight: 800;
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+@media (max-width: 640px) {
+  .live-step-arrow {
+    display: none;
+  }
+}
+
 .crop-box {
   position: absolute;
   left: 0;

@@ -28,7 +28,7 @@
         </button>
         <button type="button" id="studio-btn-pro" class="studio-pill studio-pill-pro">
           <span class="pro-sparkle">✨</span>
-          <span>Pro Studio</span>
+          <span>Live Studio</span>
           <span id="pro-badge-pill" class="pro-lock-tag">🔒 LIVE</span>
         </button>
       </div>
@@ -277,14 +277,14 @@
     </section>
     </div><!-- /#standard-workspace -->
 
-    <!-- ==================== PRO STUDIO (LIVE + DUAL-BOX SPLIT-SCREEN + AI HINGLISH) ==================== -->
+    <!-- ==================== LIVE STUDIO (LIVE PLAYER + DUAL-BOX + AI HINGLISH) ==================== -->
     <section id="pro-studio-section" class="hidden">
       <section class="hero-section pro-hero">
         <div class="pro-hero-badge">
           <span class="live-dot"></span>
-          <span>PRO STUDIO • LIVE CLIPPING • AI ENGLISH + HINGLISH</span>
+          <span>LIVE STUDIO • REAL-TIME CLIPPING • AI ENGLISH + HINGLISH</span>
         </div>
-        <h1 class="hero-title">Clip Live Streams in Pro Split-Screen</h1>
+        <h1 class="hero-title">Live Studio</h1>
 
         <div class="glass-card input-card">
           <form id="pro-inspect-form" class="url-form">
@@ -299,20 +299,17 @@
                 <div class="spinner hidden"></div>
               </button>
             </div>
-            <p class="url-note">
-              <strong>Live Ready:</strong> Paste an ongoing YouTube Live Stream (or any video), drag <strong>Box 1</strong> onto the Streamer and <strong>Box 2</strong> onto the Stream, and clip instantly with AI English + Hinglish captions.
-            </p>
           </form>
         </div>
       </section>
 
-      <!-- Pro Error Banner -->
+      <!-- Live Studio Error Banner -->
       <div id="pro-error-banner" class="error-banner hidden">
         <span id="pro-error-message"></span>
         <button type="button" class="banner-close" onclick="this.parentElement.classList.add('hidden')">×</button>
       </div>
 
-      <!-- Pro Studio Editor Workspace (Shown after stream loads) -->
+      <!-- Live Studio Workspace (Shown after stream loads) -->
       <div id="pro-editor-wrap" class="hidden">
         <!-- Stream Status Bar -->
         <div class="glass-card pro-source-bar">
@@ -324,151 +321,30 @@
             </div>
           </div>
           <button type="button" id="pro-refresh-frame-btn" class="btn-saved pro-refresh-btn">
-            ↻ Refresh Frame
+            ↻ Sync Preview Frame
           </button>
         </div>
 
-        <!-- Live Chat Hype Radar (Auto-shown on active YouTube Live Streams!) -->
-        <div id="pro-radar-card" class="glass-card pro-radar-card hidden">
-          <div class="pro-radar-head">
-            <div>
-              <h3 class="section-title">🔥 Live Chat Hype Radar</h3>
-              <p id="pro-radar-sub" class="section-sub">Watching live chat surges (W, OP, LOL, 😂, BHAI, CLUTCH) in real time.</p>
-            </div>
-            <div class="pro-radar-stats">
-              <span id="pro-radar-mps" class="status-pill">0.0 msgs/s</span>
-              <span id="pro-radar-score" class="engagement-badge">Hype: 0%</span>
-              <button type="button" id="pro-radar-toggle-btn" class="btn-saved pro-radar-toggle">Pause</button>
-            </div>
+        <!-- Simple 4-Step Guide Bar -->
+        <div class="glass-card live-steps-bar" id="live-steps-bar">
+          <div class="live-step-item active" id="guide-step-1">
+            <span class="live-step-num">1</span>
+            <span>Place the 2 boxes</span>
           </div>
-
-          <div class="pro-radar-chart-wrap">
-            <canvas id="proRadarChart"></canvas>
+          <span class="live-step-arrow">→</span>
+          <div class="live-step-item" id="guide-step-2">
+            <span class="live-step-num">2</span>
+            <span>Lock the boxes</span>
           </div>
-
-          <div id="pro-radar-spikes" class="pro-radar-spikes">
-            <div class="pro-radar-empty">
-              Listening to live chat... When viewers spam hype reactions, 1-click clip alerts appear right here!
-            </div>
+          <span class="live-step-arrow">→</span>
+          <div class="live-step-item" id="guide-step-3">
+            <span class="live-step-num">3</span>
+            <span>Start recording</span>
           </div>
-        </div>
-
-        <!-- Timing Bar: Live DVR (Quick + Manual) vs VOD (Slider + Manual) -->
-        <div class="glass-card pro-timing-card">
-          <!-- LIVE DVR Controls -->
-          <div id="pro-live-controls" class="pro-live-wrap">
-            <div class="pro-timing-mode-row">
-              <div class="mode-tabs pro-sub-tabs">
-                <button type="button" id="pro-live-tab-quick" class="mode-tab active">⚡ Quick Presets</button>
-                <button type="button" id="pro-live-tab-manual" class="mode-tab">🎛️ Manual Timing</button>
-              </div>
-              <span id="pro-live-timing-hint" class="pro-timing-hint">Select exact stream timing from 00:00 to ongoing live</span>
-            </div>
-
-            <!-- Live Sub-tab 1: Quick Presets -->
-            <div id="pro-live-quick-panel" class="pro-live-controls">
-              <div class="setting-block">
-                <label class="block-label">Clip Length</label>
-                <div class="pill-group" id="pro-live-dur-picker">
-                  <button type="button" class="choice-pill" data-dur="20">Last 20s</button>
-                  <button type="button" class="choice-pill active" data-dur="35">Last 35s</button>
-                  <button type="button" class="choice-pill" data-dur="50">Last 50s</button>
-                  <button type="button" class="choice-pill" data-dur="60">Last 60s</button>
-                </div>
-              </div>
-              <div class="setting-block">
-                <label class="block-label">Rewind Live DVR</label>
-                <div class="pill-group" id="pro-live-rewind-picker">
-                  <button type="button" class="choice-pill active" data-rewind="0">Right Now</button>
-                  <button type="button" class="choice-pill" data-rewind="30">30s ago</button>
-                  <button type="button" class="choice-pill" data-rewind="60">1m ago</button>
-                  <button type="button" class="choice-pill" data-rewind="120">2m ago</button>
-                  <button type="button" class="choice-pill" data-rewind="300">5m ago</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Live Sub-tab 2: Manual Timing (Stream Start 00:00 -> Ongoing Live) -->
-            <div id="pro-live-manual-panel" class="pro-manual-panel hidden">
-              <div class="pro-dvr-scale-labels">
-                <span id="pro-live-min-label">00:00</span>
-                <span id="pro-live-mid-label">50%</span>
-                <span id="pro-live-now-label" class="dvr-live-edge">🔴 LIVE 00:00</span>
-              </div>
-              <div class="dual-slider-wrap">
-                <div class="dual-slider-track">
-                  <div id="pro-live-slider-fill" class="dual-slider-fill"></div>
-                </div>
-                <input type="range" id="pro-live-slider-start" class="dual-range" min="0" max="300" step="1" value="265">
-                <input type="range" id="pro-live-slider-end" class="dual-range" min="0" max="300" step="1" value="300">
-              </div>
-
-              <div class="pro-vod-controls">
-                <div class="timing-field">
-                  <span id="pro-live-start-label" class="timing-label">Start (mm:ss)</span>
-                  <div class="timing-controls">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', -1)">−</button>
-                    <input type="text" id="pro-live-start-input" class="time-text-input" value="00:00">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', 1)">+</button>
-                  </div>
-                </div>
-                <div class="timing-field">
-                  <span id="pro-live-end-label" class="timing-label">End (mm:ss)</span>
-                  <div class="timing-controls">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', -1)">−</button>
-                    <input type="text" id="pro-live-end-input" class="time-text-input" value="00:35">
-                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', 1)">+</button>
-                  </div>
-                </div>
-                <div class="manual-summary-box">
-                  <span>Reel Length: <strong id="pro-live-dur-display">00:35</strong></span>
-                  <button type="button" id="pro-live-preview-frame-btn" class="btn-saved pro-preview-at-btn">
-                    👁 Load Frame at Start
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Normal Video / Past Stream (VOD) Manual Timing Controls -->
-          <div id="pro-vod-controls" class="pro-manual-panel hidden">
-            <div class="pro-dvr-scale-labels">
-              <span>00:00</span>
-              <span id="pro-vod-mid-label">50%</span>
-              <span id="pro-vod-total-label">00:00</span>
-            </div>
-            <div class="dual-slider-wrap">
-              <div class="dual-slider-track">
-                <div id="pro-vod-slider-fill" class="dual-slider-fill"></div>
-              </div>
-              <input type="range" id="pro-vod-slider-start" class="dual-range" min="0" max="100" step="1" value="0">
-              <input type="range" id="pro-vod-slider-end" class="dual-range" min="0" max="100" step="1" value="35">
-            </div>
-
-            <div class="pro-vod-controls">
-              <div class="timing-field">
-                <span id="pro-vod-start-label" class="timing-label">Start (mm:ss)</span>
-                <div class="timing-controls">
-                  <button type="button" class="step-btn" onclick="stepProVodTime('start', -1)">−</button>
-                  <input type="text" id="pro-vod-start-input" class="time-text-input" value="00:00">
-                  <button type="button" class="step-btn" onclick="stepProVodTime('start', 1)">+</button>
-                </div>
-              </div>
-              <div class="timing-field">
-                <span id="pro-vod-end-label" class="timing-label">End (mm:ss)</span>
-                <div class="timing-controls">
-                  <button type="button" class="step-btn" onclick="stepProVodTime('end', -1)">−</button>
-                  <input type="text" id="pro-vod-end-input" class="time-text-input" value="00:35">
-                  <button type="button" class="step-btn" onclick="stepProVodTime('end', 1)">+</button>
-                </div>
-              </div>
-              <div class="manual-summary-box">
-                <span>Reel Length: <strong id="pro-vod-dur-display">00:35</strong></span>
-                <button type="button" id="pro-vod-preview-frame-btn" class="btn-saved pro-preview-at-btn">
-                  👁 Load Frame at Start
-                </button>
-              </div>
-            </div>
+          <span class="live-step-arrow">→</span>
+          <div class="live-step-item" id="guide-step-4">
+            <span class="live-step-num">4</span>
+            <span>Export it</span>
           </div>
         </div>
 
@@ -478,11 +354,11 @@
           <div class="glass-card pro-canvas-card">
             <div class="pro-card-head">
               <div>
-                <h3 class="section-title">Live Player & Two-Box Setup</h3>
-                <p class="section-sub">Place <strong class="tag-cam">Box 1: Streamer</strong> & <strong class="tag-stream">Box 2: Stream</strong> on the playing video, then hit <strong>Start Recording</strong>!</p>
+                <h3 class="section-title">Live Player & Boxes</h3>
+                <p class="section-sub">Place <strong class="tag-cam">Box 1: Streamer</strong> & <strong class="tag-stream">Box 2: Stream</strong>, then lock boxes to scrub/play.</p>
               </div>
-              <button type="button" id="pro-lock-boxes-btn" class="btn-saved pro-lock-boxes-btn" title="Toggle between moving boxes and clicking YouTube player">
-                🔓 Move Boxes
+              <button type="button" id="pro-lock-boxes-btn" class="btn-saved pro-lock-boxes-btn" title="Lock boxes so clicks control the YouTube video">
+                🔓 Lock Boxes
               </button>
             </div>
 
@@ -511,12 +387,12 @@
               </div>
             </div>
 
-            <!-- Live Start / Stop Recording Bar -->
+            <!-- Step 3: Start / Stop Recording Bar -->
             <div class="pro-recorder-bar">
               <div class="pro-rec-actions">
                 <button type="button" id="pro-rec-btn" class="btn-rec-start">
                   <span class="rec-dot"></span>
-                  <span id="pro-rec-btn-text">Start Recording Clip</span>
+                  <span id="pro-rec-btn-text">Start Recording</span>
                 </button>
                 <button type="button" id="pro-rec-cancel-btn" class="btn-saved pro-rec-cancel hidden">
                   Cancel
@@ -524,7 +400,8 @@
               </div>
               <div class="pro-rec-status-wrap">
                 <span id="pro-rec-timer" class="pro-rec-timer hidden">REC 00:00</span>
-                <span id="pro-player-clock" class="pro-player-clock">Player: 00:00</span>
+                <span id="pro-rec-ready-pill" class="pro-rec-ready-pill hidden">✓ Clip Ready</span>
+                <span id="pro-player-clock" class="pro-player-clock">YouTube: 00:00</span>
               </div>
             </div>
 
@@ -539,12 +416,12 @@
             </div>
           </div>
 
-          <!-- Right: Live 9:16 Vertical Split-Screen Preview -->
+          <!-- Right: Live 9:16 Vertical Split-Screen Preview of Placed Boxes -->
           <div class="glass-card pro-preview-card">
             <div class="pro-card-head">
               <div>
-                <h3 class="section-title">9:16 Live Preview</h3>
-                <p class="section-sub">Exact Shorts / Reels layout</p>
+                <h3 class="section-title">9:16 Box Preview</h3>
+                <p class="section-sub">Exact preview of your 2 boxes</p>
               </div>
             </div>
             <div class="pro-phone-frame">
@@ -553,7 +430,7 @@
           </div>
         </div>
 
-        <!-- Pro Output Settings & Create Button -->
+        <!-- Step 4: Output Settings & Export Button -->
         <div class="glass-card pro-settings-card">
           <div class="pro-settings-grid">
             <div class="setting-block">
@@ -601,7 +478,7 @@
           </div>
 
           <button type="button" id="pro-create-btn" class="btn-create-short pro-create-btn">
-            ⚡ Create Pro Split-Screen Short
+            ⚡ Export Short
           </button>
         </div>
       </div>
@@ -621,16 +498,16 @@
     </a>
   </footer>
 
-  <!-- Pro Studio Instagram Follow Unlock Modal -->
+  <!-- Live Studio Instagram Follow Unlock Modal -->
   <div id="pro-unlock-modal" class="modal-backdrop hidden">
     <div class="glass-card modal-card pro-unlock-card">
       <div class="modal-result-head" style="margin-bottom:0.5rem;">
-        <span class="pro-unlock-badge">✨ CLIPYT PRO • FREE UNLOCK</span>
+        <span class="pro-unlock-badge">✨ LIVE STUDIO • FREE UNLOCK</span>
         <button type="button" id="pro-unlock-close-x" class="banner-close" title="Close">×</button>
       </div>
-      <h3 class="pro-unlock-title">Unlock Live Pro Studio</h3>
+      <h3 class="pro-unlock-title">Unlock Live Studio</h3>
       <p class="pro-unlock-desc">
-        Follow <strong>@gta6.insider_</strong> on Instagram to unlock live stream clipping, 2-box Streamer + Stream split-screen, and AI English + Hinglish captions for free.
+        Follow <strong>@gta6.insider_</strong> on Instagram to unlock Live Studio with 2-box Streamer + Stream recording and AI English + Hinglish captions for free.
       </p>
 
       <!-- Step 1: Follow Link -->
