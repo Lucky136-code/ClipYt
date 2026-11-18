@@ -12,7 +12,35 @@ let manualRafPending = false;
 
 document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
+  setupLiquidGlassEffect();
 });
+
+// 60fps mouse-tracking liquid glass sheen & top-rim specular glint
+function setupLiquidGlassEffect() {
+  let rafId = 0;
+  let lastEvent = null;
+
+  document.addEventListener(
+    "pointermove",
+    (e) => {
+      lastEvent = e;
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        const ev = lastEvent;
+        if (!ev || !ev.target || typeof ev.target.closest !== "function") return;
+        const card = ev.target.closest(".glass-card, .clip-card");
+        if (!card) return;
+        const rect = card.getBoundingClientRect();
+        const x = ev.clientX - rect.left;
+        const y = ev.clientY - rect.top;
+        card.style.setProperty("--mx", `${x.toFixed(1)}px`);
+        card.style.setProperty("--my", `${y.toFixed(1)}px`);
+      });
+    },
+    { passive: true }
+  );
+}
 
 function setupEventListeners() {
   const analyzeForm = document.getElementById("analyze-form");
