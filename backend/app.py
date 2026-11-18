@@ -3,10 +3,10 @@ import re
 import uuid
 import asyncio
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 import requests
 from PIL import Image, ImageFilter, ImageEnhance
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -49,6 +49,66 @@ HEATMAP_CACHE: Dict[str, Any] = {}
 import threading
 import time
 RENDER_SEMAPHORE = threading.Semaphore(2)
+
+# =========================================================================
+# RATE LIMITING: 3 CLIPS PER 4 HOURS (14,400s) PER CLIENT IP
+# =========================================================================
+RATE_LIMIT_MAX_CLIPS = 3
+RATE_LIMIT_WINDOW_SECONDS = 4 * 3600  # 4 hours
+EXPORT_RATE_LIMITS: Dict[str, List[float]] = {}
+RATE_LIMIT_LOCK = threading.Lock()
+
+
+def get_client_ip(request: Request) -> str:
+    """Extract real client IP even behind Cloudflare Tunnel, Vercel, or proxy."""
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        return cf_ip.strip()
+    x_forwarded = request.headers.get("X-Forwarded-For")
+    if x_forwarded:
+        return x_forwarded.split(",")[0].strip()
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip.strip()
+    if request.client and request.client.host:
+        return request.client.host.strip()
+    return "127.0.0.1"
+
+
+def check_rate_limit(client_id: str) -> Tuple[bool, int, float]:
+    """
+    Check if client can export a clip.
+    Returns: (allowed: bool, remaining_clips: int, next_reset_in_seconds: float)
+    """
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    with RATE_LIMIT_LOCK:
+        timestamps = EXPORT_RATE_LIMITS.get(client_id, [])
+        valid_ts = [t for t in timestamps if t > cutoff]
+        EXPORT_RATE_LIMITS[client_id] = valid_ts
+
+        remaining = max(0, RATE_LIMIT_MAX_CLIPS - len(valid_ts))
+        if len(valid_ts) >= RATE_LIMIT_MAX_CLIPS:
+            oldest = min(valid_ts)
+            reset_in = max(0.0, (oldest + RATE_LIMIT_WINDOW_SECONDS) - now)
+            return False, 0, reset_in
+
+        reset_in = 0.0
+        if valid_ts:
+            oldest = min(valid_ts)
+            reset_in = max(0.0, (oldest + RATE_LIMIT_WINDOW_SECONDS) - now)
+        return True, remaining, reset_in
+
+
+def record_clip_export(client_id: str):
+    """Record a newly generated clip timestamp for rate limiting."""
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    with RATE_LIMIT_LOCK:
+        timestamps = EXPORT_RATE_LIMITS.get(client_id, [])
+        valid_ts = [t for t in timestamps if t > cutoff]
+        valid_ts.append(now)
+        EXPORT_RATE_LIMITS[client_id] = valid_ts
 
 
 def _prune_expired_tasks_and_caches():
@@ -335,10 +395,52 @@ def _run_generate_task(task_id: str, req: GenerateRequest):
         TASKS[task_id]["message"] = f"Render failed: {clean_err}"
 
 
+@app.get("/api/rate-limit")
+async def api_rate_limit(request: Request):
+    """Return rate limit quota for client (3 clips per 4 hours)."""
+    client_ip = get_client_ip(request)
+    allowed, remaining, reset_in = check_rate_limit(client_ip)
+    hrs = int(reset_in // 3600)
+    mins = int((reset_in % 3600) // 60)
+    if hrs > 0:
+        human_str = f"{hrs}h {mins}m"
+    elif mins > 0:
+        human_str = f"{mins}m"
+    elif reset_in > 0:
+        human_str = f"{int(reset_in)}s"
+    else:
+        human_str = "now"
+
+    return {
+        "success": True,
+        "allowed": allowed,
+        "max_clips": RATE_LIMIT_MAX_CLIPS,
+        "remaining": remaining,
+        "window_hours": 4,
+        "reset_in_seconds": round(reset_in, 1),
+        "reset_human": human_str,
+    }
+
+
 @app.post("/api/generate")
-async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
-    """Launch fast asynchronous Short creation."""
+async def api_generate(req: GenerateRequest, request: Request, background_tasks: BackgroundTasks):
+    """Launch fast asynchronous Short creation with 3-clips-per-4h rate limit."""
     _prune_expired_tasks_and_caches()
+
+    client_ip = get_client_ip(request)
+    allowed, remaining, reset_in = check_rate_limit(client_ip)
+    if not allowed:
+        hrs = int(reset_in // 3600)
+        mins = int((reset_in % 3600) // 60)
+        time_msg = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit reached: Free tier allows {RATE_LIMIT_MAX_CLIPS} clips per 4 hours. Next clip unlocks in {time_msg}.",
+        )
+
+    # Record export timestamp for rate limiting
+    record_clip_export(client_ip)
+
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {
         "task_id": task_id,
@@ -352,7 +454,7 @@ async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
         "error": None,
     }
     background_tasks.add_task(_run_generate_task, task_id, req)
-    return {"success": True, "task_id": task_id}
+    return {"success": True, "task_id": task_id, "remaining_clips": max(0, remaining - 1)}
 
 
 @app.post("/api/pro/inspect")
@@ -561,9 +663,23 @@ async def api_auto_viral_scan(req: AutoViralScanRequest):
 
 
 @app.post("/api/auto-viral/generate")
-async def api_auto_viral_generate(req: AutoViralGenerateRequest, background_tasks: BackgroundTasks):
-    """Launch asynchronous Auto Viral Short render with 3s hook + auto-framing."""
+async def api_auto_viral_generate(req: AutoViralGenerateRequest, request: Request, background_tasks: BackgroundTasks):
+    """Launch asynchronous Auto Viral Short render with 3s hook + auto-framing with 3-clips-per-4h rate limit."""
     _prune_expired_tasks_and_caches()
+
+    client_ip = get_client_ip(request)
+    allowed, remaining, reset_in = check_rate_limit(client_ip)
+    if not allowed:
+        hrs = int(reset_in // 3600)
+        mins = int((reset_in % 3600) // 60)
+        time_msg = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit reached: Free tier allows {RATE_LIMIT_MAX_CLIPS} clips per 4 hours. Next clip unlocks in {time_msg}.",
+        )
+
+    record_clip_export(client_ip)
+
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {
         "task_id": task_id,

@@ -68,11 +68,49 @@ let manualState = { start: 0, end: 35 };
 let storyboardSheetDims = {}; // { url: { cols, rows } }
 let manualRafPending = false;
 
+// Rate Limit Quota State: 3 clips per 4 hours
+let currentQuota = {
+  allowed: true,
+  remaining: 3,
+  max_clips: 3,
+  reset_human: "now",
+  reset_in_seconds: 0,
+};
+
+async function fetchRateLimitStatus() {
+  try {
+    const res = await fetchWithTimeout("/api/rate-limit", {}, 5000);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.success) {
+      currentQuota = data;
+      renderRateLimitUI();
+    }
+  } catch (e) {
+    // Non-blocking fallback
+  }
+}
+
+function renderRateLimitUI() {
+  const pill = document.getElementById("rate-limit-pill");
+  const txt = document.getElementById("rate-limit-text");
+  if (!pill || !txt) return;
+
+  if (currentQuota.remaining > 0) {
+    pill.classList.remove("depleted");
+    txt.textContent = `⚡ ${currentQuota.remaining} / ${currentQuota.max_clips} Clips Left (4h Quota)`;
+  } else {
+    pill.classList.add("depleted");
+    txt.textContent = `⏳ 0 / ${currentQuota.max_clips} Clips Left • Next in ${currentQuota.reset_human}`;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
   setupLiquidGlassEffect();
   setupSiteUnlockGate();
   setupProStudio();
+  fetchRateLimitStatus();
 });
 
 // 144Hz+ zero-reflow spring-interpolated GPU liquid glass sheen (0% idle CPU)
@@ -865,6 +903,13 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
     peak_time: peakTime,
   };
 
+  if (!currentQuota.allowed || currentQuota.remaining <= 0) {
+    showError(
+      `Rate limit reached: Free tier allows ${currentQuota.max_clips} clips per 4 hours. Next clip unlocks in ${currentQuota.reset_human}.`
+    );
+    return;
+  }
+
   showProgressModal("Starting...");
 
   try {
@@ -877,6 +922,11 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
     const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
       throw new Error(data.detail || "Could not start creating Short.");
+    }
+
+    if (data.remaining_clips !== undefined) {
+      currentQuota.remaining = data.remaining_clips;
+      renderRateLimitUI();
     }
 
     pollTaskProgress(data.task_id);
@@ -902,9 +952,11 @@ function pollTaskProgress(taskId) {
 
       if (task.status === "completed" && task.result) {
         clearInterval(timer);
+        fetchRateLimitStatus();
         showResultModal(task.result);
       } else if (task.status === "failed") {
         clearInterval(timer);
+        fetchRateLimitStatus();
         hideProgressModal();
         showError(task.error || task.message || "Short creation failed.");
       }

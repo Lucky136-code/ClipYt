@@ -2987,3 +2987,51 @@ input:checked + .slider:before {
     font-size: 1.35rem;
   }
 }
+
+/* =====================================================================
+   CLIP EXPORT RATE LIMIT BADGE (3 CLIPS PER 4 HOURS)
+   ===================================================================== */
+.quota-badge-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.95rem;
+}
+
+.rate-limit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1.5px solid rgba(139, 92, 246, 0.28);
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.12);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1e293b;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.quota-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.65);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.rate-limit-pill.depleted {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(254, 242, 242, 0.95);
+  color: #b91c1c;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.15);
+}
+
+.rate-limit-pill.depleted .quota-dot {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+}
