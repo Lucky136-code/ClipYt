@@ -26,6 +26,8 @@ from backend.pro_studio import (
     process_pro_split_pipeline,
 )
 from backend.live_radar import poll_live_chat_radar
+from backend.chat_hype_scanner import scan_live_viral_moments
+from backend.auto_frame import compute_auto_boxes, get_fallback_boxes
 
 app = FastAPI(title="ClipYT - YouTube Shorts Creator", version="2.0.0")
 
@@ -112,6 +114,36 @@ class ProGenerateRequest(BaseModel):
     burn_subtitles: bool = True
     subtitle_style: str = "viral_pop"
     subtitle_position: str = "seam"
+
+
+class AutoViralScanRequest(BaseModel):
+    url: str
+    max_peaks: int = Field(default=5, ge=1, le=10)
+    clip_duration: float = Field(default=30.0, ge=10.0, le=90.0)
+    hook_duration: float = Field(default=3.0, ge=2.0, le=6.0)
+
+
+class AutoViralGenerateRequest(BaseModel):
+    url: str
+    video_id: str
+    is_live: bool = True
+    peak_offset_sec: float = 0.0
+    clip_start_utc_ts: Optional[float] = None
+    clip_end_utc_ts: Optional[float] = None
+    hook_start_utc_ts: Optional[float] = None
+    hook_end_utc_ts: Optional[float] = None
+    start_time: float = Field(default=0.0, ge=0.0)
+    end_time: float = Field(default=30.0, ge=5.0)
+    cam_box: Optional[BoxModel] = None
+    stream_box: Optional[BoxModel] = None
+    cam_ratio: float = Field(default=0.40, ge=0.25, le=0.65)
+    cam_position: str = "bottom"
+    resolution: str = "1080p"
+    burn_subtitles: bool = True
+    subtitle_style: str = "viral_pop"
+    subtitle_position: str = "seam"
+    climax_hook: bool = True
+    hook_duration: float = Field(default=3.0, ge=2.0, le=6.0)
 
 
 @app.get("/api/diag")
@@ -406,6 +438,115 @@ async def api_pro_generate(req: ProGenerateRequest, background_tasks: Background
         "error": None,
     }
     background_tasks.add_task(_run_pro_generate_task, task_id, req)
+    return {"success": True, "task_id": task_id}
+
+
+def _run_auto_viral_task(task_id: str, req: AutoViralGenerateRequest):
+    """Background task runner for Auto-Viral Short creation with 3s hook & auto-boxes."""
+    def update_progress(message: str, progress: int):
+        if task_id in TASKS:
+            TASKS[task_id]["message"] = message
+            TASKS[task_id]["progress"] = progress
+
+    try:
+        cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
+        cam_b = req.cam_box.model_dump() if req.cam_box else {"x": 0.68, "y": 0.58, "w": 0.30, "h": 0.40}
+        str_b = req.stream_box.model_dump() if req.stream_box else {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+
+        result = process_pro_split_pipeline(
+            url=req.url,
+            video_id=req.video_id,
+            is_live=req.is_live,
+            cam_box=cam_b,
+            stream_box=str_b,
+            duration_sec=30.0,
+            rewind_sec=req.peak_offset_sec,
+            start_utc_ts=req.clip_start_utc_ts,
+            end_utc_ts=req.clip_end_utc_ts,
+            start_time=req.start_time,
+            end_time=req.end_time,
+            cam_ratio=req.cam_ratio,
+            cam_position=req.cam_position,
+            resolution=req.resolution,
+            burn_subtitles=req.burn_subtitles,
+            subtitle_style=req.subtitle_style,
+            subtitle_position=req.subtitle_position,
+            climax_hook=req.climax_hook,
+            hook_duration=req.hook_duration,
+            transcript_cache=cached_transcript,
+            progress_cb=update_progress,
+        )
+        TASKS[task_id]["status"] = "completed"
+        TASKS[task_id]["progress"] = 100
+        TASKS[task_id]["message"] = "Auto Viral Short ready!"
+        TASKS[task_id]["result"] = result
+    except Exception as e:
+        clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        TASKS[task_id]["status"] = "failed"
+        TASKS[task_id]["error"] = clean_err
+        TASKS[task_id]["message"] = f"Auto viral render failed: {clean_err}"
+
+
+@app.post("/api/auto-viral/scan")
+async def api_auto_viral_scan(req: AutoViralScanRequest):
+    """Scan YouTube Live stream chat spikes & auto-detect viral peaks + auto-framed boxes."""
+    try:
+        inspect_data = await asyncio.to_thread(inspect_pro_source, url=req.url)
+        vid = inspect_data.get("video_id")
+        is_live = bool(inspect_data.get("is_live"))
+        first_pdt = inspect_data.get("first_pdt_utc")
+        dvr_win = float(inspect_data.get("dvr_window_sec") or 300.0)
+        frame_img = inspect_data.get("frame_image") or ""
+
+        auto_boxes = compute_auto_boxes(frame_img) if frame_img else get_fallback_boxes()
+
+        peaks = await asyncio.to_thread(
+            scan_live_viral_moments,
+            video_id=vid,
+            first_pdt_utc=first_pdt,
+            total_dur=dvr_win,
+            max_peaks=req.max_peaks,
+            clip_dur=req.clip_duration,
+            hook_dur=req.hook_duration,
+        )
+
+        for p in peaks:
+            p["auto_boxes"] = auto_boxes
+            p["thumbnail_b64"] = frame_img
+
+        return {
+            "success": True,
+            "data": {
+                "video_id": vid,
+                "title": inspect_data.get("title", "Live Stream"),
+                "author": inspect_data.get("author", ""),
+                "is_live": is_live,
+                "first_pdt_utc": first_pdt,
+                "dvr_window_sec": dvr_win,
+                "peaks": peaks,
+                "auto_boxes": auto_boxes,
+            },
+        }
+    except Exception as e:
+        clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        raise HTTPException(status_code=400, detail=clean_err)
+
+
+@app.post("/api/auto-viral/generate")
+async def api_auto_viral_generate(req: AutoViralGenerateRequest, background_tasks: BackgroundTasks):
+    """Launch asynchronous Auto Viral Short render with 3s hook + auto-framing."""
+    task_id = str(uuid.uuid4())
+    TASKS[task_id] = {
+        "task_id": task_id,
+        "status": "processing",
+        "progress": 8,
+        "message": "Starting Auto Viral...",
+        "clip_id": "auto_viral",
+        "aspect_ratio": "9:16",
+        "result": None,
+        "error": None,
+    }
+    background_tasks.add_task(_run_auto_viral_task, task_id, req)
     return {"success": True, "task_id": task_id}
 
 

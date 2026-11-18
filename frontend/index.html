@@ -324,6 +324,28 @@
           </button>
         </div>
 
+        <!-- 🔥 AUTO-VIRAL: Peak Chat Spikes + 3s Hook + Auto-Framing -->
+        <div class="glass-card auto-viral-card" style="margin-bottom:1.25rem;">
+          <div class="pro-card-head" style="flex-wrap: wrap; gap: 0.75rem;">
+            <div>
+              <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem;">
+                <span class="live-dot"></span>
+                <h3 class="section-title" style="margin:0;">🔥 Auto-Detect Viral Clips (Live Chat Spikes)</h3>
+              </div>
+              <p class="section-sub">Scans live chat spikes where viewers went crazy. Cuts a <strong>30s clip (peak ± 15s)</strong> with a <strong>3s high-energy hook</strong> in front, and <strong>auto-frames</strong> the streamer + display!</p>
+            </div>
+            <button type="button" id="btn-scan-viral" class="btn-red" style="padding: 0.65rem 1.25rem; font-size: 0.88rem;">
+              <span class="btn-text">⚡ Scan for Viral Clips</span>
+              <div class="spinner hidden"></div>
+            </button>
+          </div>
+
+          <div id="viral-scan-status" class="setting-hint hidden" style="margin-top:0.5rem;"></div>
+
+          <!-- Detected Viral Clips Container -->
+          <div id="viral-peaks-container" class="viral-peaks-grid hidden" style="margin-top:1rem;"></div>
+        </div>
+
         <!-- Step 1: Go Back in Timeframe & Select Exact From -> To Clip Window -->
         <div class="glass-card pro-timing-card">
           <div class="pro-card-head" style="margin-bottom:0.85rem;">

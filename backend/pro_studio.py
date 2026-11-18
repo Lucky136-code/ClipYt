@@ -1169,15 +1169,18 @@ def process_pro_split_pipeline(
     burn_subtitles: bool = True,
     subtitle_style: str = "viral_pop",
     subtitle_position: str = "seam",
+    climax_hook: bool = False,
+    hook_duration: float = 3.0,
     transcript_cache: Optional[List[Dict[str, Any]]] = None,
     progress_cb: Optional[Callable[[str, int], None]] = None,
 ) -> Dict[str, Any]:
     """
     Full Pro Studio pipeline:
       1. Grab Live Stream DVR clip OR Normal Video/VOD segment in HD
-      2. Transcribe exact cut clip audio with faster-whisper AI (English + Hinglish!)
-      3. Render Dual-Box Split-Screen (Streamer + Stream) + Active-Word Hinglish Captions
-      4. Clean intermediate temp files & return instant playback/download metadata
+      2. If climax_hook: extract high-energy 3s hook & prepend in front of 30s main clip
+      3. Transcribe exact cut clip audio with faster-whisper AI (English + Hinglish!)
+      4. Render Dual-Box Split-Screen (Streamer + Stream) + Active-Word Hinglish Captions
+      5. Clean intermediate temp files & return instant playback/download metadata
     """
     cleanup_old_temp_files()
     t0 = time.time()
@@ -1188,6 +1191,10 @@ def process_pro_split_pipeline(
     ass_file = TEMP_DIR / f"pro_sub_{video_id}_{job_id}.ass"
     out_filename = f"ClipYT_Pro_{video_id}_{job_id}.mp4"
     out_path = TEMP_DIR / out_filename
+
+    intermediate_split: Optional[Path] = None
+    hook_clip: Optional[Path] = None
+    combo_clip: Optional[Path] = None
 
     try:
         if is_live:
@@ -1226,20 +1233,86 @@ def process_pro_split_pipeline(
         out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
         seam_y_ratio = float(cam_ratio) if cam_position == "top" else (1.0 - float(cam_ratio))
 
+        # Check if we should generate a 3-second hook prepended to the front
+        hook_dur_eff = min(float(hook_duration), max(2.0, clip_duration / 2.0)) if climax_hook else 0.0
+
+        if climax_hook and hook_dur_eff >= 2.0:
+            if progress_cb:
+                enc_name = detect_best_encoder()["name"]
+                gpu_tag = "GPU" if enc_name != "libx264" else "HD"
+                progress_cb(f"Rendering {resolution} Split-Screen main cut ({gpu_tag})...", 42)
+
+            intermediate_split = TEMP_DIR / f"pro_split_raw_{video_id}_{job_id}.mp4"
+            render_pro_split_short(
+                input_path=downloaded_raw,
+                output_path=intermediate_split,
+                pad_start=exact_pad,
+                clip_duration=clip_duration,
+                cam_box=cam_box,
+                stream_box=stream_box,
+                cam_ratio=cam_ratio,
+                cam_position=cam_position,
+                resolution=resolution,
+                ass_file=None,
+            )
+
+            # Extract 3-second hook from the middle (peak moment)
+            if progress_cb:
+                progress_cb(f"Creating {int(hook_dur_eff)}s peak viral hook...", 56)
+
+            mid_t = clip_duration / 2.0
+            hook_start = max(0.0, mid_t - (hook_dur_eff / 2.0))
+            hook_clip = TEMP_DIR / f"pro_hook_{video_id}_{job_id}.mp4"
+
+            subprocess.run([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-ss", f"{hook_start:.3f}",
+                "-i", str(intermediate_split.resolve()),
+                "-t", f"{hook_dur_eff:.3f}",
+                "-c:v", "libx264", "-preset", "superfast", "-crf", "18",
+                "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                str(hook_clip.resolve())
+            ], check=True, timeout=30)
+
+            # Concat hook (in front) + main clip
+            if progress_cb:
+                progress_cb("Stitching 3s hook + 30s viral clip...", 64)
+
+            combo_clip = TEMP_DIR / f"pro_combo_{video_id}_{job_id}.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(hook_clip.resolve()),
+                "-i", str(intermediate_split.resolve()),
+                "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
+                "-map", "[v]", "-map", "[a]",
+                "-c:v", "libx264", "-preset", "superfast", "-crf", "18",
+                "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                "-movflags", "+faststart",
+                str(combo_clip.resolve())
+            ], check=True, timeout=60)
+
+            total_dur = clip_duration + hook_dur_eff
+            target_source_for_subtitles = combo_clip
+            target_sub_pad = 0.0
+        else:
+            total_dur = clip_duration
+            target_source_for_subtitles = downloaded_raw
+            target_sub_pad = exact_pad
+
         generated_ass: Optional[Path] = None
         caption_engine_used = "none"
         caption_note = ""
 
         if burn_subtitles:
             if progress_cb:
-                progress_cb("AI listening & generating Hinglish + English captions...", 48)
-            extracted_wav = _extract_exact_wav(downloaded_raw, exact_pad, clip_duration, wav_file)
+                progress_cb("AI listening & generating Hinglish + English captions...", 72)
+            extracted_wav = _extract_exact_wav(target_source_for_subtitles, target_sub_pad, total_dur, wav_file)
             words = transcribe_clip_hinglish(extracted_wav) if extracted_wav else None
 
             if words:
                 generated_ass = generate_ass_from_words(
                     words=words,
-                    clip_duration=clip_duration,
+                    clip_duration=total_dur,
                     output_path=ass_file,
                     video_width=out_w,
                     video_height=out_h,
@@ -1259,8 +1332,7 @@ def process_pro_split_pipeline(
                 else:
                     caption_note = ws.get("last_error") or "No speech detected in clip"
 
-            # Graceful fallback to YouTube transcript if VOD & Whisper returned nothing
-            if not generated_ass and not is_live:
+            if not generated_ass and not is_live and not climax_hook:
                 generated_ass = generate_ass_subtitles(
                     video_id=video_id,
                     start_time=start_time,
@@ -1277,23 +1349,42 @@ def process_pro_split_pipeline(
                     caption_engine_used = "youtube_hinglish"
                     caption_note = "YouTube Hinglish Captions"
 
-        if progress_cb:
-            enc_name = detect_best_encoder()["name"]
-            gpu_tag = "GPU" if enc_name != "libx264" else "HD"
-            progress_cb(f"Rendering {resolution} Split-Screen Pro Short ({gpu_tag})...", 72)
+        # Final render: if climax_hook was used, burn subtitles onto combo_clip
+        if climax_hook and hook_dur_eff >= 2.0:
+            if progress_cb:
+                progress_cb(f"Finishing {resolution} Short with hook & captions...", 88)
 
-        render_pro_split_short(
-            input_path=downloaded_raw,
-            output_path=out_path,
-            pad_start=exact_pad,
-            clip_duration=clip_duration,
-            cam_box=cam_box,
-            stream_box=stream_box,
-            cam_ratio=cam_ratio,
-            cam_position=cam_position,
-            resolution=resolution,
-            ass_file=generated_ass,
-        )
+            if generated_ass and generated_ass.exists():
+                subprocess.run([
+                    "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                    "-i", str(combo_clip.resolve()),
+                    "-vf", f"ass={generated_ass.name}",
+                    "-c:v", "libx264", "-preset", "superfast", "-crf", "19",
+                    "-c:a", "copy",
+                    "-movflags", "+faststart",
+                    str(out_path.resolve())
+                ], cwd=str(TEMP_DIR.resolve()), check=True, timeout=120)
+            else:
+                import shutil
+                shutil.copyfile(str(combo_clip.resolve()), str(out_path.resolve()))
+        else:
+            if progress_cb:
+                enc_name = detect_best_encoder()["name"]
+                gpu_tag = "GPU" if enc_name != "libx264" else "HD"
+                progress_cb(f"Rendering {resolution} Split-Screen Pro Short ({gpu_tag})...", 78)
+
+            render_pro_split_short(
+                input_path=downloaded_raw,
+                output_path=out_path,
+                pad_start=exact_pad,
+                clip_duration=clip_duration,
+                cam_box=cam_box,
+                stream_box=stream_box,
+                cam_ratio=cam_ratio,
+                cam_position=cam_position,
+                resolution=resolution,
+                ass_file=generated_ass,
+            )
 
         elapsed = round(time.time() - t0, 1)
         size_mb = round(out_path.stat().st_size / (1024 * 1024), 2)
@@ -1305,19 +1396,27 @@ def process_pro_split_pipeline(
             "download_url": f"/api/download/{out_filename}",
             "file_size_mb": size_mb,
             "size_mb": size_mb,
-            "duration": round(final_dur or clip_duration, 1),
+            "duration": round(final_dur or total_dur, 1),
             "aspect_ratio": "9:16",
             "resolution": resolution,
             "has_subtitles": bool(generated_ass),
             "caption_engine": caption_engine_used,
             "caption_note": caption_note,
-            "climax_hook": False,
+            "climax_hook": climax_hook,
+            "hook_duration": hook_dur_eff,
             "is_pro": True,
             "encoder": detect_best_encoder()["name"],
             "render_seconds": elapsed,
         }
     finally:
-        for tmp in (raw_clip, downloaded_raw, wav_file, ass_file):
+        for tmp in (raw_clip, downloaded_raw, wav_file, ass_file, intermediate_split, hook_clip, combo_clip):
+            if tmp is None:
+                continue
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass
             if tmp is None:
                 continue
             try:

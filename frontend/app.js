@@ -1138,6 +1138,15 @@ function setupProStudio() {
     loadSelectedBoundaryFrames(true);
   });
 
+  // Auto Viral Scan button
+  const scanViralBtn = document.getElementById("btn-scan-viral");
+  if (scanViralBtn) {
+    scanViralBtn.addEventListener("click", () => {
+      const val = proUrlInput.value.trim();
+      if (val) scanAutoViralClips(val);
+    });
+  }
+
   // Dual-Range Timeline Slider
   const sStart = document.getElementById("pro-tl-start");
   const sEnd = document.getElementById("pro-tl-end");
@@ -1291,6 +1300,9 @@ async function inspectLiveStream(url, forceRefresh = false) {
     document.getElementById("pro-editor-wrap").classList.remove("hidden");
     requestAnimationFrame(syncBoxesToDOM);
     loadSelectedBoundaryFrames(false);
+
+    // Automatically trigger Auto-Viral Chat Spike scan on stream load!
+    scanAutoViralClips(url);
   } catch (err) {
     showProError(err.message || "Failed to load stream.");
   } finally {
@@ -1615,5 +1627,203 @@ async function submitLiveClipExport() {
   } catch (err) {
     hideProgressModal();
     showProError(err.message);
+  }
+}
+
+
+// =============================================================
+// AUTO-VIRAL: LIVE CHAT SPIKE SCANNING & 1-CLICK HOOK EXPORT
+// =============================================================
+let activeViralPeaks = [];
+
+async function scanAutoViralClips(url) {
+  const btn = document.getElementById("btn-scan-viral");
+  const statusEl = document.getElementById("viral-scan-status");
+  const container = document.getElementById("viral-peaks-container");
+  if (!btn || !statusEl || !container) return;
+
+  const btnTxt = btn.querySelector(".btn-text");
+  const btnSp = btn.querySelector(".spinner");
+  btn.disabled = true;
+  btnTxt.textContent = "Scanning Chat...";
+  btnSp.classList.remove("hidden");
+  statusEl.classList.remove("hidden");
+  statusEl.textContent = "Analyzing live chat message frequency & hype spikes...";
+
+  try {
+    const res = await fetch("/api/auto-viral/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, max_peaks: 5, clip_duration: 30.0, hook_duration: 3.0 }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.detail || "Could not scan chat spikes.");
+    }
+
+    const peaks = json.data?.peaks || [];
+    activeViralPeaks = peaks;
+    if (peaks.length === 0) {
+      statusEl.textContent = "Chat activity was steady — no major spikes detected yet. Try again in a few moments!";
+      container.classList.add("hidden");
+    } else {
+      statusEl.textContent = `Found ${peaks.length} viral moment${peaks.length > 1 ? "s" : ""} where chat spiked! Each clip includes a 3s hook + 30s main cut + auto-framing.`;
+      renderViralPeaks(peaks);
+      container.classList.remove("hidden");
+    }
+  } catch (err) {
+    statusEl.textContent = `Scan failed: ${err.message || "Unknown error"}`;
+  } finally {
+    btn.disabled = false;
+    btnTxt.textContent = "⚡ Scan for Viral Clips";
+    btnSp.classList.add("hidden");
+  }
+}
+
+function renderViralPeaks(peaks) {
+  const container = document.getElementById("viral-peaks-container");
+  if (!container) return;
+
+  container.innerHTML = "";
+  const rankIcons = ["🏆", "🥈", "🥉", "⚡", "🔥"];
+
+  peaks.forEach((p, idx) => {
+    const card = document.createElement("div");
+    card.className = "viral-peak-card";
+
+    const icon = rankIcons[idx] || "⚡";
+    const reactions = (p.top_reactions || []).slice(0, 3).join(" • ") || "🔥 HIGH ENERGY";
+    const sampleTxt = p.sample_msg ? `💬 "${escapeHtml(p.sample_msg)}"` : `💬 ${p.msg_count_in_window} chat messages in this moment`;
+    const offsetStr = formatTime(Math.round(p.peak_offset_sec || 0), (p.peak_offset_sec || 0) >= 3600);
+    const thumbSrc = p.thumbnail_b64 || (proState.source?.frame_image || proState.source?.thumbnail || "");
+    const layoutName = (p.auto_boxes?.layout || "Corner Facecam").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+    card.innerHTML = `
+      <div class="viral-peak-head">
+        <span class="viral-rank-badge">${icon} #${p.rank} Viral Peak</span>
+        <span class="viral-score-badge">Viral Score: ${p.viral_score}/100</span>
+      </div>
+
+      <div class="viral-thumb-wrap">
+        <img class="viral-thumb-img" src="${thumbSrc}" alt="Peak frame">
+        <div class="viral-hook-tag">
+          <span>⚡ 3s HOOK + 30s CLIP</span>
+        </div>
+        <div class="viral-duration-tag">33s total</div>
+      </div>
+
+      <div class="viral-info-block">
+        <div style="font-size:0.84rem; font-weight:700; color:var(--text-main); display:flex; justify-content:space-between;">
+          <span>⏱ At ${offsetStr} in stream</span>
+          <span style="color:#ef4444; font-weight:800;">${p.msg_count_in_window} msgs / 30s</span>
+        </div>
+        <div class="viral-tags-row">
+          <span class="viral-tag-pill">${reactions}</span>
+          <span class="viral-autobox-pill">🎯 ${layoutName} (60/40)</span>
+        </div>
+        <div class="viral-chat-sample">${sampleTxt}</div>
+      </div>
+
+      <div class="viral-card-actions">
+        <button type="button" class="btn-generate-viral" data-rank="${p.rank}">
+          <span>🎬 Generate Short</span>
+        </button>
+        <button type="button" class="btn-edit-peak" data-rank="${p.rank}">
+          <span>✏️ Edit</span>
+        </button>
+      </div>
+    `;
+
+    // Button 1: 1-Click Generate with 3s Hook + Auto-Boxes + Hinglish Captions
+    const genBtn = card.querySelector(".btn-generate-viral");
+    genBtn.addEventListener("click", () => {
+      generateAutoViralShort(p, genBtn);
+    });
+
+    // Button 2: Load into manual Live Studio editor below
+    const editBtn = card.querySelector(".btn-edit-peak");
+    editBtn.addEventListener("click", () => {
+      useViralPeakInLiveStudio(p);
+    });
+
+    container.appendChild(card);
+  });
+}
+
+function useViralPeakInLiveStudio(p) {
+  // Snap timeline slider to this peak's clip window
+  proState.startSec = Math.max(0, Math.round(p.clip_start_sec || (p.peak_offset_sec - 15)));
+  proState.endSec = Math.min(proState.totalSec, Math.round(p.clip_end_sec || (p.peak_offset_sec + 15)));
+  if (p.auto_boxes) {
+    if (p.auto_boxes.cam_box) proState.boxes.cam = { ...p.auto_boxes.cam_box };
+    if (p.auto_boxes.stream_box) proState.boxes.stream = { ...p.auto_boxes.stream_box };
+  }
+  syncLiveTimelineUI();
+  syncBoxesToDOM();
+  loadSelectedBoundaryFrames(false);
+
+  // Smooth scroll to Step 1
+  const step1 = document.querySelector(".pro-timing-card");
+  if (step1) {
+    step1.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+async function generateAutoViralShort(peak, btnEl) {
+  if (!proState.source) {
+    showProError("Please paste and load a stream link first.");
+    return;
+  }
+
+  const origHtml = btnEl.innerHTML;
+  btnEl.disabled = true;
+  btnEl.innerHTML = `<span>Rendering Short...</span>`;
+
+  const isLive = Boolean(proState.source.is_live);
+  const camBox = peak.auto_boxes?.cam_box || proState.boxes.cam;
+  const streamBox = peak.auto_boxes?.stream_box || proState.boxes.stream;
+
+  const payload = {
+    url: document.getElementById("pro-youtube-url").value.trim(),
+    video_id: proState.source.video_id,
+    is_live: isLive,
+    peak_offset_sec: peak.peak_offset_sec || 0.0,
+    clip_start_utc_ts: peak.clip_start_utc_ts || null,
+    clip_end_utc_ts: peak.clip_end_utc_ts || null,
+    hook_start_utc_ts: peak.hook_start_utc_ts || null,
+    hook_end_utc_ts: peak.hook_end_utc_ts || null,
+    start_time: peak.clip_start_sec || 0.0,
+    end_time: peak.clip_end_sec || 30.0,
+    cam_box: camBox,
+    stream_box: streamBox,
+    cam_ratio: 0.40,
+    cam_position: "bottom",
+    resolution: document.getElementById("pro-resolution")?.value || "1080p",
+    burn_subtitles: document.getElementById("pro-burn-subs")?.checked ?? true,
+    subtitle_style: document.getElementById("pro-sub-style")?.value || "viral_pop",
+    subtitle_position: document.getElementById("pro-sub-pos")?.value || "seam",
+    climax_hook: true,
+    hook_duration: 3.0,
+  };
+
+  showProgressModal("Extracting 3s hook & 30s clip from live chat spike...");
+
+  try {
+    const res = await fetch("/api/auto-viral/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.detail || "Could not launch auto-viral render.");
+    }
+    pollTaskProgress(data.task_id);
+  } catch (err) {
+    hideProgressModal();
+    showProError(err.message);
+  } finally {
+    btnEl.disabled = false;
+    btnEl.innerHTML = origHtml;
   }
 }
