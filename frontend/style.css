@@ -237,6 +237,7 @@ body::before {
 }
 
 .site-footer {
+  position: relative;
   width: 100%;
   text-align: center;
   padding: 1.25rem 1rem 1.85rem;
@@ -245,6 +246,32 @@ body::before {
   color: var(--text-soft);
   letter-spacing: 0.15px;
   text-shadow: 0 1px 10px rgba(255, 255, 255, 0.95);
+}
+
+.corner-credit {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 8px rgba(68, 35, 130, 0.10);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-shadow: none;
+}
+
+.corner-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
 }
 
 .site-footer strong {
