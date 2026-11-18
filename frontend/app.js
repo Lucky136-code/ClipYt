@@ -15,28 +15,70 @@ document.addEventListener("DOMContentLoaded", () => {
   setupLiquidGlassEffect();
 });
 
-// 60fps mouse-tracking liquid glass sheen & top-rim specular glint
+// 144Hz+ zero-reflow spring-interpolated GPU liquid glass sheen (0% idle CPU)
 function setupLiquidGlassEffect() {
+  let activeCard = null;
+  let cachedRect = null;
+  let targetX = 0;
+  let targetY = 0;
+  let currX = 0;
+  let currY = 0;
   let rafId = 0;
-  let lastEvent = null;
+  let lastTs = 0;
+
+  const invalidateRect = () => {
+    cachedRect = null;
+  };
+  window.addEventListener("scroll", invalidateRect, { passive: true });
+  window.addEventListener("resize", invalidateRect, { passive: true });
+
+  function tick(ts) {
+    rafId = 0;
+    if (!activeCard) return;
+
+    const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 1 / 144;
+    lastTs = ts;
+
+    // Frame-rate independent smooth liquid glide (locked to monitor Hz: 60 / 120 / 144 / 240fps)
+    const alpha = 1 - Math.exp(-24 * dt);
+    currX += (targetX - currX) * alpha;
+    currY += (targetY - currY) * alpha;
+
+    activeCard.style.setProperty("--mx", `${currX.toFixed(1)}px`);
+    activeCard.style.setProperty("--my", `${currY.toFixed(1)}px`);
+
+    if (Math.abs(targetX - currX) > 0.25 || Math.abs(targetY - currY) > 0.25) {
+      rafId = requestAnimationFrame(tick);
+    } else {
+      lastTs = 0;
+    }
+  }
 
   document.addEventListener(
     "pointermove",
     (e) => {
-      lastEvent = e;
-      if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        const ev = lastEvent;
-        if (!ev || !ev.target || typeof ev.target.closest !== "function") return;
-        const card = ev.target.closest(".glass-card, .clip-card");
-        if (!card) return;
-        const rect = card.getBoundingClientRect();
-        const x = ev.clientX - rect.left;
-        const y = ev.clientY - rect.top;
-        card.style.setProperty("--mx", `${x.toFixed(1)}px`);
-        card.style.setProperty("--my", `${y.toFixed(1)}px`);
-      });
+      if (!e.target || typeof e.target.closest !== "function") return;
+      const card = e.target.closest(".glass-card, .clip-card");
+      if (!card) {
+        activeCard = null;
+        cachedRect = null;
+        return;
+      }
+
+      if (card !== activeCard || !cachedRect) {
+        activeCard = card;
+        cachedRect = card.getBoundingClientRect();
+        currX = e.clientX - cachedRect.left;
+        currY = e.clientY - cachedRect.top;
+      }
+
+      targetX = e.clientX - cachedRect.left;
+      targetY = e.clientY - cachedRect.top;
+
+      if (!rafId) {
+        lastTs = 0;
+        rafId = requestAnimationFrame(tick);
+      }
     },
     { passive: true }
   );

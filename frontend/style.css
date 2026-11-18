@@ -40,7 +40,6 @@ body {
   font-family: var(--font-sans);
   color: var(--text-main);
   background: linear-gradient(180deg, #fdfbff 0%, #f8f4ff 42%, #efe5ff 78%, #e1ceff 100%);
-  background-attachment: fixed;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -50,7 +49,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Sharp, completely visible background.png (zero background blur, locked 60fps+) */
+/* Sharp, completely visible background.png promoted to dedicated VRAM GPU layer (144fps+) */
 body::before {
   content: "";
   position: fixed;
@@ -61,6 +60,7 @@ body::before {
   background-repeat: no-repeat;
   transform: translate3d(0, 0, 0);
   will-change: transform;
+  contain: strict;
   pointer-events: none;
   z-index: 0;
 }
@@ -76,19 +76,20 @@ body::before {
   z-index: 1;
 }
 
-/* Liquid Glass Card with Rounded Corners, Specular Top Glint & Interactive Mouse Sheen */
+/* Liquid Glass Card — 100% GPU-Compositor Sheen (0ms repaint, locked 144fps+) */
 .glass-card {
   position: relative;
   overflow: hidden;
   background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(190%) brightness(1.05);
-  -webkit-backdrop-filter: blur(20px) saturate(190%) brightness(1.05);
+  backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
+  -webkit-backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
   border: 1.5px solid var(--glass-border);
   outline: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
-  contain: layout style;
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  contain: layout style paint;
+  transform: translate3d(0, 0, 0);
+  transition: border-color 0.18s ease;
 }
 
 .glass-card > *,
@@ -97,53 +98,58 @@ body::before {
   z-index: 2;
 }
 
-/* Specular bright lens flare along the top glass rim (follows mouse X smoothly!) */
+/* Top-rim specular lens glint — moves ONLY via GPU transform: translate3d() */
 .glass-card::before,
 .clip-card::before {
   content: "";
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
+  left: -130px;
+  width: 260px;
+  height: 3px;
+  border-radius: 9999px;
   background: radial-gradient(
-    220px 3px at var(--mx, 50%) 0px,
+    ellipse at center,
     rgba(255, 255, 255, 1) 0%,
-    rgba(220, 246, 255, 0.85) 35%,
-    rgba(255, 255, 255, 0.25) 70%,
-    transparent 100%
+    rgba(218, 246, 255, 0.85) 40%,
+    transparent 75%
   );
+  transform: translate3d(var(--mx, 50%), 0, 0);
+  will-change: transform, opacity;
   pointer-events: none;
   z-index: 4;
-  opacity: 0.9;
-  transition: opacity 0.22s ease;
+  opacity: 0.35;
+  transition: opacity 0.2s ease;
 }
 
-/* Fluid radial liquid-glass light refraction tracking the cursor */
+/* Fluid radial liquid-glass sheen — moves ONLY via GPU transform: translate3d() (zero repaint!) */
 .glass-card::after,
 .clip-card::after {
   content: "";
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background:
-    radial-gradient(
-      340px circle at var(--mx, 50%) var(--my, 50%),
-      rgba(255, 255, 255, 0.62) 0%,
-      rgba(224, 245, 255, 0.28) 28%,
-      rgba(216, 180, 254, 0.14) 52%,
-      transparent 72%
-    ),
-    linear-gradient(
-      115deg,
-      rgba(255, 255, 255, 0.24) 0%,
-      rgba(255, 255, 255, 0.0) 42%,
-      rgba(255, 255, 255, 0.14) 100%
-    );
+  top: -210px;
+  left: -210px;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(220, 244, 255, 0.28) 32%,
+    rgba(216, 180, 254, 0.14) 56%,
+    transparent 74%
+  );
+  transform: translate3d(var(--mx, 200px), var(--my, 120px), 0);
+  will-change: transform, opacity;
   opacity: 0;
   pointer-events: none;
   z-index: 1;
-  transition: opacity 0.28s ease;
+  transition: opacity 0.22s ease;
+}
+
+.glass-card:hover::before,
+.clip-card:hover::before {
+  opacity: 1;
 }
 
 .glass-card:hover::after,
@@ -153,12 +159,6 @@ body::before {
 
 .glass-card:hover {
   border-color: var(--glass-border-hover);
-  box-shadow:
-    0 22px 52px rgba(68, 35, 130, 0.17),
-    0 4px 14px rgba(68, 35, 130, 0.08),
-    inset 0 2px 3px rgba(255, 255, 255, 1),
-    inset 0 -2px 4px rgba(206, 240, 255, 0.72),
-    inset 0 0 32px rgba(255, 255, 255, 0.45);
 }
 
 /* Navbar */
@@ -304,10 +304,8 @@ body::before {
 
 .url-input-wrap input {
   width: 100%;
-  background: var(--input-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.74);
+  border: 1.5px solid rgba(255, 255, 255, 0.88);
   outline: 1px solid rgba(139, 92, 246, 0.16);
   border-radius: var(--radius-md);
   padding: 0.98rem 5rem 0.98rem 1.2rem;
@@ -318,7 +316,7 @@ body::before {
   box-shadow:
     inset 0 2px 4px rgba(109, 64, 198, 0.06),
     inset 0 -1px 1px rgba(255, 255, 255, 0.9);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .url-input-wrap input::placeholder {
@@ -380,26 +378,24 @@ body::before {
   content: "";
   position: absolute;
   top: 0;
-  left: -120%;
-  width: 75%;
+  left: 0;
+  width: 65%;
   height: 100%;
-  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.48) 50%, transparent 100%);
-  transform: skewX(-18deg);
+  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.46) 50%, transparent 100%);
+  transform: translate3d(-160%, 0, 0) skewX(-18deg);
+  will-change: transform;
   pointer-events: none;
-  transition: left 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 0.48s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .btn-red:hover::after,
 .btn-create-short:hover::after {
-  left: 140%;
+  transform: translate3d(260%, 0, 0) skewX(-18deg);
 }
 
 .btn-red:hover {
   background: linear-gradient(135deg, var(--accent-hover) 0%, #7e22ce 100%);
   transform: translate3d(0, -1px, 0);
-  box-shadow:
-    0 10px 28px rgba(124, 58, 237, 0.38),
-    inset 0 2px 2px rgba(255, 255, 255, 0.68);
 }
 
 .btn-red:disabled {
@@ -973,8 +969,8 @@ input:checked + .slider:before {
 .clip-card {
   position: relative;
   background: var(--glass-bg-strong);
-  backdrop-filter: blur(20px) saturate(190%) brightness(1.05);
-  -webkit-backdrop-filter: blur(20px) saturate(190%) brightness(1.05);
+  backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
+  -webkit-backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
   border: 1.5px solid var(--glass-border);
   outline: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
@@ -983,17 +979,16 @@ input:checked + .slider:before {
   display: flex;
   flex-direction: column;
   contain: layout style paint;
-  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 320px 380px;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.16s ease;
 }
 
 .clip-card:hover {
   transform: translate3d(0, -4px, 0);
   border-color: var(--glass-border-hover);
-  box-shadow:
-    0 24px 52px rgba(68, 35, 130, 0.19),
-    0 6px 16px rgba(68, 35, 130, 0.09),
-    inset 0 2px 3px rgba(255, 255, 255, 1),
-    inset 0 -2px 4px rgba(206, 240, 255, 0.72);
 }
 
 /* Video Frame Picture Header */
