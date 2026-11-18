@@ -131,10 +131,18 @@ def _build_stream_strategies() -> list:
 
     strategies.extend([
         (
-            "HD Embedded Stream",
+            "Fast Android HD Stream",
             {
-                "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
+                "extractor_args": {"youtube": {"player_client": ["android", "mweb"]}},
                 "format": hd_fmt,
+            },
+            False,
+        ),
+        (
+            "Smart TV High-Speed Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["tv", "tv_simply"]}},
+                "format": "bv*+ba/b",
             },
             False,
         ),
@@ -143,6 +151,14 @@ def _build_stream_strategies() -> list:
             {
                 "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
                 "format": "best[height<=1080][protocol^=m3u8]/best[height<=1080]/bv*+ba/b",
+            },
+            False,
+        ),
+        (
+            "HD Embedded Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
+                "format": hd_fmt,
             },
             False,
         ),
@@ -161,14 +177,6 @@ def _build_stream_strategies() -> list:
             {
                 "extractor_args": {"youtube": {"player_client": ["android_vr"]}},
                 "format": hd_fmt,
-            },
-            False,
-        ),
-        (
-            "Universal Fallback Stream",
-            {
-                "extractor_args": {"youtube": {"player_client": ["tv_simply"]}},
-                "format": "bv*+ba/b",
             },
             False,
         ),
@@ -287,6 +295,9 @@ def download_clip_segment(
         "external_downloader_args": {"ffmpeg_i": ["-copyts"]},
         "outtmpl": str(output_path.with_suffix(".%(ext)s")),
         "merge_output_format": "mp4",
+        "concurrent_fragment_downloads": 8,
+        "buffersize": 16 * 1024 * 1024,
+        "http_chunk_size": 10485760,
     }
 
     # Attempt 0: Instant pre-warmed cached metadata (skips webpage + JS solve!)

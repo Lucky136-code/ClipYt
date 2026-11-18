@@ -31,6 +31,12 @@ YTDLP_BASE_OPTS = {
     "cachedir": str(YTDLP_CACHE_DIR),
     "js_runtimes": {"deno": {}, "node": {}},
     "remote_components": ["ejs:github"],
+    "concurrent_fragment_downloads": 8,
+    "buffersize": 16 * 1024 * 1024,
+    "http_chunk_size": 10485760,
+    "socket_timeout": 15,
+    "retries": 3,
+    "fragment_retries": 3,
 }
 
 # Optional YouTube cookies support for cloud hosting (e.g. Hugging Face Spaces Secret: YOUTUBE_COOKIES)
