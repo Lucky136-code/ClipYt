@@ -44,6 +44,24 @@ TASKS: Dict[str, Dict[str, Any]] = {}
 TRANSCRIPT_CACHE: Dict[str, Any] = {}
 HEATMAP_CACHE: Dict[str, Any] = {}
 
+# Production Concurrency Guard: Maximum 2 heavy video rendering jobs run simultaneously
+# Additional requests wait safely in queue rather than crashing the container with Out-Of-Memory (OOM)
+import threading
+import time
+RENDER_SEMAPHORE = threading.Semaphore(2)
+
+
+def _prune_expired_tasks_and_caches():
+    """Purge tasks and caches older than 30 minutes to prevent RAM creep under high traffic."""
+    now = time.time()
+    expired = [tid for tid, t in list(TASKS.items()) if (now - t.get("created_at", now)) > 1800]
+    for tid in expired:
+        TASKS.pop(tid, None)
+    if len(TRANSCRIPT_CACHE) > 40:
+        TRANSCRIPT_CACHE.clear()
+    if len(HEATMAP_CACHE) > 40:
+        HEATMAP_CACHE.clear()
+
 
 @app.on_event("startup")
 async def on_startup():
@@ -284,30 +302,32 @@ def _run_generate_task(task_id: str, req: GenerateRequest):
             TASKS[task_id]["progress"] = progress
 
     try:
-        cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
-        cached_heatmap = HEATMAP_CACHE.get(req.video_id)
-        result = process_clip_pipeline(
-            url=req.url,
-            video_id=req.video_id,
-            clip_id=req.clip_id,
-            start_time=req.start_time,
-            end_time=req.end_time,
-            aspect_ratio=req.aspect_ratio,
-            framing_mode=req.framing_mode,
-            burn_subtitles=req.burn_subtitles,
-            subtitle_style=req.subtitle_style,
-            subtitle_position=req.subtitle_position,
-            resolution=req.resolution,
-            climax_hook=req.climax_hook,
-            peak_time=req.peak_time,
-            heatmap_points=cached_heatmap,
-            transcript_cache=cached_transcript,
-            progress_cb=update_progress,
-        )
-        TASKS[task_id]["status"] = "completed"
-        TASKS[task_id]["progress"] = 100
-        TASKS[task_id]["message"] = "Short ready!"
-        TASKS[task_id]["result"] = result
+        update_progress("In queue — rendering slot opening...", 5)
+        with RENDER_SEMAPHORE:
+            cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
+            cached_heatmap = HEATMAP_CACHE.get(req.video_id)
+            result = process_clip_pipeline(
+                url=req.url,
+                video_id=req.video_id,
+                clip_id=req.clip_id,
+                start_time=req.start_time,
+                end_time=req.end_time,
+                aspect_ratio=req.aspect_ratio,
+                framing_mode=req.framing_mode,
+                burn_subtitles=req.burn_subtitles,
+                subtitle_style=req.subtitle_style,
+                subtitle_position=req.subtitle_position,
+                resolution=req.resolution,
+                climax_hook=req.climax_hook,
+                peak_time=req.peak_time,
+                heatmap_points=cached_heatmap,
+                transcript_cache=cached_transcript,
+                progress_cb=update_progress,
+            )
+            TASKS[task_id]["status"] = "completed"
+            TASKS[task_id]["progress"] = 100
+            TASKS[task_id]["message"] = "Short ready!"
+            TASKS[task_id]["result"] = result
     except Exception as e:
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
         TASKS[task_id]["status"] = "failed"
@@ -318,6 +338,7 @@ def _run_generate_task(task_id: str, req: GenerateRequest):
 @app.post("/api/generate")
 async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
     """Launch fast asynchronous Short creation."""
+    _prune_expired_tasks_and_caches()
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {
         "task_id": task_id,
@@ -326,6 +347,7 @@ async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
         "message": "Starting...",
         "clip_id": req.clip_id,
         "aspect_ratio": req.aspect_ratio,
+        "created_at": time.time(),
         "result": None,
         "error": None,
     }
@@ -390,32 +412,34 @@ def _run_pro_generate_task(task_id: str, req: ProGenerateRequest):
             TASKS[task_id]["progress"] = progress
 
     try:
-        cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
-        result = process_pro_split_pipeline(
-            url=req.url,
-            video_id=req.video_id,
-            is_live=req.is_live,
-            cam_box=req.cam_box.model_dump(),
-            stream_box=req.stream_box.model_dump(),
-            duration_sec=req.duration_sec,
-            rewind_sec=req.rewind_sec,
-            start_utc_ts=req.start_utc_ts,
-            end_utc_ts=req.end_utc_ts,
-            start_time=req.start_time,
-            end_time=req.end_time,
-            cam_ratio=req.cam_ratio,
-            cam_position=req.cam_position,
-            resolution=req.resolution,
-            burn_subtitles=req.burn_subtitles,
-            subtitle_style=req.subtitle_style,
-            subtitle_position=req.subtitle_position,
-            transcript_cache=cached_transcript,
-            progress_cb=update_progress,
-        )
-        TASKS[task_id]["status"] = "completed"
-        TASKS[task_id]["progress"] = 100
-        TASKS[task_id]["message"] = "Pro Short ready!"
-        TASKS[task_id]["result"] = result
+        update_progress("In queue — rendering slot opening...", 5)
+        with RENDER_SEMAPHORE:
+            cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
+            result = process_pro_split_pipeline(
+                url=req.url,
+                video_id=req.video_id,
+                is_live=req.is_live,
+                cam_box=req.cam_box.model_dump(),
+                stream_box=req.stream_box.model_dump(),
+                duration_sec=req.duration_sec,
+                rewind_sec=req.rewind_sec,
+                start_utc_ts=req.start_utc_ts,
+                end_utc_ts=req.end_utc_ts,
+                start_time=req.start_time,
+                end_time=req.end_time,
+                cam_ratio=req.cam_ratio,
+                cam_position=req.cam_position,
+                resolution=req.resolution,
+                burn_subtitles=req.burn_subtitles,
+                subtitle_style=req.subtitle_style,
+                subtitle_position=req.subtitle_position,
+                transcript_cache=cached_transcript,
+                progress_cb=update_progress,
+            )
+            TASKS[task_id]["status"] = "completed"
+            TASKS[task_id]["progress"] = 100
+            TASKS[task_id]["message"] = "Pro Short ready!"
+            TASKS[task_id]["result"] = result
     except Exception as e:
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
         TASKS[task_id]["status"] = "failed"
@@ -426,6 +450,7 @@ def _run_pro_generate_task(task_id: str, req: ProGenerateRequest):
 @app.post("/api/pro/generate")
 async def api_pro_generate(req: ProGenerateRequest, background_tasks: BackgroundTasks):
     """Launch asynchronous Pro Studio Split-Screen Short render."""
+    _prune_expired_tasks_and_caches()
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {
         "task_id": task_id,
@@ -434,6 +459,7 @@ async def api_pro_generate(req: ProGenerateRequest, background_tasks: Background
         "message": "Starting Pro Studio...",
         "clip_id": "pro_split",
         "aspect_ratio": "9:16",
+        "created_at": time.time(),
         "result": None,
         "error": None,
     }
@@ -449,37 +475,39 @@ def _run_auto_viral_task(task_id: str, req: AutoViralGenerateRequest):
             TASKS[task_id]["progress"] = progress
 
     try:
-        cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
-        cam_b = req.cam_box.model_dump() if req.cam_box else {"x": 0.68, "y": 0.58, "w": 0.30, "h": 0.40}
-        str_b = req.stream_box.model_dump() if req.stream_box else {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+        update_progress("In queue — rendering slot opening...", 5)
+        with RENDER_SEMAPHORE:
+            cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
+            cam_b = req.cam_box.model_dump() if req.cam_box else {"x": 0.68, "y": 0.58, "w": 0.30, "h": 0.40}
+            str_b = req.stream_box.model_dump() if req.stream_box else {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
 
-        result = process_pro_split_pipeline(
-            url=req.url,
-            video_id=req.video_id,
-            is_live=req.is_live,
-            cam_box=cam_b,
-            stream_box=str_b,
-            duration_sec=30.0,
-            rewind_sec=req.peak_offset_sec,
-            start_utc_ts=req.clip_start_utc_ts,
-            end_utc_ts=req.clip_end_utc_ts,
-            start_time=req.start_time,
-            end_time=req.end_time,
-            cam_ratio=req.cam_ratio,
-            cam_position=req.cam_position,
-            resolution=req.resolution,
-            burn_subtitles=req.burn_subtitles,
-            subtitle_style=req.subtitle_style,
-            subtitle_position=req.subtitle_position,
-            climax_hook=req.climax_hook,
-            hook_duration=req.hook_duration,
-            transcript_cache=cached_transcript,
-            progress_cb=update_progress,
-        )
-        TASKS[task_id]["status"] = "completed"
-        TASKS[task_id]["progress"] = 100
-        TASKS[task_id]["message"] = "Auto Viral Short ready!"
-        TASKS[task_id]["result"] = result
+            result = process_pro_split_pipeline(
+                url=req.url,
+                video_id=req.video_id,
+                is_live=req.is_live,
+                cam_box=cam_b,
+                stream_box=str_b,
+                duration_sec=30.0,
+                rewind_sec=req.peak_offset_sec,
+                start_utc_ts=req.clip_start_utc_ts,
+                end_utc_ts=req.clip_end_utc_ts,
+                start_time=req.start_time,
+                end_time=req.end_time,
+                cam_ratio=req.cam_ratio,
+                cam_position=req.cam_position,
+                resolution=req.resolution,
+                burn_subtitles=req.burn_subtitles,
+                subtitle_style=req.subtitle_style,
+                subtitle_position=req.subtitle_position,
+                climax_hook=req.climax_hook,
+                hook_duration=req.hook_duration,
+                transcript_cache=cached_transcript,
+                progress_cb=update_progress,
+            )
+            TASKS[task_id]["status"] = "completed"
+            TASKS[task_id]["progress"] = 100
+            TASKS[task_id]["message"] = "Auto Viral Short ready!"
+            TASKS[task_id]["result"] = result
     except Exception as e:
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
         TASKS[task_id]["status"] = "failed"
@@ -535,6 +563,7 @@ async def api_auto_viral_scan(req: AutoViralScanRequest):
 @app.post("/api/auto-viral/generate")
 async def api_auto_viral_generate(req: AutoViralGenerateRequest, background_tasks: BackgroundTasks):
     """Launch asynchronous Auto Viral Short render with 3s hook + auto-framing."""
+    _prune_expired_tasks_and_caches()
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {
         "task_id": task_id,
@@ -543,6 +572,7 @@ async def api_auto_viral_generate(req: AutoViralGenerateRequest, background_task
         "message": "Starting Auto Viral...",
         "clip_id": "auto_viral",
         "aspect_ratio": "9:16",
+        "created_at": time.time(),
         "result": None,
         "error": None,
     }

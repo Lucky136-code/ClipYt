@@ -214,8 +214,8 @@ def prewarm_video_streams(url: str, video_id: str) -> None:
             continue
 
 
-def cleanup_old_temp_files(max_age_sec: int = 900) -> None:
-    """Remove temporary clips older than 15 minutes so disk never fills up."""
+def cleanup_old_temp_files(max_age_sec: int = 300) -> None:
+    """Remove temporary clips older than 5 minutes so disk never fills up under heavy traffic."""
     now = time.time()
     for f in TEMP_DIR.glob("*"):
         if f.is_file():

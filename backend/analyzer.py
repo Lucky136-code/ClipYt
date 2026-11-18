@@ -189,8 +189,29 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "writeautomaticsub": True,
     })
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(clean_url, download=False)
+    info = None
+    last_err = ""
+    client_strategies = [
+        ("default", {}),
+        ("web_safari", {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}}),
+        ("tv", {"extractor_args": {"youtube": {"player_client": ["tv"]}}}),
+        ("android_vr", {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}}),
+    ]
+
+    for c_name, extra in client_strategies:
+        opts = dict(ydl_opts)
+        opts.update(extra)
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(clean_url, download=False)
+            if info and (info.get("duration") is not None or info.get("title")):
+                break
+        except Exception as e:
+            last_err = str(e)
+            continue
+
+    if not info:
+        raise RuntimeError(f"Could not load YouTube video ({last_err or 'No formats found'}).")
 
     duration = float(info.get("duration") or 0.0)
     use_hours = duration >= 3600
