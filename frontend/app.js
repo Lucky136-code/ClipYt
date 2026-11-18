@@ -962,6 +962,7 @@ const proState = {
   boxesLocked: false,
   isRecording: false,
   recStartTime: 0,
+  recStartBehindLive: 0,
   recStartWallMs: 0,
   recTimerId: null,
   recordedClip: null, // { isLive, duration, rewindAtStop, stoppedAtMs, startTime, endTime }
@@ -2124,6 +2125,7 @@ function loadProYouTubePlayer(videoId) {
     height: "100%",
     playerVars: {
       autoplay: 1,
+      mute: 1, // Ensures browsers never block autoplay so live edge locks immediately!
       playsinline: 1,
       rel: 0,
       modestbranding: 1,
@@ -2136,6 +2138,10 @@ function loadProYouTubePlayer(videoId) {
           ev.target.playVideo();
         } catch (e) {}
         startPlayerClockSync();
+      },
+      onStateChange: () => {
+        // Immediately capture live edge anchor when player begins playing
+        getExactYouTubeLiveEdge();
       },
     },
   });
@@ -2169,14 +2175,13 @@ function getExactYouTubeLiveEdge() {
     ? proState.ytLiveEdgeAnchor + Math.max(0, (nowMs - proState.ytLiveEdgeAnchorMs) / 1000)
     : 0;
 
-  // Live player always starts at live edge on load; keep highest observed edge ticking forward
-  // even when YouTube IFrame API returns getDuration() === 0 on live streams!
+  // Keep highest observed YouTube player coordinate (dur or live-edge cur) ticking +1s/sec!
   const best = Math.max(est, dur, cur);
-  if (best > 5 && (proState.ytLiveEdgeAnchor === 0 || best > est + 0.8)) {
+  if (best > 1 && (proState.ytLiveEdgeAnchor === 0 || best > est + 0.6)) {
     proState.ytLiveEdgeAnchor = best;
     proState.ytLiveEdgeAnchorMs = nowMs;
   }
-  return best > 5 ? best : getCurrentLiveElapsed();
+  return best > 1 ? best : getCurrentLiveElapsed();
 }
 
 function startPlayerClockSync() {
@@ -2234,9 +2239,16 @@ function startProRecording() {
   }
   hideProError();
 
+  const startCur = safeGetPlayerTime();
+  const startEdge = proState.source.is_live ? getExactYouTubeLiveEdge() : 0;
+  const startBehind = (proState.source.is_live && startEdge > 1 && startCur > 0 && startEdge >= startCur)
+    ? Math.max(0, Math.round(startEdge - startCur))
+    : 0;
+
   proState.isRecording = true;
   proState.recordedClip = null;
-  proState.recStartTime = safeGetPlayerTime();
+  proState.recStartTime = startCur;
+  proState.recStartBehindLive = startBehind;
   proState.recStartWallMs = Date.now();
   updateLiveGuideStep(3);
 
@@ -2255,10 +2267,14 @@ function startProRecording() {
   const recTimer = document.getElementById("pro-rec-timer");
   const cancelBtn = document.getElementById("pro-rec-cancel-btn");
 
+  const behindTag = (proState.source.is_live && startBehind > 8)
+    ? ` • −${formatTime(startBehind, false)} behind live`
+    : (proState.source.is_live ? " • LIVE" : "");
+
   if (recBtn) recBtn.classList.add("is-recording");
   if (recTxt) recTxt.textContent = "Stop Recording";
   if (recTimer) {
-    recTimer.textContent = "REC 00:00";
+    recTimer.textContent = `REC 00:00${behindTag}`;
     recTimer.classList.remove("hidden");
   }
   if (cancelBtn) cancelBtn.classList.remove("hidden");
@@ -2267,7 +2283,7 @@ function startProRecording() {
   proState.recTimerId = setInterval(() => {
     if (!proState.isRecording) return;
     const elapsed = Math.floor((Date.now() - proState.recStartWallMs) / 1000);
-    if (recTimer) recTimer.textContent = `REC ${formatTime(elapsed, false)}`;
+    if (recTimer) recTimer.textContent = `REC ${formatTime(elapsed, false)}${behindTag}`;
     // Auto-stop at 120s (max Reel/Short length)
     if (elapsed >= 120) {
       stopAndSaveRecordedClip();
@@ -2299,6 +2315,7 @@ function stopAndSaveRecordedClip() {
   const liveEdge = getExactYouTubeLiveEdge();
   const wallElapsed = (Date.now() - proState.recStartWallMs) / 1000;
   const startTime = proState.recStartTime;
+  const startBehind = proState.recStartBehindLive || 0;
 
   cancelProRecording();
 
@@ -2310,11 +2327,15 @@ function stopAndSaveRecordedClip() {
 
   const clipDur = Math.max(5.0, Math.min(120.0, Math.round(rawDur * 10) / 10));
 
+  let rewindLabel = "";
   if (proState.source.is_live) {
-    let rewindAtStop = 0;
-    if (liveEdge > 5 && endTime > 0 && liveEdge >= endTime) {
-      rewindAtStop = Math.max(0, Math.round(liveEdge - endTime));
-    }
+    // Anchor strictly to where Start Recording was clicked + how long playback ran!
+    const behindFromEnd = (liveEdge > 1 && endTime > 0 && liveEdge >= endTime)
+      ? Math.max(0, Math.round(liveEdge - endTime))
+      : 0;
+    const behindFromStart = Math.max(0, Math.round(startBehind + Math.max(0, wallElapsed - clipDur)));
+    const rewindAtStop = Math.max(behindFromEnd, behindFromStart);
+
     proState.recordedClip = {
       isLive: true,
       duration: clipDur,
@@ -2323,6 +2344,7 @@ function stopAndSaveRecordedClip() {
       startTime: 0,
       endTime: clipDur,
     };
+    rewindLabel = rewindAtStop > 8 ? ` (−${formatTime(rewindAtStop, false)} behind live)` : " (LIVE)";
   } else {
     const maxDur = Math.max(10, Math.floor(proState.source.duration || liveEdge || 3600));
     const s = Math.max(0, Math.min(maxDur - 5, Math.floor(startTime)));
@@ -2335,11 +2357,12 @@ function stopAndSaveRecordedClip() {
       startTime: s,
       endTime: e,
     };
+    rewindLabel = ` (${formatTime(s, s >= 3600)} → ${formatTime(e, e >= 3600)})`;
   }
 
   const readyPill = document.getElementById("pro-rec-ready-pill");
   if (readyPill) {
-    readyPill.textContent = `✓ Recorded ${formatTime(Math.round(clipDur), false)} — Ready to Export`;
+    readyPill.textContent = `✓ Recorded ${formatTime(Math.round(clipDur), false)}${rewindLabel} — Click Export`;
     readyPill.classList.remove("hidden");
   }
   updateLiveGuideStep(4);
