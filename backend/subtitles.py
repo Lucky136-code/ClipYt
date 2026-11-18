@@ -6,6 +6,7 @@ import requests
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 from backend.config import YTDLP_BASE_OPTS
+from backend.whisper_captions import devanagari_to_hinglish
 
 
 def _format_ass_time(seconds: float) -> str:
@@ -28,9 +29,10 @@ def _format_ass_time(seconds: float) -> str:
 
 
 def _clean_word(text: str) -> str:
-    """Clean a single caption token and escape ASS override braces."""
+    """Clean a single caption token, convert Devanagari Hindi to Hinglish, and escape ASS braces."""
     text = text.replace("\n", " ").replace("\r", " ")
     text = re.sub(r"\s+", " ", text).strip()
+    text = devanagari_to_hinglish(text)
     text = text.replace("{", "(").replace("}", ")")
     return text
 
@@ -442,70 +444,16 @@ def _build_word_highlight_dialogues(
     return dialogues
 
 
-def generate_ass_subtitles(
-    video_id: str,
-    start_time: float,
-    end_time: float,
+def _write_phrases_to_ass(
+    phrases: List[List[Dict[str, Any]]],
     output_path: Path,
     video_width: int = 1080,
     video_height: int = 1920,
     style_preset: str = "viral_pop",
     position: str = "bottom",
-    transcript_cache: Optional[List[Dict[str, Any]]] = None,
-    hook_teaser_offset: Optional[float] = None,
-    hook_teaser_duration: float = 0.0,
+    seam_y_ratio: Optional[float] = None,
 ) -> Optional[Path]:
-    """
-    Generate an advanced word-synced .ass subtitle file with real-time active-word
-    highlighting and silence-aware cutoff.
-    """
-    words = transcript_cache if transcript_cache is not None else fetch_youtube_transcript(video_id)
-    if not words:
-        return None
-
-    # Backward-compatibility check if cached items are legacy snippet dicts
-    if words and "word" not in words[0] and "text" in words[0]:
-        converted: List[Dict[str, Any]] = []
-        for item in words:
-            seg_w = [w for w in _clean_word(item["text"]).split() if not _is_non_speech(w)]
-            if not seg_w:
-                continue
-            s = float(item["start"])
-            e = float(item["end"])
-            span = max(0.2, min(e - s, sum(_estimate_word_duration(w) for w in seg_w) * 1.15))
-            tot_c = max(1, sum(len(w) for w in seg_w))
-            t_c = s
-            for w in seg_w:
-                wd = max(0.14, span * (len(w) / tot_c))
-                converted.append({"word": w, "start": t_c, "end": t_c + wd})
-                t_c += wd
-        words = converted
-
-    is_vertical = video_width <= video_height
-    max_words = 3 if is_vertical else 5
-    max_chars = 19 if is_vertical else 32
-
-    phrases: List[List[Dict[str, Any]]] = []
-    if hook_teaser_offset is not None and hook_teaser_duration > 0.2:
-        t_abs_start = start_time + hook_teaser_offset
-        t_abs_end = t_abs_start + hook_teaser_duration
-        phrases.extend(
-            _group_words_into_phrases(
-                words, t_abs_start, t_abs_end, 0.0, max_words=max_words, max_chars=max_chars
-            )
-        )
-        phrases.extend(
-            _group_words_into_phrases(
-                words, start_time, end_time, hook_teaser_duration, max_words=max_words, max_chars=max_chars
-            )
-        )
-    else:
-        phrases.extend(
-            _group_words_into_phrases(
-                words, start_time, end_time, 0.0, max_words=max_words, max_chars=max_chars
-            )
-        )
-
+    """Render grouped phrase lists into a stylized active-word ASS subtitle file."""
     if not phrases:
         return None
 
@@ -514,7 +462,13 @@ def generate_ass_subtitles(
     font_size = int(round(base_scale * 0.072))  # Bold & super legible on mobile
     margin_lr = int(round(video_width * 0.08))
 
-    if position == "top":
+    if position == "seam" and seam_y_ratio is not None:
+        # Place cleanly right at the split-screen seam (clamped inside safe vertical zone)
+        safe_ratio = max(0.24, min(0.76, float(seam_y_ratio)))
+        alignment = 2  # bottom-center anchor measured from bottom edge
+        margin_v = int(round(video_height * (1.0 - safe_ratio) - (font_size * 0.55)))
+        margin_v = max(int(video_height * 0.14), min(int(video_height * 0.78), margin_v))
+    elif position == "top":
         alignment = 8
         margin_v = int(round(video_height * 0.13))
     elif position == "center":
@@ -589,3 +543,117 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     output_path.write_text(header + "".join(dialogues), encoding="utf-8")
     return output_path
+
+
+def generate_ass_from_words(
+    words: List[Dict[str, Any]],
+    clip_duration: float,
+    output_path: Path,
+    video_width: int = 1080,
+    video_height: int = 1920,
+    style_preset: str = "viral_pop",
+    position: str = "seam",
+    seam_y_ratio: Optional[float] = None,
+) -> Optional[Path]:
+    """
+    Build active-word highlighted .ass subtitles directly from clip-relative acoustic words
+    (e.g. from faster-whisper Hinglish+English transcription with 0.000s drift).
+    """
+    if not words:
+        return None
+    is_vertical = video_width <= video_height
+    max_words = 3 if is_vertical else 5
+    max_chars = 19 if is_vertical else 32
+    phrases = _group_words_into_phrases(
+        words,
+        0.0,
+        max(0.5, float(clip_duration)),
+        0.0,
+        max_words=max_words,
+        max_chars=max_chars,
+    )
+    return _write_phrases_to_ass(
+        phrases=phrases,
+        output_path=output_path,
+        video_width=video_width,
+        video_height=video_height,
+        style_preset=style_preset,
+        position=position,
+        seam_y_ratio=seam_y_ratio,
+    )
+
+
+def generate_ass_subtitles(
+    video_id: str,
+    start_time: float,
+    end_time: float,
+    output_path: Path,
+    video_width: int = 1080,
+    video_height: int = 1920,
+    style_preset: str = "viral_pop",
+    position: str = "bottom",
+    transcript_cache: Optional[List[Dict[str, Any]]] = None,
+    hook_teaser_offset: Optional[float] = None,
+    hook_teaser_duration: float = 0.0,
+    seam_y_ratio: Optional[float] = None,
+) -> Optional[Path]:
+    """
+    Generate an advanced word-synced .ass subtitle file with real-time active-word
+    highlighting and silence-aware cutoff.
+    """
+    words = transcript_cache if transcript_cache is not None else fetch_youtube_transcript(video_id)
+    if not words:
+        return None
+
+    # Backward-compatibility check if cached items are legacy snippet dicts
+    if words and "word" not in words[0] and "text" in words[0]:
+        converted: List[Dict[str, Any]] = []
+        for item in words:
+            seg_w = [w for w in _clean_word(item["text"]).split() if not _is_non_speech(w)]
+            if not seg_w:
+                continue
+            s = float(item["start"])
+            e = float(item["end"])
+            span = max(0.2, min(e - s, sum(_estimate_word_duration(w) for w in seg_w) * 1.15))
+            tot_c = max(1, sum(len(w) for w in seg_w))
+            t_c = s
+            for w in seg_w:
+                wd = max(0.14, span * (len(w) / tot_c))
+                converted.append({"word": w, "start": t_c, "end": t_c + wd})
+                t_c += wd
+        words = converted
+
+    is_vertical = video_width <= video_height
+    max_words = 3 if is_vertical else 5
+    max_chars = 19 if is_vertical else 32
+
+    phrases: List[List[Dict[str, Any]]] = []
+    if hook_teaser_offset is not None and hook_teaser_duration > 0.2:
+        t_abs_start = start_time + hook_teaser_offset
+        t_abs_end = t_abs_start + hook_teaser_duration
+        phrases.extend(
+            _group_words_into_phrases(
+                words, t_abs_start, t_abs_end, 0.0, max_words=max_words, max_chars=max_chars
+            )
+        )
+        phrases.extend(
+            _group_words_into_phrases(
+                words, start_time, end_time, hook_teaser_duration, max_words=max_words, max_chars=max_chars
+            )
+        )
+    else:
+        phrases.extend(
+            _group_words_into_phrases(
+                words, start_time, end_time, 0.0, max_words=max_words, max_chars=max_chars
+            )
+        )
+
+    return _write_phrases_to_ass(
+        phrases=phrases,
+        output_path=output_path,
+        video_width=video_width,
+        video_height=video_height,
+        style_preset=style_preset,
+        position=position,
+        seam_y_ratio=seam_y_ratio,
+    )

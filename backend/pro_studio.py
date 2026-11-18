@@ -1,0 +1,717 @@
+import base64
+import json
+import math
+import re
+import subprocess
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import requests
+import yt_dlp
+
+from backend.analyzer import extract_video_id, format_timestamp
+from backend.config import TEMP_DIR, YTDLP_BASE_OPTS, ensure_fresh_cookiefile
+from backend.subtitles import generate_ass_from_words, generate_ass_subtitles
+from backend.video_processor import (
+    _make_ydl_opts,
+    cleanup_old_temp_files,
+    detect_best_encoder,
+    download_clip_segment,
+)
+from backend.whisper_captions import transcribe_clip_hinglish
+
+# Cache inspected Pro sources for 15 minutes
+PRO_STREAM_CACHE: Dict[str, Dict[str, Any]] = {}
+PRO_CACHE_TTL_SEC = 900
+
+
+def _build_pro_live_strategies() -> List[Tuple[str, Dict[str, Any], bool]]:
+    """yt-dlp strategies tailored for both YouTube Live HLS streams (96=1080p m3u8) and VODs."""
+    live_fmt = (
+        "best[height<=1080][protocol^=m3u8]/"
+        "bestvideo[height<=1080][protocol^=m3u8]+bestaudio[protocol^=m3u8]/"
+        "best[height<=1080]/bv*+ba/b"
+    )
+    strategies: List[Tuple[str, Dict[str, Any], bool]] = []
+    if YTDLP_BASE_OPTS.get("cookiefile"):
+        strategies.extend([
+            (
+                "Auth Default Live HLS",
+                {"format": live_fmt},
+                True,
+            ),
+            (
+                "Auth Safari HLS",
+                {
+                    "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
+                    "format": live_fmt,
+                },
+                True,
+            ),
+            (
+                "Auth TV Live",
+                {
+                    "extractor_args": {"youtube": {"player_client": ["tv"]}},
+                    "format": "best[height<=1080]/bv*+ba/b",
+                },
+                True,
+            ),
+        ])
+
+    strategies.extend([
+        (
+            "Default Live HLS",
+            {"format": live_fmt},
+            False,
+        ),
+        (
+            "Android VR Live HLS",
+            {
+                "extractor_args": {"youtube": {"player_client": ["android_vr"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+        (
+            "TV Simply Live HLS",
+            {
+                "extractor_args": {"youtube": {"player_client": ["tv_simply"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+        (
+            "Safari Live HLS",
+            {
+                "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+    ])
+    return strategies
+
+
+def _extract_pro_info(url: str, video_id: Optional[str]) -> Dict[str, Any]:
+    """Extract live/VOD stream info using our cookie-aware multi-client waterfall."""
+    clean_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else url
+    last_err = ""
+    for label, strat_opts, allow_cookies in _build_pro_live_strategies():
+        ydl_opts = _make_ydl_opts(strat_opts, allow_cookies)
+        ydl_opts["ignore_no_formats_error"] = True
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(clean_url, download=False)
+            if info and (info.get("url") or info.get("requested_formats") or (info.get("formats") and len(info["formats"]) > 0)):
+                return info
+        except Exception as e:
+            last_err = f"{label}: {str(e)[:180]}"
+            continue
+    raise RuntimeError(f"Could not load YouTube stream ({last_err or 'no playable formats found'}).")
+
+
+def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
+    """
+    Return (video_url, audio_url_or_None, http_headers) from yt-dlp info dict.
+    For muxed HLS/MP4 streams, audio_url is None (video_url already contains audio).
+    """
+    headers: Dict[str, str] = {}
+    req_fmts = info.get("requested_formats") or []
+    if len(req_fmts) >= 2:
+        v_url = req_fmts[0].get("url") or req_fmts[0].get("manifest_url")
+        a_url = req_fmts[1].get("url") or req_fmts[1].get("manifest_url")
+        headers = dict(req_fmts[0].get("http_headers") or info.get("http_headers") or {})
+        return v_url, a_url, headers
+
+    if info.get("url"):
+        headers = dict(info.get("http_headers") or {})
+        return info["url"], None, headers
+
+    # Pick best <=1080p muxed or video stream from formats list
+    fmts = info.get("formats") or []
+    muxed = [
+        f for f in fmts
+        if f.get("url")
+        and f.get("vcodec") not in (None, "none")
+        and f.get("acodec") not in (None, "none")
+        and (f.get("height") or 0) <= 1080
+    ]
+    if muxed:
+        muxed.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+        best = muxed[-1]
+        return best["url"], None, dict(best.get("http_headers") or {})
+
+    vids = [
+        f for f in fmts
+        if f.get("url")
+        and f.get("vcodec") not in (None, "none")
+        and (f.get("height") or 0) <= 1080
+    ]
+    auds = [
+        f for f in fmts
+        if f.get("url")
+        and f.get("acodec") not in (None, "none")
+        and f.get("vcodec") in (None, "none")
+    ]
+    if vids:
+        vids.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+        best_v = vids[-1]
+        best_a = sorted(auds, key=lambda f: f.get("abr") or f.get("tbr") or 0)[-1] if auds else None
+        return best_v["url"], (best_a["url"] if best_a else None), dict(best_v.get("http_headers") or {})
+
+    return None, None, headers
+
+
+def _grab_frame_b64(
+    video_url: Optional[str],
+    is_live: bool,
+    duration: float,
+    thumbnail_url: str,
+    headers: Optional[Dict[str, str]] = None,
+) -> Tuple[str, str]:
+    """
+    Grab a crisp 16:9 JPEG frame from the live stream or VOD so the creator can
+    position the Streamer Facecam box & Stream box with pixel accuracy.
+    Returns (data_uri_base64, source_kind).
+    """
+    if video_url:
+        cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+        if headers and headers.get("User-Agent"):
+            cmd.extend(["-user_agent", headers["User-Agent"]])
+        if not is_live and duration > 15:
+            seek_sec = min(max(8.0, duration * 0.22), 90.0)
+            cmd.extend(["-ss", f"{seek_sec:.2f}"])
+        elif is_live:
+            # Start right near the live edge for an instant current frame
+            cmd.extend(["-live_start_index", "-2"])
+
+        cmd.extend([
+            "-i", video_url,
+            "-frames:v", "1",
+            "-vf", "scale=960:-2:flags=lanczos",
+            "-q:v", "3",
+            "-f", "image2pipe",
+            "-vcodec", "mjpeg",
+            "pipe:1",
+        ])
+        try:
+            res = subprocess.run(cmd, capture_output=True, timeout=14)
+            if res.returncode == 0 and res.stdout and len(res.stdout) > 2000:
+                b64 = base64.b64encode(res.stdout).decode("ascii")
+                return f"data:image/jpeg;base64,{b64}", ("live_frame" if is_live else "video_frame")
+        except Exception:
+            pass
+
+    # Fallback to crisp YouTube thumbnail (still 16:9)
+    for thumb in [
+        thumbnail_url,
+        thumbnail_url.replace("hqdefault.jpg", "maxresdefault.jpg") if thumbnail_url else "",
+    ]:
+        if not thumb:
+            continue
+        try:
+            resp = requests.get(thumb, timeout=8)
+            if resp.status_code == 200 and len(resp.content) > 2000:
+                b64 = base64.b64encode(resp.content).decode("ascii")
+                return f"data:image/jpeg;base64,{b64}", "thumbnail"
+        except Exception:
+            continue
+
+    return "", "none"
+
+
+def inspect_pro_source(url: str, force_refresh: bool = False) -> Dict[str, Any]:
+    """
+    Inspect a YouTube Live Stream or normal video for Pro Studio:
+    - Supports watch?v=, /live/ID, youtu.be/ID, AND @Channel/live links!
+    - Detects live vs VOD status
+    - Grabs a fresh 16:9 frame (actual live video frame for streams!)
+    - Caches stream URLs so clicking 'Create Pro Short' is super fast
+    """
+    video_id = extract_video_id(url)
+    is_channel_live = ("youtube.com/" in url.lower()) and ("/live" in url.lower())
+    if not video_id and not is_channel_live:
+        raise ValueError("Please paste a valid YouTube Live or video link.")
+
+    cached = PRO_STREAM_CACHE.get(video_id) if video_id else None
+    now = time.time()
+    if cached and not force_refresh and (now - cached["ts"] < PRO_CACHE_TTL_SEC):
+        info = cached["info"]
+    else:
+        info = _extract_pro_info(url, video_id)
+        video_id = info.get("id") or video_id
+        if not video_id:
+            raise ValueError("Could not resolve a YouTube video ID from that link.")
+        PRO_STREAM_CACHE[video_id] = {"info": info, "ts": now}
+
+    is_live = bool(info.get("is_live")) or (info.get("live_status") == "is_live")
+    duration = float(info.get("duration") or 0.0)
+    use_hours = duration >= 3600
+    title = info.get("title") or "YouTube Stream"
+    author = info.get("uploader") or info.get("channel") or "Creator"
+    thumbnail = info.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
+
+    v_url, _a_url, headers = _extract_media_urls(info)
+    frame_image, frame_source = _grab_frame_b64(
+        video_url=v_url,
+        is_live=is_live,
+        duration=duration,
+        thumbnail_url=thumbnail,
+        headers=headers,
+    )
+
+    return {
+        "video_id": video_id,
+        "title": title,
+        "author": author,
+        "is_live": is_live,
+        "live_status": info.get("live_status") or ("is_live" if is_live else "not_live"),
+        "duration": round(duration, 2),
+        "duration_str": "LIVE" if is_live else format_timestamp(duration, force_hours=use_hours),
+        "use_hours": use_hours,
+        "thumbnail": thumbnail,
+        "frame_image": frame_image,
+        "frame_source": frame_source,
+    }
+
+
+def _estimate_hls_live_start_index(
+    m3u8_url: str,
+    seconds_back: float,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[int]:
+    """
+    Fetch an HLS media playlist and compute the exact negative `-live_start_index`
+    needed to jump `seconds_back` seconds before the live edge (DVR instant clip!).
+    """
+    try:
+        req_headers = {}
+        if headers and headers.get("User-Agent"):
+            req_headers["User-Agent"] = headers["User-Agent"]
+        resp = requests.get(m3u8_url, headers=req_headers, timeout=8)
+        if resp.status_code != 200:
+            return None
+        text = resp.text
+        # Find all segment durations (#EXTINF:5.000,)
+        extinfs = [float(x) for x in re.findall(r"#EXTINF:([0-9.]+)", text)]
+        if not extinfs:
+            return None
+        total_segs = len(extinfs)
+        acc = 0.0
+        segs_needed = 0
+        for dur in reversed(extinfs):
+            acc += dur
+            segs_needed += 1
+            if acc >= seconds_back:
+                break
+        # Clamp inside available DVR playlist window
+        segs_needed = max(2, min(total_segs, segs_needed + 1))
+        return -segs_needed
+    except Exception:
+        return None
+
+
+def download_live_dvr_segment(
+    url: str,
+    video_id: str,
+    duration_sec: float,
+    rewind_sec: float,
+    output_path: Path,
+    progress_cb: Optional[Callable[[str, int], None]] = None,
+) -> Path:
+    """
+    Download a crisp recent slice from an active YouTube Live Stream (via Live DVR HLS)
+    so creators can publish viral clips while the streamer is still live!
+    """
+    if progress_cb:
+        progress_cb("Connecting to live stream DVR buffer...", 14)
+
+    # Always extract fresh live manifest URL so segment tokens are valid
+    info = _extract_pro_info(url, video_id)
+    PRO_STREAM_CACHE[video_id] = {"info": info, "ts": time.time()}
+    v_url, a_url, headers = _extract_media_urls(info)
+    if not v_url:
+        raise RuntimeError("Could not find a live HLS stream URL for this broadcast.")
+
+    seconds_back = max(duration_sec + 2.0, rewind_sec + duration_sec + 2.0)
+    start_idx = _estimate_hls_live_start_index(v_url, seconds_back, headers)
+
+    if progress_cb:
+        if rewind_sec > 0:
+            progress_cb(f"Grabbing {int(duration_sec)}s clip from {int(rewind_sec)}s ago in live DVR...", 24)
+        else:
+            progress_cb(f"Grabbing latest {int(duration_sec)}s from live stream...", 24)
+
+    def _run_live_ffmpeg(use_start_index: Optional[int]) -> subprocess.CompletedProcess:
+        cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+        ua_args = ["-user_agent", headers["User-Agent"]] if (headers and headers.get("User-Agent")) else []
+
+        cmd.extend(ua_args)
+        if use_start_index is not None:
+            cmd.extend(["-live_start_index", str(use_start_index)])
+        cmd.extend(["-i", v_url])
+
+        if a_url:
+            cmd.extend(ua_args)
+            if use_start_index is not None:
+                a_idx = _estimate_hls_live_start_index(a_url, seconds_back, headers) or use_start_index
+                cmd.extend(["-live_start_index", str(a_idx)])
+            cmd.extend(["-i", a_url])
+            cmd.extend(["-map", "0:v:0", "-map", "1:a:0"])
+        else:
+            cmd.extend(["-map", "0:v:0", "-map", "0:a:0?"])
+
+        cmd.extend([
+            "-t", f"{duration_sec:.2f}",
+            "-c", "copy",
+            "-movflags", "+faststart",
+            str(output_path),
+        ])
+        timeout_s = max(45, int(duration_sec * 2.5) + 25)
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+
+    # Attempt 1: Fast DVR jump using computed live_start_index
+    res = _run_live_ffmpeg(start_idx if start_idx is not None else -max(4, math.ceil(seconds_back / 5.0)))
+    if res.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
+        return output_path
+
+    # Attempt 2: Direct live edge capture (for streams with DVR disabled)
+    if progress_cb:
+        progress_cb(f"DVR disabled on this stream — capturing {int(duration_sec)}s live...", 28)
+    res2 = _run_live_ffmpeg(None)
+    if res2.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
+        return output_path
+
+    err_msg = (res2.stderr or res.stderr or "FFmpeg live download failed").strip()[:260]
+    raise RuntimeError(f"Could not capture live stream clip: {err_msg}")
+
+
+def _probe_video_meta(filepath: Path) -> Tuple[int, int, float]:
+    """Return (width, height, duration) of a video file via ffprobe."""
+    res = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height:format=duration",
+            "-of", "json",
+            str(filepath),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=8,
+    )
+    if res.returncode != 0:
+        return 1920, 1080, 0.0
+    data = json.loads(res.stdout or "{}")
+    streams = data.get("streams") or [{}]
+    w = int(streams[0].get("width") or 1920)
+    h = int(streams[0].get("height") or 1080)
+    dur = float((data.get("format") or {}).get("duration") or 0.0)
+    return w, h, dur
+
+
+def _even(val: int, minimum: int = 2) -> int:
+    v = max(minimum, int(round(val)))
+    return v - (v % 2)
+
+
+def _norm_box_to_pixels(box: Dict[str, float], src_w: int, src_h: int) -> Tuple[int, int, int, int]:
+    """Convert normalized {x, y, w, h} (0..1) into safe FFmpeg pixel crop (cw, ch, cx, cy)."""
+    nx = max(0.0, min(0.95, float(box.get("x", 0.0))))
+    ny = max(0.0, min(0.95, float(box.get("y", 0.0))))
+    nw = max(0.08, min(1.0 - nx, float(box.get("w", 0.3))))
+    nh = max(0.08, min(1.0 - ny, float(box.get("h", 0.3))))
+
+    cx = _even(int(nx * src_w), 0)
+    cy = _even(int(ny * src_h), 0)
+    cw = _even(int(nw * src_w), 32)
+    ch = _even(int(nh * src_h), 32)
+
+    if cx + cw > src_w:
+        cw = _even(src_w - cx, 32)
+    if cy + ch > src_h:
+        ch = _even(src_h - cy, 32)
+    return cw, ch, cx, cy
+
+
+def _extract_exact_wav(
+    input_path: Path,
+    pad_start: float,
+    duration: float,
+    wav_path: Path,
+) -> Optional[Path]:
+    """Extract a fast 16kHz mono WAV of the EXACT clip window for 0.000s-drift Whisper AI captions."""
+    cmd = [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-ss", f"{max(0.0, pad_start):.3f}",
+        "-i", str(input_path),
+        "-t", f"{duration:.3f}",
+        "-vn", "-ac", "1", "-ar", "16000",
+        "-c:a", "pcm_s16le",
+        str(wav_path),
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, timeout=20)
+        if res.returncode == 0 and wav_path.exists() and wav_path.stat().st_size > 1000:
+            return wav_path
+    except Exception:
+        pass
+    return None
+
+
+def render_pro_split_short(
+    input_path: Path,
+    output_path: Path,
+    pad_start: float,
+    clip_duration: float,
+    cam_box: Dict[str, float],
+    stream_box: Dict[str, float],
+    cam_ratio: float = 0.40,
+    cam_position: str = "top",
+    resolution: str = "1080p",
+    ass_file: Optional[Path] = None,
+) -> Path:
+    """
+    Single-pass GPU/CPU FFmpeg dual-box Split-Screen renderer:
+      - Crops Box 1 (Streamer Facecam) & Box 2 (Stream/Gameplay) cleanly with zero distortion
+      - Stacks vertically into crisp 1080x1920 (or 720x1280) with a sleek 4px glass seam divider
+      - Burns active-word AI Hinglish+English ASS captions in the exact same pass!
+    """
+    src_w, src_h, probed_dur = _probe_video_meta(input_path)
+    actual_dur = clip_duration
+    if probed_dur > 1.0 and (pad_start + actual_dur) > (probed_dur + 0.5):
+        actual_dur = max(1.0, probed_dur - pad_start)
+
+    out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
+    ratio = max(0.25, min(0.65, float(cam_ratio)))
+    divider_h = 4
+    cam_h = _even(int(round(out_h * ratio)), 160)
+    stream_h = _even(out_h - cam_h - divider_h, 160)
+    # Re-balance cam_h if rounding left 2px slack
+    cam_h = out_h - stream_h - divider_h
+
+    cam_cw, cam_ch, cam_cx, cam_cy = _norm_box_to_pixels(cam_box, src_w, src_h)
+    str_cw, str_ch, str_cx, str_cy = _norm_box_to_pixels(stream_box, src_w, src_h)
+
+    filters = [
+        "[0:v]split=2[vcam_in][vstr_in]",
+        (
+            f"[vcam_in]crop={cam_cw}:{cam_ch}:{cam_cx}:{cam_cy},"
+            f"scale={out_w}:{cam_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={out_w}:{cam_h},setsar=1[vcam]"
+        ),
+        (
+            f"[vstr_in]crop={str_cw}:{str_ch}:{str_cx}:{str_cy},"
+            f"scale={out_w}:{stream_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={out_w}:{stream_h},setsar=1[vstr]"
+        ),
+        f"color=c=#120d24:s={out_w}x{divider_h}:r=30:d={actual_dur + 1.0:.2f}[div]",
+    ]
+
+    if cam_position == "bottom":
+        filters.append("[vstr][div][vcam]vstack=inputs=3[vstacked]")
+    else:
+        filters.append("[vcam][div][vstr]vstack=inputs=3[vstacked]")
+
+    if ass_file and ass_file.exists():
+        # Run with cwd=TEMP_DIR so filename has no Windows drive-letter colon issues
+        filters.append(f"[vstacked]ass={ass_file.name}[vout]")
+    else:
+        filters.append("[vstacked]null[vout]")
+
+    filter_complex = ";".join(filters)
+    enc = detect_best_encoder()
+
+    def _run_encode(enc_args: List[str]) -> subprocess.CompletedProcess:
+        cmd = [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-ss", f"{max(0.0, pad_start):.3f}",
+            "-i", str(input_path.resolve()),
+            "-t", f"{actual_dur:.3f}",
+            "-filter_complex", filter_complex,
+            "-map", "[vout]",
+            "-map", "0:a:0?",
+            *enc_args,
+            "-pix_fmt", "yuv420p",
+            "-r", "30",
+            "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+            "-shortest",
+            "-movflags", "+faststart",
+            str(output_path.resolve()),
+        ]
+        return subprocess.run(
+            cmd,
+            cwd=str(TEMP_DIR.resolve()),
+            capture_output=True,
+            text=True,
+            timeout=240,
+        )
+
+    res = _run_encode(enc["enc_args"])
+    if res.returncode != 0 and enc["name"] != "libx264":
+        # Safe CPU fallback if hardware encoder rejected a specific stream profile
+        res = _run_encode(["-c:v", "libx264", "-preset", "superfast", "-crf", "19"])
+
+    if res.returncode != 0 or not output_path.exists():
+        raise RuntimeError(f"Split-screen render failed: {(res.stderr or 'unknown error').strip()[:260]}")
+
+    return output_path
+
+
+def process_pro_split_pipeline(
+    url: str,
+    video_id: str,
+    is_live: bool,
+    cam_box: Dict[str, float],
+    stream_box: Dict[str, float],
+    duration_sec: float = 35.0,
+    rewind_sec: float = 0.0,
+    start_time: float = 0.0,
+    end_time: float = 35.0,
+    cam_ratio: float = 0.40,
+    cam_position: str = "top",
+    resolution: str = "1080p",
+    burn_subtitles: bool = True,
+    subtitle_style: str = "viral_pop",
+    subtitle_position: str = "seam",
+    transcript_cache: Optional[List[Dict[str, Any]]] = None,
+    progress_cb: Optional[Callable[[str, int], None]] = None,
+) -> Dict[str, Any]:
+    """
+    Full Pro Studio pipeline:
+      1. Grab Live Stream DVR clip OR Normal Video/VOD segment in HD
+      2. Transcribe exact cut clip audio with faster-whisper AI (English + Hinglish!)
+      3. Render Dual-Box Split-Screen (Streamer + Stream) + Active-Word Hinglish Captions
+      4. Clean intermediate temp files & return instant playback/download metadata
+    """
+    cleanup_old_temp_files()
+    t0 = time.time()
+    job_id = uuid.uuid4().hex[:8]
+    raw_clip = TEMP_DIR / f"pro_raw_{video_id}_{job_id}.mp4"
+    downloaded_raw: Optional[Path] = None
+    wav_file = TEMP_DIR / f"pro_aud_{video_id}_{job_id}.wav"
+    ass_file = TEMP_DIR / f"pro_sub_{video_id}_{job_id}.ass"
+    out_filename = f"ClipYT_Pro_{video_id}_{job_id}.mp4"
+    out_path = TEMP_DIR / out_filename
+
+    try:
+        if is_live:
+            clip_duration = max(10.0, min(90.0, float(duration_sec)))
+            downloaded_raw = download_live_dvr_segment(
+                url=url,
+                video_id=video_id,
+                duration_sec=clip_duration,
+                rewind_sec=max(0.0, float(rewind_sec)),
+                output_path=raw_clip,
+                progress_cb=progress_cb,
+            )
+            exact_pad = 0.0
+        else:
+            clip_start = max(0.0, float(start_time))
+            clip_end = max(clip_start + 5.0, float(end_time))
+            clip_duration = min(120.0, clip_end - clip_start)
+            clip_end = clip_start + clip_duration
+
+            if progress_cb:
+                progress_cb("Fetching crisp HD video segment...", 16)
+            downloaded_raw, exact_pad = download_clip_segment(
+                url=url,
+                video_id=video_id,
+                start_time=clip_start,
+                end_time=clip_end,
+                output_path=raw_clip,
+                progress_cb=progress_cb,
+            )
+
+        out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
+        seam_y_ratio = float(cam_ratio) if cam_position == "top" else (1.0 - float(cam_ratio))
+
+        generated_ass: Optional[Path] = None
+        caption_engine_used = "none"
+
+        if burn_subtitles:
+            if progress_cb:
+                progress_cb("AI listening & generating Hinglish + English captions...", 48)
+            extracted_wav = _extract_exact_wav(downloaded_raw, exact_pad, clip_duration, wav_file)
+            words = transcribe_clip_hinglish(extracted_wav) if extracted_wav else None
+
+            if words:
+                generated_ass = generate_ass_from_words(
+                    words=words,
+                    clip_duration=clip_duration,
+                    output_path=ass_file,
+                    video_width=out_w,
+                    video_height=out_h,
+                    style_preset=subtitle_style,
+                    position=subtitle_position,
+                    seam_y_ratio=seam_y_ratio,
+                )
+                if generated_ass:
+                    caption_engine_used = "ai_whisper_hinglish"
+
+            # Graceful fallback to YouTube transcript if VOD & Whisper returned nothing
+            if not generated_ass and not is_live:
+                generated_ass = generate_ass_subtitles(
+                    video_id=video_id,
+                    start_time=start_time,
+                    end_time=start_time + clip_duration,
+                    output_path=ass_file,
+                    video_width=out_w,
+                    video_height=out_h,
+                    style_preset=subtitle_style,
+                    position=subtitle_position,
+                    transcript_cache=transcript_cache,
+                    seam_y_ratio=seam_y_ratio,
+                )
+                if generated_ass:
+                    caption_engine_used = "youtube_hinglish"
+
+        if progress_cb:
+            enc_name = detect_best_encoder()["name"]
+            gpu_tag = "GPU" if enc_name != "libx264" else "HD"
+            progress_cb(f"Rendering {resolution} Split-Screen Pro Short ({gpu_tag})...", 72)
+
+        render_pro_split_short(
+            input_path=downloaded_raw,
+            output_path=out_path,
+            pad_start=exact_pad,
+            clip_duration=clip_duration,
+            cam_box=cam_box,
+            stream_box=stream_box,
+            cam_ratio=cam_ratio,
+            cam_position=cam_position,
+            resolution=resolution,
+            ass_file=generated_ass,
+        )
+
+        elapsed = round(time.time() - t0, 1)
+        size_mb = round(out_path.stat().st_size / (1024 * 1024), 2)
+        _, _, final_dur = _probe_video_meta(out_path)
+
+        return {
+            "success": True,
+            "filename": out_filename,
+            "download_url": f"/api/download/{out_filename}",
+            "file_size_mb": size_mb,
+            "size_mb": size_mb,
+            "duration": round(final_dur or clip_duration, 1),
+            "aspect_ratio": "9:16",
+            "resolution": resolution,
+            "has_subtitles": bool(generated_ass),
+            "caption_engine": caption_engine_used,
+            "climax_hook": False,
+            "is_pro": True,
+            "encoder": detect_best_encoder()["name"],
+            "render_seconds": elapsed,
+        }
+    finally:
+        for tmp in (raw_clip, downloaded_raw, wav_file, ass_file):
+            if tmp is None:
+                continue
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass

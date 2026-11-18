@@ -13,6 +13,7 @@ let manualRafPending = false;
 document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
   setupLiquidGlassEffect();
+  setupProStudio();
 });
 
 // 144Hz+ zero-reflow spring-interpolated GPU liquid glass sheen (0% idle CPU)
@@ -894,8 +895,11 @@ function showResultModal(result) {
   dlBtn.setAttribute("download", result.filename);
 
   const hookBadge = result.climax_hook ? " • Climax Hook" : "";
+  const proBadge = result.is_pro ? " • Pro Split-Screen" : "";
+  const capBadge = result.caption_engine === "ai_whisper_hinglish" ? " • AI Hinglish" : "";
+  const sizeVal = result.file_size_mb ?? result.size_mb ?? 0;
   document.getElementById("result-meta").textContent =
-    `${result.aspect_ratio} • ${result.duration}s • ${result.file_size_mb} MB${hookBadge}`;
+    `${result.aspect_ratio} • ${result.duration}s • ${sizeVal} MB${proBadge}${capBadge}${hookBadge}`;
 
   document.getElementById("modal-progress-view").classList.add("hidden");
   document.getElementById("modal-result-view").classList.remove("hidden");
@@ -907,4 +911,731 @@ function hideProgressModal() {
   videoEl.removeAttribute("src");
   videoEl.load();
   document.getElementById("progress-modal").classList.add("hidden");
+}
+
+// =============================================================
+// PRO STUDIO: INSTAGRAM FOLLOW GATE + LIVE DUAL-BOX SPLIT-SCREEN
+// =============================================================
+const PRO_UNLOCK_KEY = "clipyt_pro_unlocked_v1";
+
+const proState = {
+  unlocked: false,
+  mode: "standard", // "standard" | "pro"
+  followClicked: false,
+  followTimerReady: false,
+  followCountdownId: null,
+  source: null, // response.data from /api/pro/inspect
+  liveDuration: 35,
+  liveRewind: 0,
+  vodStart: 0,
+  vodEnd: 35,
+  camRatio: 0.40,
+  camPosition: "top", // "top" | "bottom"
+  boxes: {
+    cam: { x: 0.72, y: 0.62, w: 0.25, h: 0.32 },
+    stream: { x: 0.03, y: 0.04, w: 0.68, h: 0.92 },
+  },
+  frameImageObj: null,
+  previewRafPending: false,
+};
+
+function isProUnlocked() {
+  try {
+    const raw = localStorage.getItem(PRO_UNLOCK_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return Boolean(parsed && parsed.handle);
+  } catch (e) {
+    return false;
+  }
+}
+
+function refreshProBadgeUI() {
+  const badge = document.getElementById("pro-badge-pill");
+  if (!badge) return;
+  if (proState.unlocked) {
+    badge.textContent = "✓ PRO";
+    badge.classList.add("unlocked");
+  } else {
+    badge.textContent = "🔒 LIVE";
+    badge.classList.remove("unlocked");
+  }
+}
+
+function switchStudioMode(targetMode) {
+  const stdBtn = document.getElementById("studio-btn-standard");
+  const proBtn = document.getElementById("studio-btn-pro");
+  const stdWrap = document.getElementById("standard-workspace");
+  const proWrap = document.getElementById("pro-studio-section");
+
+  if (targetMode === "pro" && !proState.unlocked) {
+    openProUnlockModal();
+    return;
+  }
+
+  proState.mode = targetMode;
+  const isPro = targetMode === "pro";
+  stdBtn.classList.toggle("active", !isPro);
+  proBtn.classList.toggle("active", isPro);
+  stdWrap.classList.toggle("hidden", isPro);
+  proWrap.classList.toggle("hidden", !isPro);
+
+  if (isPro && proState.source) {
+    requestAnimationFrame(() => {
+      syncBoxesToDOM();
+      scheduleProPreviewRender();
+    });
+  }
+}
+
+function openProUnlockModal() {
+  const modal = document.getElementById("pro-unlock-modal");
+  document.getElementById("insta-verify-error").classList.add("hidden");
+  modal.classList.remove("hidden");
+}
+
+function closeProUnlockModal() {
+  document.getElementById("pro-unlock-modal").classList.add("hidden");
+}
+
+function setupProStudio() {
+  proState.unlocked = isProUnlocked();
+  refreshProBadgeUI();
+
+  // Top mode switcher
+  document.getElementById("studio-btn-standard").addEventListener("click", () => {
+    switchStudioMode("standard");
+  });
+  document.getElementById("studio-btn-pro").addEventListener("click", () => {
+    switchStudioMode("pro");
+  });
+
+  // Unlock modal close
+  document.getElementById("pro-unlock-close-x").addEventListener("click", closeProUnlockModal);
+  document.getElementById("pro-unlock-modal").addEventListener("click", (e) => {
+    if (e.target.id === "pro-unlock-modal") closeProUnlockModal();
+  });
+
+  // Step 1: Instagram Follow Button click -> 4s wait before enabling Step 2
+  const followBtn = document.getElementById("insta-follow-btn");
+  const waitStatus = document.getElementById("insta-wait-status");
+  const step2El = document.getElementById("unlock-step-2");
+  const handleInput = document.getElementById("insta-username-input");
+  const verifyBtn = document.getElementById("insta-verify-btn");
+
+  followBtn.addEventListener("click", () => {
+    proState.followClicked = true;
+    if (proState.followTimerReady) return;
+    if (proState.followCountdownId) clearInterval(proState.followCountdownId);
+
+    let secs = 4;
+    waitStatus.classList.remove("hidden", "ready");
+    waitStatus.textContent = `Opening @gta6.insider_... please tap Follow (${secs}s)`;
+
+    proState.followCountdownId = setInterval(() => {
+      secs -= 1;
+      if (secs <= 0) {
+        clearInterval(proState.followCountdownId);
+        proState.followCountdownId = null;
+        proState.followTimerReady = true;
+        waitStatus.classList.add("ready");
+        waitStatus.textContent = "✓ Profile opened! Now enter your Instagram username below.";
+        step2El.classList.remove("unlock-step-locked");
+        handleInput.disabled = false;
+        verifyBtn.disabled = false;
+        handleInput.focus();
+      } else {
+        waitStatus.textContent = `Opening @gta6.insider_... please tap Follow (${secs}s)`;
+      }
+    }, 1000);
+  });
+
+  // Step 2: Verify Instagram handle & unlock Pro Studio
+  const doVerify = () => {
+    const errEl = document.getElementById("insta-verify-error");
+    errEl.classList.add("hidden");
+
+    if (!proState.followClicked || !proState.followTimerReady) {
+      errEl.textContent = "Please follow @gta6.insider_ in Step 1 first.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+
+    const raw = handleInput.value.trim().replace(/^@+/, "");
+    const blocked = new Set(["test", "testing", "asdf", "abcd", "1234", "12345", "none", "fake", "user", "instagram", "gta6.insider_"]);
+    if (!/^[a-zA-Z0-9._]{2,30}$/.test(raw) || blocked.has(raw.toLowerCase())) {
+      errEl.textContent = "Please enter your valid Instagram username (without spaces).";
+      errEl.classList.remove("hidden");
+      return;
+    }
+
+    const btnTxt = verifyBtn.querySelector(".btn-text");
+    const btnSp = verifyBtn.querySelector(".spinner");
+    verifyBtn.disabled = true;
+    handleInput.disabled = true;
+    btnTxt.textContent = "Verifying...";
+    btnSp.classList.remove("hidden");
+
+    setTimeout(() => {
+      try {
+        localStorage.setItem(
+          PRO_UNLOCK_KEY,
+          JSON.stringify({ handle: raw, unlockedAt: Date.now() })
+        );
+      } catch (e) {}
+      proState.unlocked = true;
+      refreshProBadgeUI();
+      verifyBtn.disabled = false;
+      handleInput.disabled = false;
+      btnTxt.textContent = "Verify & Unlock";
+      btnSp.classList.add("hidden");
+      closeProUnlockModal();
+      switchStudioMode("pro");
+    }, 1050);
+  };
+
+  verifyBtn.addEventListener("click", doVerify);
+  handleInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doVerify();
+    }
+  });
+
+  // Pro URL form & Paste button
+  const proUrlInput = document.getElementById("pro-youtube-url");
+  document.getElementById("pro-inspect-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    inspectProStream(proUrlInput.value.trim(), false);
+  });
+
+  proUrlInput.addEventListener("paste", () => {
+    setTimeout(() => {
+      const val = proUrlInput.value.trim();
+      if (looksLikeYouTubeUrl(val)) {
+        inspectProStream(val, false);
+      }
+    }, 60);
+  });
+
+  document.getElementById("pro-paste-btn").addEventListener("click", async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (text) {
+        proUrlInput.value = text;
+        if (looksLikeYouTubeUrl(text)) {
+          inspectProStream(text, false);
+        }
+      }
+    } catch (e) {
+      proUrlInput.focus();
+    }
+  });
+
+  // Refresh live frame button
+  document.getElementById("pro-refresh-frame-btn").addEventListener("click", () => {
+    const val = proUrlInput.value.trim();
+    if (val) inspectProStream(val, true);
+  });
+
+  // Live DVR duration pills
+  document.querySelectorAll("#pro-live-dur-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#pro-live-dur-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      proState.liveDuration = parseInt(btn.getAttribute("data-dur"), 10) || 35;
+    });
+  });
+
+  // Live DVR rewind pills
+  document.querySelectorAll("#pro-live-rewind-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#pro-live-rewind-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      proState.liveRewind = parseInt(btn.getAttribute("data-rewind"), 10) || 0;
+    });
+  });
+
+  // VOD manual timing inputs
+  const vodStartIn = document.getElementById("pro-vod-start-input");
+  const vodEndIn = document.getElementById("pro-vod-end-input");
+  vodStartIn.addEventListener("change", () => onProVodInputChange("start"));
+  vodEndIn.addEventListener("change", () => onProVodInputChange("end"));
+
+  // Streamer split ratio pills
+  document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      proState.camRatio = parseFloat(btn.getAttribute("data-camratio")) || 0.40;
+      scheduleProPreviewRender();
+    });
+  });
+
+  // Streamer Top/Bottom pills
+  document.querySelectorAll("#pro-campos-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#pro-campos-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      proState.camPosition = btn.getAttribute("data-campos") || "top";
+      scheduleProPreviewRender();
+    });
+  });
+
+  // Pro Captions toggle & selects update live 9:16 preview
+  const proBurnToggle = document.getElementById("pro-burn-subs");
+  const proSubOpts = document.getElementById("pro-sub-options");
+  proBurnToggle.addEventListener("change", () => {
+    proSubOpts.querySelectorAll("#pro-sub-style, #pro-sub-pos").forEach((el) => (el.disabled = !proBurnToggle.checked));
+    proSubOpts.style.opacity = proBurnToggle.checked ? "1" : "0.55";
+    scheduleProPreviewRender();
+  });
+  document.getElementById("pro-sub-style").addEventListener("change", scheduleProPreviewRender);
+  document.getElementById("pro-sub-pos").addEventListener("change", scheduleProPreviewRender);
+
+  // Create Pro Short button
+  document.getElementById("pro-create-btn").addEventListener("click", submitProGenerate);
+
+  // Dual-Box pointer drag & corner resize engine
+  setupDualBoxInteractions();
+  window.addEventListener("resize", () => {
+    if (proState.mode === "pro" && proState.source) {
+      syncBoxesToDOM();
+      scheduleProPreviewRender();
+    }
+  });
+}
+
+function setProLoadSpinner(loading) {
+  const btn = document.getElementById("pro-load-btn");
+  const txt = btn.querySelector(".btn-text");
+  const sp = btn.querySelector(".spinner");
+  btn.disabled = loading;
+  txt.textContent = loading ? "Loading..." : "Load Stream";
+  sp.classList.toggle("hidden", !loading);
+}
+
+function showProError(msg) {
+  document.getElementById("pro-error-message").textContent = msg;
+  document.getElementById("pro-error-banner").classList.remove("hidden");
+}
+
+function hideProError() {
+  document.getElementById("pro-error-banner").classList.add("hidden");
+}
+
+async function inspectProStream(url, forceRefresh = false) {
+  if (!looksLikeYouTubeUrl(url)) {
+    showProError("Please paste a valid YouTube Live or Video link.");
+    return;
+  }
+
+  hideProError();
+  setProLoadSpinner(true);
+  const refreshBtn = document.getElementById("pro-refresh-frame-btn");
+  if (forceRefresh && refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = "Refreshing...";
+  }
+
+  try {
+    const res = await fetch("/api/pro/inspect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, force_refresh: forceRefresh }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.detail || "Could not load stream.");
+    }
+
+    const src = json.data;
+    proState.source = src;
+
+    // Update source bar
+    const badgeEl = document.getElementById("pro-live-badge");
+    if (src.is_live) {
+      badgeEl.textContent = "🔴 LIVE NOW";
+      badgeEl.classList.remove("is-vod");
+      document.getElementById("pro-live-controls").classList.remove("hidden");
+      document.getElementById("pro-vod-controls").classList.add("hidden");
+      refreshBtn.textContent = "↻ Refresh Live Frame";
+    } else {
+      badgeEl.textContent = `🎬 VIDEO • ${src.duration_str}`;
+      badgeEl.classList.add("is-vod");
+      document.getElementById("pro-live-controls").classList.add("hidden");
+      document.getElementById("pro-vod-controls").classList.remove("hidden");
+      refreshBtn.textContent = "↻ Refresh Frame";
+
+      const maxDur = Math.max(10, Math.floor(src.duration || 60));
+      proState.vodStart = 0;
+      proState.vodEnd = Math.min(35, maxDur);
+      const fmtHint = src.use_hours ? "(hh:mm:ss)" : "(mm:ss)";
+      document.getElementById("pro-vod-start-label").textContent = `Start ${fmtHint}`;
+      document.getElementById("pro-vod-end-label").textContent = `End ${fmtHint}`;
+      syncProVodUI();
+    }
+
+    document.getElementById("pro-source-title").textContent = src.title;
+    document.getElementById("pro-source-author").textContent = src.author;
+
+    // Load grabbed 16:9 frame into editor & canvas preview
+    const imgEl = document.getElementById("pro-frame-img");
+    const frameSrc = src.frame_image || src.thumbnail;
+    imgEl.src = frameSrc;
+
+    const previewImg = new Image();
+    previewImg.crossOrigin = "anonymous";
+    previewImg.onload = () => {
+      proState.frameImageObj = previewImg;
+      scheduleProPreviewRender();
+    };
+    previewImg.src = frameSrc;
+
+    document.getElementById("pro-editor-wrap").classList.remove("hidden");
+    requestAnimationFrame(() => {
+      syncBoxesToDOM();
+      scheduleProPreviewRender();
+    });
+  } catch (err) {
+    showProError(err.message || "Failed to load stream.");
+  } finally {
+    setProLoadSpinner(false);
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      if (proState.source) {
+        refreshBtn.textContent = proState.source.is_live ? "↻ Refresh Live Frame" : "↻ Refresh Frame";
+      }
+    }
+  }
+}
+
+function syncProVodUI() {
+  if (!proState.source) return;
+  const useH = Boolean(proState.source.use_hours);
+  document.getElementById("pro-vod-start-input").value = formatTime(proState.vodStart, useH);
+  document.getElementById("pro-vod-end-input").value = formatTime(proState.vodEnd, useH);
+  document.getElementById("pro-vod-dur-display").textContent = formatTime(
+    Math.max(1, proState.vodEnd - proState.vodStart),
+    false
+  );
+}
+
+function onProVodInputChange(field) {
+  if (!proState.source) return;
+  const maxDur = Math.max(10, Math.floor(proState.source.duration || 3600));
+  const input = document.getElementById(field === "start" ? "pro-vod-start-input" : "pro-vod-end-input");
+  const parsed = parseTime(input.value);
+  if (!isNaN(parsed)) {
+    const clamped = Math.max(0, Math.min(maxDur, parsed));
+    if (field === "start") {
+      proState.vodStart = Math.min(clamped, Math.max(0, proState.vodEnd - 5));
+    } else {
+      proState.vodEnd = Math.max(proState.vodStart + 5, Math.min(clamped, proState.vodStart + 120));
+    }
+  }
+  syncProVodUI();
+}
+
+window.stepProVodTime = function (field, delta) {
+  if (!proState.source) return;
+  const maxDur = Math.max(10, Math.floor(proState.source.duration || 3600));
+  if (field === "start") {
+    proState.vodStart = Math.max(0, Math.min(proState.vodEnd - 5, proState.vodStart + delta));
+  } else {
+    proState.vodEnd = Math.max(proState.vodStart + 5, Math.min(maxDur, Math.min(proState.vodStart + 120, proState.vodEnd + delta)));
+  }
+  syncProVodUI();
+};
+
+// 1-Click Streamer Facecam Presets
+window.applyCamPreset = function (preset) {
+  if (preset === "tl") {
+    proState.boxes.cam = { x: 0.02, y: 0.04, w: 0.25, h: 0.32 };
+  } else if (preset === "tr") {
+    proState.boxes.cam = { x: 0.73, y: 0.04, w: 0.25, h: 0.32 };
+  } else if (preset === "bl") {
+    proState.boxes.cam = { x: 0.02, y: 0.63, w: 0.25, h: 0.32 };
+  } else if (preset === "br") {
+    proState.boxes.cam = { x: 0.73, y: 0.63, w: 0.25, h: 0.32 };
+  } else {
+    proState.boxes.cam = { x: 0.72, y: 0.62, w: 0.25, h: 0.32 };
+    proState.boxes.stream = { x: 0.03, y: 0.04, w: 0.68, h: 0.92 };
+  }
+  syncBoxesToDOM();
+  scheduleProPreviewRender();
+};
+
+function syncBoxesToDOM() {
+  const stage = document.getElementById("pro-stage");
+  if (!stage) return;
+  const rect = stage.getBoundingClientRect();
+  if (rect.width < 10 || rect.height < 10) return;
+
+  for (const key of ["cam", "stream"]) {
+    const b = proState.boxes[key];
+    const el = document.getElementById(key === "cam" ? "box-cam" : "box-stream");
+    if (!el) continue;
+    const px = b.x * rect.width;
+    const py = b.y * rect.height;
+    const pw = b.w * rect.width;
+    const ph = b.h * rect.height;
+    el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
+    el.style.width = `${pw.toFixed(1)}px`;
+    el.style.height = `${ph.toFixed(1)}px`;
+  }
+}
+
+function setupDualBoxInteractions() {
+  const stage = document.getElementById("pro-stage");
+  if (!stage) return;
+
+  let dragCtx = null;
+
+  stage.addEventListener("pointerdown", (e) => {
+    const handleEl = e.target.closest(".crop-handle");
+    const boxEl = e.target.closest(".crop-box");
+    if (!boxEl) return;
+
+    e.preventDefault();
+    const key = boxEl.getAttribute("data-box");
+    const handle = handleEl ? handleEl.getAttribute("data-handle") : "move";
+    const stageRect = stage.getBoundingClientRect();
+
+    boxEl.classList.add("is-dragging");
+    boxEl.setPointerCapture(e.pointerId);
+
+    dragCtx = {
+      key,
+      handle,
+      boxEl,
+      pointerId: e.pointerId,
+      stageRect,
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: { ...proState.boxes[key] },
+    };
+  });
+
+  stage.addEventListener("pointermove", (e) => {
+    if (!dragCtx || e.pointerId !== dragCtx.pointerId) return;
+    e.preventDefault();
+
+    const dx = (e.clientX - dragCtx.startX) / dragCtx.stageRect.width;
+    const dy = (e.clientY - dragCtx.startY) / dragCtx.stageRect.height;
+    const o = dragCtx.orig;
+    const minW = 0.12;
+    const minH = 0.14;
+    let { x, y, w, h } = o;
+
+    if (dragCtx.handle === "move") {
+      x = Math.max(0, Math.min(1 - w, o.x + dx));
+      y = Math.max(0, Math.min(1 - h, o.y + dy));
+    } else {
+      if (dragCtx.handle.includes("e")) {
+        w = Math.max(minW, Math.min(1 - o.x, o.w + dx));
+      }
+      if (dragCtx.handle.includes("s")) {
+        h = Math.max(minH, Math.min(1 - o.y, o.h + dy));
+      }
+      if (dragCtx.handle.includes("w")) {
+        const maxLeft = o.x + o.w - minW;
+        const newX = Math.max(0, Math.min(maxLeft, o.x + dx));
+        w = o.w + (o.x - newX);
+        x = newX;
+      }
+      if (dragCtx.handle.includes("n")) {
+        const maxTop = o.y + o.h - minH;
+        const newY = Math.max(0, Math.min(maxTop, o.y + dy));
+        h = o.h + (o.y - newY);
+        y = newY;
+      }
+    }
+
+    proState.boxes[dragCtx.key] = { x, y, w, h };
+    syncBoxesToDOM();
+    scheduleProPreviewRender();
+  });
+
+  const endDrag = (e) => {
+    if (!dragCtx || e.pointerId !== dragCtx.pointerId) return;
+    dragCtx.boxEl.classList.remove("is-dragging");
+    try {
+      dragCtx.boxEl.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    dragCtx = null;
+  };
+
+  stage.addEventListener("pointerup", endDrag);
+  stage.addEventListener("pointercancel", endDrag);
+}
+
+function scheduleProPreviewRender() {
+  if (proState.previewRafPending) return;
+  proState.previewRafPending = true;
+  requestAnimationFrame(() => {
+    proState.previewRafPending = false;
+    drawProPreviewCanvas();
+  });
+}
+
+function drawCoverCrop(ctx, img, box, destX, destY, destW, destH) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+
+  let sx = box.x * iw;
+  let sy = box.y * ih;
+  let sw = box.w * iw;
+  let sh = box.h * ih;
+
+  // Match FFmpeg's scale=increase + center crop (zero stretch, zero distortion!)
+  const srcAspect = sw / sh;
+  const dstAspect = destW / destH;
+  if (srcAspect > dstAspect) {
+    const newSw = sh * dstAspect;
+    sx += (sw - newSw) / 2;
+    sw = newSw;
+  } else {
+    const newSh = sw / dstAspect;
+    sy += (sh - newSh) / 2;
+    sh = newSh;
+  }
+
+  ctx.drawImage(img, sx, sy, sw, sh, destX, destY, destW, destH);
+}
+
+function drawProPreviewCanvas() {
+  const canvas = document.getElementById("pro-preview-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#0f0a1d";
+  ctx.fillRect(0, 0, W, H);
+
+  const dividerH = 3;
+  const camH = Math.round(H * proState.camRatio);
+  const streamH = H - camH - dividerH;
+  const camOnTop = proState.camPosition !== "bottom";
+
+  const camY = camOnTop ? 0 : streamH + dividerH;
+  const streamY = camOnTop ? camH + dividerH : 0;
+  const seamY = camOnTop ? camH : streamH;
+
+  if (proState.frameImageObj) {
+    drawCoverCrop(ctx, proState.frameImageObj, proState.boxes.cam, 0, camY, W, camH);
+    drawCoverCrop(ctx, proState.frameImageObj, proState.boxes.stream, 0, streamY, W, streamH);
+  }
+
+  // Subtle dark-glass divider line
+  ctx.fillStyle = "#120d24";
+  ctx.fillRect(0, seamY, W, dividerH);
+
+  // Sample AI Hinglish Caption preview
+  const burnSubs = document.getElementById("pro-burn-subs")?.checked;
+  if (burnSubs) {
+    const style = document.getElementById("pro-sub-style")?.value || "viral_pop";
+    const pos = document.getElementById("pro-sub-pos")?.value || "seam";
+
+    let capY = seamY + 6;
+    if (pos === "top") capY = Math.round(H * 0.14);
+    else if (pos === "bottom") capY = Math.round(H * 0.79);
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const isModern = style === "clean_modern";
+    ctx.font = isModern ? "700 18px Inter, sans-serif" : "900 19px Inter, sans-serif";
+
+    const words = isModern ? ["Bhai", "kya", "clutch!"] : ["BHAI", "KYA", "CLUTCH!"];
+    const fullText = words.join(" ");
+    const totalW = ctx.measureText(fullText).width;
+
+    if (isModern) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+      const padX = 12;
+      const padY = 8;
+      ctx.beginPath();
+      ctx.roundRect(W / 2 - totalW / 2 - padX, capY - 12 - padY / 2, totalW + padX * 2, 26 + padY, 8);
+      ctx.fill();
+    }
+
+    let curX = W / 2 - totalW / 2;
+    ctx.textAlign = "left";
+    words.forEach((w, idx) => {
+      const displayW = idx < words.length - 1 ? w + " " : w;
+      const active = idx === 2;
+      let fill = "#ffffff";
+      if (style === "neon_yellow") fill = active ? "#33ff55" : "#ffe500";
+      else if (style === "clean_modern") fill = active ? "#ffe500" : "#ffffff";
+      else fill = active ? "#ffea00" : "#ffffff";
+
+      if (!isModern) {
+        ctx.lineWidth = 4.5;
+        ctx.strokeStyle = "#000000";
+        ctx.strokeText(displayW, curX, capY);
+      }
+      ctx.fillStyle = fill;
+      ctx.fillText(displayW, curX, capY);
+      curX += ctx.measureText(displayW).width;
+    });
+    ctx.restore();
+  }
+}
+
+async function submitProGenerate() {
+  if (!proState.source) {
+    showProError("Please load a YouTube Live Stream or Video first.");
+    return;
+  }
+
+  hideProError();
+  const isLive = Boolean(proState.source.is_live);
+  if (!isLive) {
+    onProVodInputChange("start");
+    onProVodInputChange("end");
+    if (proState.vodEnd <= proState.vodStart) {
+      showProError("End time must be after Start time.");
+      return;
+    }
+  }
+
+  const payload = {
+    url: document.getElementById("pro-youtube-url").value.trim(),
+    video_id: proState.source.video_id,
+    is_live: isLive,
+    duration_sec: proState.liveDuration,
+    rewind_sec: proState.liveRewind,
+    start_time: proState.vodStart,
+    end_time: proState.vodEnd,
+    cam_box: proState.boxes.cam,
+    stream_box: proState.boxes.stream,
+    cam_ratio: proState.camRatio,
+    cam_position: proState.camPosition,
+    resolution: document.getElementById("pro-resolution").value,
+    burn_subtitles: document.getElementById("pro-burn-subs").checked,
+    subtitle_style: document.getElementById("pro-sub-style").value,
+    subtitle_position: document.getElementById("pro-sub-pos").value,
+  };
+
+  showProgressModal(isLive ? "Connecting to live stream DVR..." : "Starting Pro Studio...");
+
+  try {
+    const res = await fetch("/api/pro/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.detail || "Could not start Pro Short creation.");
+    }
+    pollTaskProgress(data.task_id);
+  } catch (err) {
+    hideProgressModal();
+    showProError(err.message);
+  }
 }

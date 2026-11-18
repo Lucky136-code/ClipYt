@@ -19,6 +19,22 @@
   <div class="bg-overlay"></div>
 
   <main class="main-container">
+    <!-- Top Floating Mode Switcher (Standard | Pro Studio) -->
+    <div class="top-studio-switcher">
+      <div class="studio-pill-bar">
+        <button type="button" id="studio-btn-standard" class="studio-pill active">
+          Standard
+        </button>
+        <button type="button" id="studio-btn-pro" class="studio-pill studio-pill-pro">
+          <span class="pro-sparkle">✨</span>
+          <span>Pro Studio</span>
+          <span id="pro-badge-pill" class="pro-lock-tag">🔒 LIVE</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== STANDARD MODE ==================== -->
+    <div id="standard-workspace">
     <!-- Simple Hero: Paste Your YouTube Link -->
     <section class="hero-section">
       <h1 class="hero-title">Paste your YouTube link</h1>
@@ -258,6 +274,218 @@
         </div>
       </div>
     </section>
+    </div><!-- /#standard-workspace -->
+
+    <!-- ==================== PRO STUDIO (LIVE + DUAL-BOX SPLIT-SCREEN + AI HINGLISH) ==================== -->
+    <section id="pro-studio-section" class="hidden">
+      <section class="hero-section pro-hero">
+        <div class="pro-hero-badge">
+          <span class="live-dot"></span>
+          <span>PRO STUDIO • LIVE CLIPPING • AI ENGLISH + HINGLISH</span>
+        </div>
+        <h1 class="hero-title">Clip Live Streams in Pro Split-Screen</h1>
+
+        <div class="glass-card input-card">
+          <form id="pro-inspect-form" class="url-form">
+            <div class="url-row">
+              <div class="url-input-wrap">
+                <input type="text" id="pro-youtube-url" placeholder="Paste YouTube Live Stream or Video link..."
+                  required autocomplete="off">
+                <button type="button" id="pro-paste-btn" class="btn-paste">Paste</button>
+              </div>
+              <button type="submit" id="pro-load-btn" class="btn-red">
+                <span class="btn-text">Load Stream</span>
+                <div class="spinner hidden"></div>
+              </button>
+            </div>
+            <p class="url-note">
+              <strong>Live Ready:</strong> Paste an ongoing YouTube Live Stream (or any video), drag <strong>Box 1</strong> onto the Streamer and <strong>Box 2</strong> onto the Stream, and clip instantly with AI English + Hinglish captions.
+            </p>
+          </form>
+        </div>
+      </section>
+
+      <!-- Pro Error Banner -->
+      <div id="pro-error-banner" class="error-banner hidden">
+        <span id="pro-error-message"></span>
+        <button type="button" class="banner-close" onclick="this.parentElement.classList.add('hidden')">×</button>
+      </div>
+
+      <!-- Pro Studio Editor Workspace (Shown after stream loads) -->
+      <div id="pro-editor-wrap" class="hidden">
+        <!-- Stream Status Bar -->
+        <div class="glass-card pro-source-bar">
+          <div class="pro-source-left">
+            <span id="pro-live-badge" class="pro-status-live">🔴 LIVE NOW</span>
+            <div class="pro-source-titles">
+              <h2 id="pro-source-title" class="pro-source-title">Stream Title</h2>
+              <span id="pro-source-author" class="pro-source-author">Channel</span>
+            </div>
+          </div>
+          <button type="button" id="pro-refresh-frame-btn" class="btn-saved pro-refresh-btn">
+            ↻ Refresh Frame
+          </button>
+        </div>
+
+        <!-- Timing Bar: Live DVR vs VOD -->
+        <div class="glass-card pro-timing-card">
+          <!-- LIVE DVR Controls -->
+          <div id="pro-live-controls" class="pro-live-controls">
+            <div class="setting-block">
+              <label class="block-label">Clip Length</label>
+              <div class="pill-group" id="pro-live-dur-picker">
+                <button type="button" class="choice-pill" data-dur="20">Last 20s</button>
+                <button type="button" class="choice-pill active" data-dur="35">Last 35s</button>
+                <button type="button" class="choice-pill" data-dur="50">Last 50s</button>
+                <button type="button" class="choice-pill" data-dur="60">Last 60s</button>
+              </div>
+            </div>
+            <div class="setting-block">
+              <label class="block-label">Rewind Live DVR</label>
+              <div class="pill-group" id="pro-live-rewind-picker">
+                <button type="button" class="choice-pill active" data-rewind="0">Right Now</button>
+                <button type="button" class="choice-pill" data-rewind="30">30s ago</button>
+                <button type="button" class="choice-pill" data-rewind="60">1m ago</button>
+                <button type="button" class="choice-pill" data-rewind="120">2m ago</button>
+                <button type="button" class="choice-pill" data-rewind="300">5m ago</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Normal Video (VOD) Timing Controls -->
+          <div id="pro-vod-controls" class="pro-vod-controls hidden">
+            <div class="timing-field">
+              <span id="pro-vod-start-label" class="timing-label">Start (mm:ss)</span>
+              <div class="timing-controls">
+                <button type="button" class="step-btn" onclick="stepProVodTime('start', -1)">−</button>
+                <input type="text" id="pro-vod-start-input" class="time-text-input" value="00:00">
+                <button type="button" class="step-btn" onclick="stepProVodTime('start', 1)">+</button>
+              </div>
+            </div>
+            <div class="timing-field">
+              <span id="pro-vod-end-label" class="timing-label">End (mm:ss)</span>
+              <div class="timing-controls">
+                <button type="button" class="step-btn" onclick="stepProVodTime('end', -1)">−</button>
+                <input type="text" id="pro-vod-end-input" class="time-text-input" value="00:35">
+                <button type="button" class="step-btn" onclick="stepProVodTime('end', 1)">+</button>
+              </div>
+            </div>
+            <div class="manual-summary-box">
+              <span>Clip Length: <strong id="pro-vod-dur-display">00:35</strong></span>
+              <span class="setting-hint">Max 120s per Pro Short</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dual-Box Interactive Editor + Live 9:16 Split-Screen Preview -->
+        <div class="pro-editor-grid">
+          <!-- Left: 16:9 Stream Frame with Draggable/Resizable Boxes -->
+          <div class="glass-card pro-canvas-card">
+            <div class="pro-card-head">
+              <div>
+                <h3 class="section-title">Place Your Two Boxes</h3>
+                <p class="section-sub">Drag & resize corners — <strong class="tag-cam">Box 1: Streamer</strong> and <strong class="tag-stream">Box 2: Stream</strong></p>
+              </div>
+            </div>
+
+            <div id="pro-stage" class="pro-stage">
+              <img id="pro-frame-img" src="" alt="Stream frame" draggable="false">
+              <!-- Box 2: Stream / Gameplay -->
+              <div id="box-stream" class="crop-box crop-box-stream" data-box="stream">
+                <div class="crop-box-label label-stream">Box 2 • Stream</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+              <!-- Box 1: Streamer Facecam -->
+              <div id="box-cam" class="crop-box crop-box-cam" data-box="cam">
+                <div class="crop-box-label label-cam">Box 1 • Streamer</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+            </div>
+
+            <!-- 1-Click Facecam Corner Presets -->
+            <div class="pro-presets-row">
+              <span class="preset-label">Quick Facecam:</span>
+              <button type="button" class="choice-pill" onclick="applyCamPreset('tl')">Top-Left</button>
+              <button type="button" class="choice-pill" onclick="applyCamPreset('tr')">Top-Right</button>
+              <button type="button" class="choice-pill" onclick="applyCamPreset('bl')">Bottom-Left</button>
+              <button type="button" class="choice-pill" onclick="applyCamPreset('br')">Bottom-Right</button>
+              <button type="button" class="choice-pill" onclick="applyCamPreset('reset')">Reset</button>
+            </div>
+          </div>
+
+          <!-- Right: Live 9:16 Vertical Split-Screen Preview -->
+          <div class="glass-card pro-preview-card">
+            <div class="pro-card-head">
+              <div>
+                <h3 class="section-title">9:16 Live Preview</h3>
+                <p class="section-sub">Exact Shorts / Reels layout</p>
+              </div>
+            </div>
+            <div class="pro-phone-frame">
+              <canvas id="pro-preview-canvas" width="270" height="480"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pro Output Settings & Create Button -->
+        <div class="glass-card pro-settings-card">
+          <div class="pro-settings-grid">
+            <div class="setting-block">
+              <label class="block-label">Streamer Size</label>
+              <div class="pill-group" id="pro-ratio-picker">
+                <button type="button" class="choice-pill" data-camratio="0.35">35 / 65</button>
+                <button type="button" class="choice-pill active" data-camratio="0.40">40 / 60</button>
+                <button type="button" class="choice-pill" data-camratio="0.50">50 / 50</button>
+              </div>
+            </div>
+
+            <div class="setting-block">
+              <label class="block-label">Streamer Position</label>
+              <div class="pill-group" id="pro-campos-picker">
+                <button type="button" class="choice-pill active" data-campos="top">Top</button>
+                <button type="button" class="choice-pill" data-campos="bottom">Bottom</button>
+              </div>
+            </div>
+
+            <div class="setting-block">
+              <div class="caption-top-row">
+                <label class="block-label" style="margin:0;">AI Captions (English + Hinglish)</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="pro-burn-subs" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="compact-selects" id="pro-sub-options">
+                <select id="pro-sub-style" class="simple-select">
+                  <option value="viral_pop" selected>White Bold</option>
+                  <option value="neon_yellow">Yellow Bold</option>
+                  <option value="clean_modern">Dark Box</option>
+                </select>
+                <select id="pro-sub-pos" class="simple-select">
+                  <option value="seam" selected>Center Seam</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="top">Top</option>
+                </select>
+                <select id="pro-resolution" class="simple-select">
+                  <option value="1080p" selected>1080p HD</option>
+                  <option value="720p">720p Fast</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" id="pro-create-btn" class="btn-create-short pro-create-btn">
+            ⚡ Create Pro Split-Screen Short
+          </button>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="site-footer">
@@ -272,6 +500,61 @@
       <span>@xorb_amv</span>
     </a>
   </footer>
+
+  <!-- Pro Studio Instagram Follow Unlock Modal -->
+  <div id="pro-unlock-modal" class="modal-backdrop hidden">
+    <div class="glass-card modal-card pro-unlock-card">
+      <div class="modal-result-head" style="margin-bottom:0.5rem;">
+        <span class="pro-unlock-badge">✨ CLIPYT PRO • FREE UNLOCK</span>
+        <button type="button" id="pro-unlock-close-x" class="banner-close" title="Close">×</button>
+      </div>
+      <h3 class="pro-unlock-title">Unlock Live Pro Studio</h3>
+      <p class="pro-unlock-desc">
+        Follow <strong>@gta6.insider_</strong> on Instagram to unlock live stream clipping, 2-box Streamer + Stream split-screen, and AI English + Hinglish captions for free.
+      </p>
+
+      <!-- Step 1: Follow Link -->
+      <div class="unlock-step" id="unlock-step-1">
+        <div class="unlock-step-head">
+          <span class="step-num">1</span>
+          <span>Follow <strong>@gta6.insider_</strong> on Instagram</span>
+        </div>
+        <a
+          id="insta-follow-btn"
+          href="https://www.instagram.com/gta6.insider_?utm_source=ig_web_button_share_sheet&gwpx=ZDNlZDc0MzIxNw=="
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-insta-follow"
+        >
+          <span>Follow @gta6.insider_ on Instagram ↗</span>
+        </a>
+        <div id="insta-wait-status" class="insta-wait-status hidden"></div>
+      </div>
+
+      <!-- Step 2: Enter Instagram Username -->
+      <div class="unlock-step unlock-step-locked" id="unlock-step-2">
+        <div class="unlock-step-head">
+          <span class="step-num">2</span>
+          <span>Enter your Instagram username to verify</span>
+        </div>
+        <div class="insta-verify-row">
+          <input
+            type="text"
+            id="insta-username-input"
+            class="insta-handle-input"
+            placeholder="@your_instagram_id"
+            autocomplete="off"
+            disabled
+          >
+          <button type="button" id="insta-verify-btn" class="btn-red" disabled>
+            <span class="btn-text">Verify & Unlock</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+        <p id="insta-verify-error" class="insta-verify-error hidden"></p>
+      </div>
+    </div>
+  </div>
 
   <!-- Creating & Ready Short Modal -->
   <div id="progress-modal" class="modal-backdrop hidden">

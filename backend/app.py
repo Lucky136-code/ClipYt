@@ -20,6 +20,10 @@ from backend.video_processor import (
     prewarm_video_streams,
     detect_best_encoder,
 )
+from backend.pro_studio import (
+    inspect_pro_source,
+    process_pro_split_pipeline,
+)
 
 app = FastAPI(title="ClipYT - YouTube Shorts Creator", version="2.0.0")
 
@@ -63,6 +67,36 @@ class GenerateRequest(BaseModel):
     resolution: str = "1080p"
     climax_hook: bool = True
     peak_time: Optional[float] = None
+
+
+class BoxModel(BaseModel):
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    w: float = Field(ge=0.05, le=1.0)
+    h: float = Field(ge=0.05, le=1.0)
+
+
+class ProInspectRequest(BaseModel):
+    url: str
+    force_refresh: bool = False
+
+
+class ProGenerateRequest(BaseModel):
+    url: str
+    video_id: str
+    is_live: bool = False
+    duration_sec: float = Field(default=35.0, ge=10.0, le=90.0)
+    rewind_sec: float = Field(default=0.0, ge=0.0, le=600.0)
+    start_time: float = Field(default=0.0, ge=0.0)
+    end_time: float = Field(default=35.0, ge=5.0)
+    cam_box: BoxModel
+    stream_box: BoxModel
+    cam_ratio: float = Field(default=0.40, ge=0.25, le=0.65)
+    cam_position: str = "top"
+    resolution: str = "1080p"
+    burn_subtitles: bool = True
+    subtitle_style: str = "viral_pop"
+    subtitle_position: str = "seam"
 
 
 @app.get("/api/diag")
@@ -242,6 +276,78 @@ async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
         "error": None,
     }
     background_tasks.add_task(_run_generate_task, task_id, req)
+    return {"success": True, "task_id": task_id}
+
+
+@app.post("/api/pro/inspect")
+async def api_pro_inspect(req: ProInspectRequest):
+    """Inspect a YouTube Live Stream or video for Pro Studio and return a fresh 16:9 frame."""
+    try:
+        data = await asyncio.to_thread(
+            inspect_pro_source,
+            url=req.url,
+            force_refresh=req.force_refresh,
+        )
+        return {"success": True, "data": data}
+    except Exception as e:
+        clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        raise HTTPException(status_code=400, detail=clean_err)
+
+
+def _run_pro_generate_task(task_id: str, req: ProGenerateRequest):
+    """Background task runner for Pro Studio Live/VOD Split-Screen + AI Hinglish Captions."""
+    def update_progress(message: str, progress: int):
+        if task_id in TASKS:
+            TASKS[task_id]["message"] = message
+            TASKS[task_id]["progress"] = progress
+
+    try:
+        cached_transcript = TRANSCRIPT_CACHE.get(req.video_id)
+        result = process_pro_split_pipeline(
+            url=req.url,
+            video_id=req.video_id,
+            is_live=req.is_live,
+            cam_box=req.cam_box.model_dump(),
+            stream_box=req.stream_box.model_dump(),
+            duration_sec=req.duration_sec,
+            rewind_sec=req.rewind_sec,
+            start_time=req.start_time,
+            end_time=req.end_time,
+            cam_ratio=req.cam_ratio,
+            cam_position=req.cam_position,
+            resolution=req.resolution,
+            burn_subtitles=req.burn_subtitles,
+            subtitle_style=req.subtitle_style,
+            subtitle_position=req.subtitle_position,
+            transcript_cache=cached_transcript,
+            progress_cb=update_progress,
+        )
+        TASKS[task_id]["status"] = "completed"
+        TASKS[task_id]["progress"] = 100
+        TASKS[task_id]["message"] = "Pro Short ready!"
+        TASKS[task_id]["result"] = result
+    except Exception as e:
+        clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        TASKS[task_id]["status"] = "failed"
+        TASKS[task_id]["error"] = clean_err
+        TASKS[task_id]["message"] = f"Pro render failed: {clean_err}"
+
+
+@app.post("/api/pro/generate")
+async def api_pro_generate(req: ProGenerateRequest, background_tasks: BackgroundTasks):
+    """Launch asynchronous Pro Studio Split-Screen Short render."""
+    task_id = str(uuid.uuid4())
+    TASKS[task_id] = {
+        "task_id": task_id,
+        "status": "processing",
+        "progress": 8,
+        "message": "Starting Pro Studio...",
+        "clip_id": "pro_split",
+        "aspect_ratio": "9:16",
+        "result": None,
+        "error": None,
+    }
+    background_tasks.add_task(_run_pro_generate_task, task_id, req)
     return {"success": True, "task_id": task_id}
 
 

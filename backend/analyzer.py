@@ -10,12 +10,14 @@ from backend.config import YTDLP_BASE_OPTS, ensure_fresh_cookiefile
 
 
 def extract_video_id(url: str) -> Optional[str]:
-    """Extract YouTube video ID from various URL formats."""
+    """Extract YouTube video ID from live, watch, shorts, embed, and youtu.be URL formats."""
     patterns = [
-        r"(?:v=|\/)([0-9A-Za-z_-]{11}).*",
-        r"(?:youtu\.be\/)([0-9A-Za-z_-]{11})",
+        r"(?:live\/)([0-9A-Za-z_-]{11})",
         r"(?:shorts\/)([0-9A-Za-z_-]{11})",
         r"(?:embed\/)([0-9A-Za-z_-]{11})",
+        r"(?:youtu\.be\/)([0-9A-Za-z_-]{11})",
+        r"(?:[?&]v=)([0-9A-Za-z_-]{11})",
+        r"(?:v=|\/)([0-9A-Za-z_-]{11})(?:[?&#/]|$)",
     ]
     for pattern in patterns:
         match = re.search(pattern, url)

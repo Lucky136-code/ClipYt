@@ -16,7 +16,8 @@ from backend.config import (
     ASPECT_RATIOS_720,
     ensure_fresh_cookiefile,
 )
-from backend.subtitles import generate_ass_subtitles
+from backend.subtitles import generate_ass_subtitles, generate_ass_from_words
+from backend.whisper_captions import transcribe_clip_hinglish
 
 # In-memory cache of pre-warmed yt-dlp stream metadata per video_id (expires after 20 min)
 STREAM_INFO_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -452,25 +453,83 @@ def render_short(
             teaser_dur=teaser_dur,
         )
 
-    # 1. Generate fast YouTube ASS subtitles (synced to Climax Hook if active!)
+    # 1. Generate AI Hinglish + English ASS subtitles (with YouTube json3 fallback, synced to Climax Hook!)
     ass_file: Optional[Path] = None
     if burn_subtitles and video_id:
         if progress_cb:
-            progress_cb("Adding captions...", 55)
+            progress_cb("AI generating English & Hinglish captions...", 54)
         temp_ass = TEMP_DIR / f"sub_{uuid.uuid4().hex[:8]}.ass"
-        ass_file = generate_ass_subtitles(
-            video_id=video_id,
-            start_time=clip_start,
-            end_time=clip_end,
-            output_path=temp_ass,
-            video_width=target_w,
-            video_height=target_h,
-            style_preset=subtitle_style,
-            position=subtitle_position,
-            transcript_cache=transcript_cache,
-            hook_teaser_offset=teaser_offset,
-            hook_teaser_duration=teaser_dur if teaser_offset is not None else 0.0,
-        )
+        temp_wav = TEMP_DIR / f"aud_{uuid.uuid4().hex[:8]}.wav"
+        try:
+            wav_cmd = [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-ss", f"{max(0.0, leading_pad):.3f}",
+                "-i", str(input_path),
+                "-t", f"{duration:.3f}",
+                "-vn", "-ac", "1", "-ar", "16000",
+                "-c:a", "pcm_s16le",
+                str(temp_wav),
+            ]
+            wav_res = subprocess.run(wav_cmd, capture_output=True, timeout=20)
+            if wav_res.returncode == 0 and temp_wav.exists() and temp_wav.stat().st_size > 1000:
+                ai_words = transcribe_clip_hinglish(temp_wav)
+                if ai_words:
+                    if teaser_offset is not None:
+                        # Map AI words (0..duration) to absolute clip space so Climax Hook aligns cleanly
+                        abs_words = [
+                            {
+                                "word": w["word"],
+                                "start": clip_start + w["start"],
+                                "end": clip_start + w["end"],
+                            }
+                            for w in ai_words
+                        ]
+                        ass_file = generate_ass_subtitles(
+                            video_id=video_id,
+                            start_time=clip_start,
+                            end_time=clip_end,
+                            output_path=temp_ass,
+                            video_width=target_w,
+                            video_height=target_h,
+                            style_preset=subtitle_style,
+                            position=subtitle_position,
+                            transcript_cache=abs_words,
+                            hook_teaser_offset=teaser_offset,
+                            hook_teaser_duration=teaser_dur,
+                        )
+                    else:
+                        ass_file = generate_ass_from_words(
+                            words=ai_words,
+                            clip_duration=duration,
+                            output_path=temp_ass,
+                            video_width=target_w,
+                            video_height=target_h,
+                            style_preset=subtitle_style,
+                            position=subtitle_position,
+                        )
+        except Exception:
+            ass_file = None
+        finally:
+            if temp_wav.exists():
+                try:
+                    temp_wav.unlink()
+                except Exception:
+                    pass
+
+        if not ass_file:
+            ass_file = generate_ass_subtitles(
+                video_id=video_id,
+                start_time=clip_start,
+                end_time=clip_end,
+                output_path=temp_ass,
+                video_width=target_w,
+                video_height=target_h,
+                style_preset=subtitle_style,
+                position=subtitle_position,
+                transcript_cache=transcript_cache,
+                hook_teaser_offset=teaser_offset,
+                hook_teaser_duration=teaser_dur if teaser_offset is not None else 0.0,
+            )
 
     encoder = detect_best_encoder()
     if progress_cb:
