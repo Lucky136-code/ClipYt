@@ -14,7 +14,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://andrew-waters-universe-even.trycloudflare.com/api/:path*"
+      "destination": "https://edinburgh-variety-sauce-average.trycloudflare.com/api/:path*"
     }
   ]
 }
