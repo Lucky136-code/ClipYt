@@ -18,6 +18,33 @@
   <!-- Background Overlay Scrim -->
   <div class="bg-overlay"></div>
 
+  <!-- Server Offline Full-Screen Notice Overlay -->
+  <div id="server-offline-overlay" class="server-offline-overlay">
+    <div class="glass-card offline-card">
+      <div class="offline-badge">
+        <span class="offline-pulse-dot"></span>
+        <span>SERVER OFFLINE</span>
+      </div>
+      <div class="offline-icon-wrap">
+        <svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+          <line x1="6" y1="6" x2="6.01" y2="6"></line>
+          <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          <line x1="1" y1="1" x2="23" y2="23" stroke="#ef4444" stroke-width="2.2"></line>
+        </svg>
+      </div>
+      <h2 class="offline-title">Server is Currently Off</h2>
+      <p class="offline-desc">
+        The ClipYt processing server is currently powered down for maintenance. 
+        Video analysis and clip rendering are temporarily paused.
+      </p>
+      <div class="offline-notice-pill">
+        <span>⚡ Please check back later when the server is online</span>
+      </div>
+    </div>
+  </div>
+
   <main class="main-container">
     <!-- ==================== STANDARD WORKSPACE ==================== -->
     <div id="standard-workspace">
