@@ -65,6 +65,12 @@ body::before {
   z-index: 0;
 }
 
+@media (max-width: 768px) {
+  body::before {
+    background-image: url('/static/mobilebackground.png');
+  }
+}
+
 .bg-overlay {
   display: none;
 }
