@@ -23,6 +23,8 @@ from backend.video_processor import (
 from backend.pro_studio import (
     inspect_pro_source,
     process_pro_split_pipeline,
+    get_proxied_hls_playlist,
+    fetch_proxied_hls_segment,
 )
 from backend.live_radar import poll_live_chat_radar
 
@@ -89,6 +91,8 @@ class ProGenerateRequest(BaseModel):
     is_live: bool = False
     duration_sec: float = Field(default=35.0, ge=5.0, le=120.0)
     rewind_sec: float = Field(default=0.0, ge=0.0, le=43200.0)
+    start_utc_ts: Optional[float] = None
+    end_utc_ts: Optional[float] = None
     start_time: float = Field(default=0.0, ge=0.0)
     end_time: float = Field(default=35.0, ge=5.0)
     cam_box: BoxModel
@@ -304,6 +308,36 @@ async def api_pro_inspect(req: ProInspectRequest):
         raise HTTPException(status_code=400, detail=clean_err)
 
 
+@app.get("/api/pro/hls/{video_id}/playlist.m3u8")
+async def api_pro_hls_playlist(video_id: str):
+    """Serve live YouTube HLS playlist with rewritten same-origin segment URLs for exact 0.00s hls.js playback."""
+    try:
+        m3u8_text = await asyncio.to_thread(get_proxied_hls_playlist, video_id)
+        return Response(
+            content=m3u8_text,
+            media_type="application/vnd.apple.mpegurl",
+            headers={"Cache-Control": "no-cache, no-store"},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)[:200])
+
+
+@app.get("/api/pro/hls/{video_id}/seg/{seg_key}.ts")
+async def api_pro_hls_segment(video_id: str, seg_key: str):
+    """Stream an exact live `.ts` segment to browser hls.js player (cached 1hr in browser for instant scrubbing)."""
+    try:
+        data = await asyncio.to_thread(fetch_proxied_hls_segment, video_id, seg_key)
+        return Response(
+            content=data,
+            media_type="video/mp2t",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Segment expired")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e)[:160])
+
+
 @app.get("/api/pro/radar/{video_id}")
 async def api_pro_radar(video_id: str, reset: bool = False):
     """Real-time YouTube Live Chat Hype Radar: chat speed graph + auto-detected viral spikes."""
@@ -334,6 +368,8 @@ def _run_pro_generate_task(task_id: str, req: ProGenerateRequest):
             stream_box=req.stream_box.model_dump(),
             duration_sec=req.duration_sec,
             rewind_sec=req.rewind_sec,
+            start_utc_ts=req.start_utc_ts,
+            end_utc_ts=req.end_utc_ts,
             start_time=req.start_time,
             end_time=req.end_time,
             cam_ratio=req.cam_ratio,

@@ -6,8 +6,10 @@ import subprocess
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urljoin
 
 import requests
 import yt_dlp
@@ -26,6 +28,9 @@ from backend.whisper_captions import transcribe_clip_hinglish, get_whisper_statu
 # Cache inspected Pro sources for 15 minutes
 PRO_STREAM_CACHE: Dict[str, Dict[str, Any]] = {}
 PRO_CACHE_TTL_SEC = 900
+
+# In-memory Live HLS Proxy cache per video_id (serves exact live DVR segments to browser hls.js)
+HLS_PROXY_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def _build_pro_live_strategies() -> List[Tuple[str, Dict[str, Any], bool]]:
@@ -165,17 +170,54 @@ def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[s
     return None, None, headers
 
 
+def _pick_preview_hls_url(info: Dict[str, Any]) -> Tuple[Optional[str], Dict[str, str]]:
+    """
+    Pick a crisp, lightweight muxed live HLS playlist (preferring 720p itag 95 or 480p itag 94)
+    for instant, smooth browser playback & scrubbing via hls.js.
+    """
+    fmts = info.get("formats") or []
+    muxed_hls = [
+        f for f in fmts
+        if f.get("url")
+        and (f.get("protocol") or "").startswith("m3u8")
+        and f.get("vcodec") not in (None, "none")
+        and f.get("acodec") not in (None, "none")
+    ]
+    if muxed_hls:
+        # Prefer 720p (smooth + crisp), fallback to 480p, then highest <=1080p
+        for target_h in (720, 480, 360, 1080):
+            for f in muxed_hls:
+                if int(f.get("height") or 0) == target_h:
+                    return f["url"], dict(f.get("http_headers") or info.get("http_headers") or {})
+        muxed_hls.sort(key=lambda f: int(f.get("height") or 0))
+        best = muxed_hls[-1]
+        return best["url"], dict(best.get("http_headers") or info.get("http_headers") or {})
+
+    v_url, _a_url, headers = _extract_media_urls(info)
+    return v_url, headers
+
+
+def _parse_pdt_timestamp(m3u8_text: str) -> Optional[float]:
+    """Parse #EXT-X-PROGRAM-DATE-TIME from a YouTube HLS playlist into UTC Unix epoch seconds."""
+    m = re.search(r"#EXT-X-PROGRAM-DATE-TIME:([^\r\n]+)", m3u8_text)
+    if not m:
+        return None
+    try:
+        dt = datetime.fromisoformat(m.group(1).strip().replace("Z", "+00:00"))
+        return dt.timestamp()
+    except Exception:
+        return None
+
+
 def _parse_hls_segments(
     m3u8_url: str,
     headers: Optional[Dict[str, str]] = None,
-) -> Tuple[List[Tuple[float, str]], float]:
+) -> Tuple[List[Tuple[float, str]], float, Optional[float]]:
     """
     Download a live HLS media playlist (.m3u8) and parse every (duration_sec, segment_url)
-    in chronological order. Resolves master playlists automatically if needed.
-    Returns (segments_list, total_duration_sec).
+    in chronological order plus its #EXT-X-PROGRAM-DATE-TIME UTC epoch start.
+    Returns (segments_list, total_duration_sec, first_pdt_utc_ts_or_None).
     """
-    from urllib.parse import urljoin
-
     req_headers = {}
     if headers and headers.get("User-Agent"):
         req_headers["User-Agent"] = headers["User-Agent"]
@@ -183,11 +225,10 @@ def _parse_hls_segments(
     try:
         resp = requests.get(m3u8_url, headers=req_headers, timeout=8)
         if resp.status_code != 200:
-            return [], 0.0
+            return [], 0.0, None
         text = resp.text
         base_url = resp.url or m3u8_url
 
-        # If this is a master playlist (#EXT-X-STREAM-INF), pick the best <=1080p media playlist
         if "#EXT-X-STREAM-INF" in text:
             lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
             best_sub = None
@@ -204,10 +245,11 @@ def _parse_hls_segments(
             if best_sub:
                 resp = requests.get(best_sub, headers=req_headers, timeout=8)
                 if resp.status_code != 200:
-                    return [], 0.0
+                    return [], 0.0, None
                 text = resp.text
                 base_url = resp.url or best_sub
 
+        first_pdt = _parse_pdt_timestamp(text)
         segments: List[Tuple[float, str]] = []
         pending_dur: Optional[float] = None
         for raw_ln in text.splitlines():
@@ -224,9 +266,106 @@ def _parse_hls_segments(
                     pending_dur = None
 
         total_dur = sum(d for d, _ in segments)
-        return segments, total_dur
+        return segments, total_dur, first_pdt
     except Exception:
-        return [], 0.0
+        return [], 0.0, None
+
+
+def get_proxied_hls_playlist(video_id: str) -> str:
+    """
+    Fetch YouTube's live HLS playlist for `video_id`, cache its segment URLs in memory,
+    and return a rewritten playlist pointing segment URLs to `/api/pro/hls/{video_id}/seg/{key}.ts`.
+    Gives browser hls.js the EXACT same DVR segments & #EXT-X-PROGRAM-DATE-TIME that export uses!
+    """
+    now = time.time()
+    entry = HLS_PROXY_CACHE.get(video_id)
+    if not entry or not entry.get("preview_m3u8"):
+        cached_info = (PRO_STREAM_CACHE.get(video_id) or {}).get("info")
+        if not cached_info:
+            cached_info = _extract_pro_info(f"https://www.youtube.com/watch?v={video_id}", video_id)
+            PRO_STREAM_CACHE[video_id] = {"info": cached_info, "ts": now}
+        preview_url, headers = _pick_preview_hls_url(cached_info)
+        if not preview_url:
+            raise RuntimeError("No live HLS preview stream available.")
+        entry = {
+            "preview_m3u8": preview_url,
+            "headers": headers,
+            "seg_map": {},
+            "cached_playlist": "",
+            "last_fetch": 0.0,
+        }
+        HLS_PROXY_CACHE[video_id] = entry
+
+    # Refresh from YouTube at most once every 3.5 seconds
+    if entry["cached_playlist"] and (now - entry["last_fetch"]) < 3.5:
+        return entry["cached_playlist"]
+
+    req_headers = {}
+    if entry["headers"].get("User-Agent"):
+        req_headers["User-Agent"] = entry["headers"]["User-Agent"]
+
+    resp = requests.get(entry["preview_m3u8"], headers=req_headers, timeout=8)
+    if resp.status_code != 200:
+        # Refresh expired YouTube stream info once and retry
+        info = _extract_pro_info(f"https://www.youtube.com/watch?v={video_id}", video_id)
+        PRO_STREAM_CACHE[video_id] = {"info": info, "ts": now}
+        preview_url, headers = _pick_preview_hls_url(info)
+        entry["preview_m3u8"] = preview_url
+        entry["headers"] = headers
+        resp = requests.get(preview_url, headers={"User-Agent": headers.get("User-Agent", "")}, timeout=8)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Upstream HLS returned HTTP {resp.status_code}")
+
+    base_url = resp.url or entry["preview_m3u8"]
+    out_lines: List[str] = []
+    seg_map = entry["seg_map"]
+    seq_fallback = 0
+
+    for raw_ln in resp.text.splitlines():
+        ln = raw_ln.strip()
+        if not ln:
+            continue
+        if ln.startswith("#"):
+            out_lines.append(ln)
+        else:
+            abs_url = urljoin(base_url, ln)
+            sq_m = re.search(r"/sq/(\d+)/", abs_url)
+            seg_key = sq_m.group(1) if sq_m else f"s{seq_fallback}"
+            seq_fallback += 1
+            seg_map[seg_key] = abs_url
+            out_lines.append(f"/api/pro/hls/{video_id}/seg/{seg_key}.ts")
+
+    # Trim seg_map if huge (> 4500 entries)
+    if len(seg_map) > 4500:
+        keys_to_drop = list(seg_map.keys())[:-3500]
+        for k in keys_to_drop:
+            seg_map.pop(k, None)
+
+    rewritten = "\n".join(out_lines) + "\n"
+    entry["cached_playlist"] = rewritten
+    entry["last_fetch"] = now
+    return rewritten
+
+
+def fetch_proxied_hls_segment(video_id: str, seg_key: str) -> bytes:
+    """Fetch a single cached live `.ts` segment from YouTube for browser hls.js playback."""
+    entry = HLS_PROXY_CACHE.get(video_id)
+    if not entry or seg_key not in entry.get("seg_map", {}):
+        # Refresh playlist once in case segment is newly available
+        get_proxied_hls_playlist(video_id)
+        entry = HLS_PROXY_CACHE.get(video_id)
+    if not entry or seg_key not in entry.get("seg_map", {}):
+        raise FileNotFoundError(f"Segment {seg_key} not found")
+
+    seg_url = entry["seg_map"][seg_key]
+    req_headers = {}
+    if entry.get("headers", {}).get("User-Agent"):
+        req_headers["User-Agent"] = entry["headers"]["User-Agent"]
+
+    r = requests.get(seg_url, headers=req_headers, timeout=15)
+    if r.status_code != 200 or not r.content:
+        raise RuntimeError(f"Upstream segment HTTP {r.status_code}")
+    return r.content
 
 
 def _download_dvr_ts_slice(
@@ -235,25 +374,40 @@ def _download_dvr_ts_slice(
     duration_sec: float,
     out_ts_path: Path,
     headers: Optional[Dict[str, str]] = None,
+    start_utc_ts: Optional[float] = None,
+    end_utc_ts: Optional[float] = None,
 ) -> Optional[Tuple[Path, float, float]]:
     """
     Directly download ONLY the exact historical `.ts` segments from YouTube's live HLS
-    playlist for `[live_edge - rewind_sec - duration_sec .. live_edge - rewind_sec]`
-    using parallel HTTP fetches and concatenate them into a single local `.ts` file.
-    - 100% immune to FFmpeg `-protocol_whitelist` / HLS demuxer live-edge bugs on Linux & Windows!
-    - 3-4x faster than sequential FFmpeg HLS downloads!
-    Returns (out_ts_path, sub_offset_sec, actual_available_dur) or None.
+    playlist using parallel HTTP fetches and concatenate them into a single local `.ts` file.
+    - When `start_utc_ts` & `end_utc_ts` are supplied (from our live hls.js player!), matches
+      directly against `#EXT-X-PROGRAM-DATE-TIME` for 0.000s-drift frame-accurate cuts!
+    - Otherwise uses `[total_dur - rewind_sec - duration_sec .. total_dur - rewind_sec]`.
     """
-    segments, total_dur = _parse_hls_segments(m3u8_url, headers)
+    segments, total_dur, first_pdt = _parse_hls_segments(m3u8_url, headers)
     if not segments or total_dur < 2.0:
         return None
 
-    eff_rewind = max(0.0, float(rewind_sec))
-    win_end = max(min(total_dur, duration_sec), total_dur - eff_rewind)
-    win_start = max(0.0, win_end - float(duration_sec))
-    if win_end - win_start < 1.0:
-        win_start = max(0.0, total_dur - float(duration_sec))
-        win_end = total_dur
+    # Exact UTC timestamp matching (zero drift, zero broadcast-lag offset!)
+    if (
+        start_utc_ts is not None
+        and end_utc_ts is not None
+        and end_utc_ts > start_utc_ts + 1.0
+        and first_pdt is not None
+    ):
+        req_dur = max(3.0, min(125.0, float(end_utc_ts - start_utc_ts)))
+        win_start = max(0.0, float(start_utc_ts) - first_pdt)
+        win_end = min(total_dur, win_start + req_dur)
+        if win_start >= total_dur - 1.0:
+            win_end = total_dur
+            win_start = max(0.0, total_dur - req_dur)
+    else:
+        eff_rewind = max(0.0, float(rewind_sec))
+        win_end = max(min(total_dur, duration_sec), total_dur - eff_rewind)
+        win_start = max(0.0, win_end - float(duration_sec))
+        if win_end - win_start < 1.0:
+            win_start = max(0.0, total_dur - float(duration_sec))
+            win_end = total_dur
 
     selected: List[Tuple[float, str]] = []
     slice_start_t: Optional[float] = None
@@ -316,7 +470,7 @@ def _build_local_dvr_vod_m3u8(
     Makes it physically impossible for FFmpeg to jump to the live edge!
     Returns (out_m3u8_path, sub_offset_sec, actual_available_dur) or None.
     """
-    segments, total_dur = _parse_hls_segments(m3u8_url, headers)
+    segments, total_dur, _first_pdt = _parse_hls_segments(m3u8_url, headers)
     if not segments or total_dur < 2.0:
         return None
 
@@ -396,7 +550,7 @@ def _grab_frame_b64(
                 cmd.extend(["-ss", f"{seek_sec:.2f}"])
         else:
             # Live stream: pick the EXACT single `.ts` segment URL from the HLS playlist!
-            segments, total_dur = _parse_hls_segments(video_url, headers)
+            segments, total_dur, _first_pdt = _parse_hls_segments(video_url, headers)
             if segments:
                 secs_back = float(preview_offset_sec) if (preview_offset_sec is not None and preview_offset_sec > 2.0) else 2.0
                 target_t = max(0.0, total_dur - secs_back)
@@ -548,6 +702,7 @@ def inspect_pro_source(
         "author": author,
         "is_live": is_live,
         "live_status": info.get("live_status") or ("is_live" if is_live else "not_live"),
+        "hls_proxy_url": f"/api/pro/hls/{video_id}/playlist.m3u8" if is_live else None,
         "duration": round(duration, 2),
         "live_elapsed_sec": round(live_elapsed_sec, 1),
         "dvr_window_sec": round(dvr_window_sec, 1),
@@ -607,11 +762,13 @@ def download_live_dvr_segment(
     rewind_sec: float,
     output_path: Path,
     progress_cb: Optional[Callable[[str, int], None]] = None,
+    start_utc_ts: Optional[float] = None,
+    end_utc_ts: Optional[float] = None,
 ) -> Path:
     """
-    Download an EXACT historical slice from an active YouTube Live Stream (via local VOD
-    HLS segment slicing) so rewound recordings ALWAYS cut the exact rewound moment —
-    never accidentally grabbing the current live edge!
+    Download an EXACT historical slice from an active YouTube Live Stream (via direct
+    parallel `.ts` DVR chunk downloading matched to exact UTC `#EXT-X-PROGRAM-DATE-TIME`)
+    so rewound recordings ALWAYS cut the exact recorded frame!
     """
     if progress_cb:
         progress_cb("Connecting to live stream DVR buffer...", 14)
@@ -624,7 +781,9 @@ def download_live_dvr_segment(
         raise RuntimeError("Could not find a live HLS stream URL for this broadcast.")
 
     if progress_cb:
-        if rewind_sec >= 5:
+        if start_utc_ts is not None and end_utc_ts is not None:
+            progress_cb(f"Grabbing exact {int(duration_sec)}s recorded slice in 1080p HD...", 24)
+        elif rewind_sec >= 5:
             mins = int(rewind_sec // 60)
             secs = int(rewind_sec % 60)
             ago_txt = f"{mins}m {secs:02d}s ago" if mins > 0 else f"{secs}s ago"
@@ -640,12 +799,18 @@ def download_live_dvr_segment(
     v_ts_local = TEMP_DIR / f"dvr_v_{video_id}_{uuid.uuid4().hex[:6]}.ts"
     a_ts_local = TEMP_DIR / f"dvr_a_{video_id}_{uuid.uuid4().hex[:6]}.ts"
     try:
-        v_slice = _download_dvr_ts_slice(v_url, rewind_sec, duration_sec, v_ts_local, headers)
+        v_slice = _download_dvr_ts_slice(
+            v_url, rewind_sec, duration_sec, v_ts_local, headers,
+            start_utc_ts=start_utc_ts, end_utc_ts=end_utc_ts,
+        )
         if v_slice is not None:
             v_file, sub_offset, _avail = v_slice
             a_file = None
             if a_url:
-                a_slice = _download_dvr_ts_slice(a_url, rewind_sec, duration_sec, a_ts_local, headers)
+                a_slice = _download_dvr_ts_slice(
+                    a_url, rewind_sec, duration_sec, a_ts_local, headers,
+                    start_utc_ts=start_utc_ts, end_utc_ts=end_utc_ts,
+                )
                 if a_slice is not None:
                     a_file = a_slice[0]
 
@@ -971,6 +1136,8 @@ def process_pro_split_pipeline(
     stream_box: Dict[str, float],
     duration_sec: float = 35.0,
     rewind_sec: float = 0.0,
+    start_utc_ts: Optional[float] = None,
+    end_utc_ts: Optional[float] = None,
     start_time: float = 0.0,
     end_time: float = 35.0,
     cam_ratio: float = 0.40,
@@ -1001,7 +1168,10 @@ def process_pro_split_pipeline(
 
     try:
         if is_live:
-            clip_duration = max(5.0, min(120.0, float(duration_sec)))
+            if start_utc_ts is not None and end_utc_ts is not None and end_utc_ts > start_utc_ts + 2.0:
+                clip_duration = max(5.0, min(120.0, float(end_utc_ts - start_utc_ts)))
+            else:
+                clip_duration = max(5.0, min(120.0, float(duration_sec)))
             downloaded_raw = download_live_dvr_segment(
                 url=url,
                 video_id=video_id,
@@ -1009,6 +1179,8 @@ def process_pro_split_pipeline(
                 rewind_sec=max(0.0, float(rewind_sec)),
                 output_path=raw_clip,
                 progress_cb=progress_cb,
+                start_utc_ts=start_utc_ts,
+                end_utc_ts=end_utc_ts,
             )
             exact_pad = 0.0
         else:

@@ -96,6 +96,44 @@ _DIGITS = {
 _HALANT = "्"
 _NUKTA = "़"
 
+# Safety-net Urdu/Arabic -> Roman Hinglish mapping (in case any stray Arabic/Urdu chars ever appear)
+_URDU_ARABIC_MAP = {
+    "ا": "a", "آ": "aa", "أ": "a", "إ": "i", "ب": "b", "پ": "p", "ت": "t", "ٹ": "t",
+    "ث": "s", "ج": "j", "چ": "ch", "ح": "h", "خ": "kh", "د": "d", "ڈ": "d", "ذ": "z",
+    "ر": "r", "ڑ": "r", "ز": "z", "ژ": "zh", "س": "s", "ش": "sh", "ص": "s", "ض": "z",
+    "ط": "t", "ظ": "z", "ع": "a", "غ": "gh", "ف": "f", "ق": "q", "ک": "k", "ك": "k",
+    "گ": "g", "ل": "l", "م": "m", "ن": "n", "ں": "n", "و": "o", "ہ": "h", "ھ": "h",
+    "ه": "h", "ء": "", "ی": "i", "ي": "i", "ے": "e", "ئ": "i", "ؤ": "o", "ة": "a",
+    "۔": ".", "،": ",", "؟": "?",
+}
+
+
+def _arabic_urdu_to_hinglish(text: str) -> str:
+    if not text or not re.search(r"[\u0600-\u06FF]", text):
+        return text
+    out = []
+    for ch in text:
+        if ch in _URDU_ARABIC_MAP:
+            out.append(_URDU_ARABIC_MAP[ch])
+        elif "\u0600" <= ch <= "\u06FF":
+            # Drop diacritics/harakat
+            continue
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def to_english_or_hinglish(text: str) -> str:
+    """Guarantee output contains ONLY clean English / Roman Hinglish (never Devanagari or Arabic/Urdu)."""
+    if not text:
+        return ""
+    text = devanagari_to_hinglish(text)
+    text = _arabic_urdu_to_hinglish(text)
+    # Remove any other stray non-Latin script characters (keep ASCII letters, digits, punctuation, spaces)
+    text = re.sub(r"[^\x20-\x7E]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
 
 def _transliterate_devanagari_word(word: str) -> str:
     """Convert a single Devanagari word into natural Hinglish phonetic Roman spelling."""
@@ -277,7 +315,7 @@ def _extract_words_from_segments(segments) -> List[Dict[str, Any]]:
                 raw_txt = (getattr(w, "word", "") or "").strip()
                 if not raw_txt:
                     continue
-                hinglish = devanagari_to_hinglish(raw_txt).strip()
+                hinglish = to_english_or_hinglish(raw_txt)
                 hinglish = hinglish.replace("{", "(").replace("}", ")")
                 if not hinglish:
                     continue
@@ -306,7 +344,7 @@ def _extract_words_from_segments(segments) -> List[Dict[str, Any]]:
                         t_c += d
         else:
             # Segment-level fallback if word timestamps weren't produced for a segment
-            seg_txt = devanagari_to_hinglish((getattr(seg, "text", "") or "").strip())
+            seg_txt = to_english_or_hinglish((getattr(seg, "text", "") or "").strip())
             seg_txt = seg_txt.replace("{", "(").replace("}", ")")
             parts = seg_txt.split()
             if parts:
@@ -322,23 +360,50 @@ def _extract_words_from_segments(segments) -> List[Dict[str, Any]]:
     return words_out
 
 
+def _choose_en_or_hi_language(model, media_path: Path) -> str:
+    """
+    Strictly choose ONLY 'en' (English) or 'hi' (Hindi -> Hinglish).
+    Prevents Whisper from ever mistaking Indian Hindi/Hinglish speech for Urdu ('ur') or Arabic ('ar')!
+    """
+    try:
+        from faster_whisper.audio import decode_audio
+        audio = decode_audio(str(media_path), sampling_rate=16000)
+        lang, prob, all_probs = model.detect_language(audio)
+        probs_map = dict(all_probs or [])
+        en_p = float(probs_map.get("en", 0.0))
+        hi_ur_p = float(probs_map.get("hi", 0.0)) + float(probs_map.get("ur", 0.0))
+
+        # Only pick English if English clearly dominates; otherwise force 'hi' (converted to Hinglish!)
+        if lang == "en" and prob >= 0.55 and en_p >= hi_ur_p:
+            return "en"
+        if en_p > 0.65 and en_p > (hi_ur_p * 1.5):
+            return "en"
+        return "hi"
+    except Exception:
+        return "hi"
+
+
 def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]:
     """
-    Transcribe a cut clip's audio directly using faster-whisper with:
+    Transcribe a cut clip's audio directly using faster-whisper strictly in English or Hinglish:
+      - Forces language='en' or language='hi' (NEVER Urdu/Arabic!)
       - Acoustic word-level timestamps (0.000s sync accuracy!)
       - 2-pass robustness: Pass 1 gentle Silero VAD -> Pass 2 no-VAD retry for noisy gaming streams!
-      - Automatic English + Hindi detection converted to clean Hinglish Roman script!
+      - Converts any Devanagari Hindi to clean Roman Hinglish!
     Returns list of [{"word": str, "start": float, "end": float}, ...].
     """
     global _LAST_WHISPER_ERROR
     try:
         model = _get_whisper_model()
+        target_lang = _choose_en_or_hi_language(model, media_path)
 
         # Pass 1: Gentle Silero VAD (captions vanish cleanly during real silence)
         words_out: List[Dict[str, Any]] = []
         try:
             segments, _info = model.transcribe(
                 str(media_path),
+                language=target_lang,
+                task="transcribe",
                 beam_size=2,
                 best_of=1,
                 word_timestamps=True,
@@ -360,6 +425,8 @@ def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]
         if not words_out:
             segments2, _info2 = model.transcribe(
                 str(media_path),
+                language=target_lang,
+                task="transcribe",
                 beam_size=2,
                 best_of=1,
                 word_timestamps=True,

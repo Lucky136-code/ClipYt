@@ -959,13 +959,18 @@ const proState = {
   ytLiveEdgeAnchor: 0,
   ytLiveEdgeAnchorMs: 0,
   playerClockTimer: null,
+  hlsInstance: null,
+  hlsMode: false,
+  hlsScrubbing: false,
+  hlsPreviewRaf: 0,
   boxesLocked: false,
   isRecording: false,
   recStartTime: 0,
+  recStartUtc: null,
   recStartBehindLive: 0,
   recStartWallMs: 0,
   recTimerId: null,
-  recordedClip: null, // { isLive, duration, rewindAtStop, stoppedAtMs, startTime, endTime }
+  recordedClip: null, // { isLive, duration, rewindAtStop, startUtc, endUtc, stoppedAtMs, startTime, endTime }
 };
 
 // YouTube IFrame Player API global callback
@@ -1033,8 +1038,14 @@ function switchStudioMode(targetMode) {
       syncBoxesToDOM();
       scheduleProPreviewRender();
     });
+    if (proState.hlsMode) startHlsPreviewLoop();
   } else {
     cancelProRecording();
+    stopHlsPreviewLoop();
+    try {
+      const hlsVid = document.getElementById("pro-hls-video");
+      if (hlsVid) hlsVid.pause();
+    } catch (e) {}
     try {
       if (proState.ytPlayer && typeof proState.ytPlayer.pauseVideo === "function") {
         proState.ytPlayer.pauseVideo();
@@ -1265,6 +1276,7 @@ function setupProStudio() {
 
   // Dual-Box pointer drag & corner resize engine
   setupDualBoxInteractions();
+  setupHlsPlayerControls();
   window.addEventListener("resize", () => {
     if (proState.mode === "pro" && proState.source) {
       syncBoxesToDOM();
@@ -1365,9 +1377,14 @@ async function inspectProStream(url, forceRefresh = false, previewOffsetSec = nu
       if (readyPill) readyPill.classList.add("hidden");
       updateLiveGuideStep(1);
 
-      // Start playing the actual live YouTube video right inside the 16:9 stage!
+      // Start playing exact Live HLS stream (for LIVE -> 0.00s UTC recording!) or YouTube player (for VOD)
       cancelProRecording();
-      loadProYouTubePlayer(src.video_id);
+      if (src.is_live && src.hls_proxy_url) {
+        loadProHlsPlayer(src.hls_proxy_url, src.video_id);
+      } else {
+        stopProHlsPlayer();
+        loadProYouTubePlayer(src.video_id);
+      }
     }
 
     // Load grabbed 16:9 frame into editor & canvas preview
@@ -1731,8 +1748,8 @@ function scheduleProPreviewRender() {
 }
 
 function drawCoverCrop(ctx, img, box, destX, destY, destW, destH) {
-  const iw = img.naturalWidth || img.width;
-  const ih = img.naturalHeight || img.height;
+  const iw = img.videoWidth || img.naturalWidth || img.width;
+  const ih = img.videoHeight || img.naturalHeight || img.height;
   if (!iw || !ih) return;
 
   let sx = box.x * iw;
@@ -1776,9 +1793,16 @@ function drawProPreviewCanvas() {
   const streamY = camOnTop ? camH + dividerH : 0;
   const seamY = camOnTop ? camH : streamH;
 
-  if (proState.frameImageObj) {
-    drawCoverCrop(ctx, proState.frameImageObj, proState.boxes.cam, 0, camY, W, camH);
-    drawCoverCrop(ctx, proState.frameImageObj, proState.boxes.stream, 0, streamY, W, streamH);
+  // Use live moving HLS <video> when playing a live stream, else grabbed frame image!
+  const hlsVid = document.getElementById("pro-hls-video");
+  const liveMedia =
+    proState.hlsMode && hlsVid && hlsVid.readyState >= 2 && hlsVid.videoWidth > 0
+      ? hlsVid
+      : proState.frameImageObj;
+
+  if (liveMedia) {
+    drawCoverCrop(ctx, liveMedia, proState.boxes.cam, 0, camY, W, camH);
+    drawCoverCrop(ctx, liveMedia, proState.boxes.stream, 0, streamY, W, streamH);
   }
 
   // Subtle dark-glass divider line
@@ -1847,11 +1871,17 @@ async function submitProGenerate(liveOverride = null) {
   const isLive = Boolean(proState.source.is_live);
   let liveDur = proState.liveDuration;
   let liveRew = proState.liveRewind;
+  let startUtcTs = null;
+  let endUtcTs = null;
 
   if (isLive) {
-    if (liveOverride && typeof liveOverride.duration === "number" && typeof liveOverride.rewind === "number") {
+    if (liveOverride && typeof liveOverride.duration === "number") {
       liveDur = liveOverride.duration;
-      liveRew = liveOverride.rewind;
+      liveRew = typeof liveOverride.rewind === "number" ? liveOverride.rewind : 0;
+      if (typeof liveOverride.startUtc === "number" && typeof liveOverride.endUtc === "number") {
+        startUtcTs = liveOverride.startUtc;
+        endUtcTs = liveOverride.endUtc;
+      }
     }
   } else {
     if (proState.vodEnd <= proState.vodStart) {
@@ -1866,6 +1896,8 @@ async function submitProGenerate(liveOverride = null) {
     is_live: isLive,
     duration_sec: liveDur,
     rewind_sec: liveRew,
+    start_utc_ts: startUtcTs,
+    end_utc_ts: endUtcTs,
     start_time: proState.vodStart,
     end_time: proState.vodEnd,
     cam_box: proState.boxes.cam,
@@ -2088,7 +2120,220 @@ window.clipFromRadarSpike = function (secondsAgo) {
 };
 
 // =============================================================
-// LIVE YOUTUBE PLAYER + START / STOP CLIP RECORDER
+// EXACT LIVE HLS PLAYER (hls.js) + 60FPS BOX PREVIEW + 0.00s UTC RECORDING
+// =============================================================
+function stopHlsPreviewLoop() {
+  if (proState.hlsPreviewRaf) {
+    cancelAnimationFrame(proState.hlsPreviewRaf);
+    proState.hlsPreviewRaf = 0;
+  }
+}
+
+function startHlsPreviewLoop() {
+  stopHlsPreviewLoop();
+  let lastDraw = 0;
+  function step(ts) {
+    if (!proState.hlsMode || proState.mode !== "pro") {
+      proState.hlsPreviewRaf = 0;
+      return;
+    }
+    // Smooth 30fps live video preview inside the 9:16 canvas
+    if (ts - lastDraw >= 33) {
+      lastDraw = ts;
+      drawProPreviewCanvas();
+    }
+    proState.hlsPreviewRaf = requestAnimationFrame(step);
+  }
+  proState.hlsPreviewRaf = requestAnimationFrame(step);
+}
+
+function stopProHlsPlayer() {
+  proState.hlsMode = false;
+  stopHlsPreviewLoop();
+  if (proState.hlsInstance) {
+    try {
+      proState.hlsInstance.destroy();
+    } catch (e) {}
+    proState.hlsInstance = null;
+  }
+  const vid = document.getElementById("pro-hls-video");
+  if (vid) {
+    vid.pause();
+    vid.removeAttribute("src");
+    vid.classList.add("hidden");
+  }
+  const ctrl = document.getElementById("pro-hls-controls");
+  if (ctrl) ctrl.classList.add("hidden");
+  const ytWrap = document.getElementById("pro-yt-player-wrap");
+  if (ytWrap) ytWrap.classList.remove("hidden");
+}
+
+function loadProHlsPlayer(hlsProxyUrl, videoId) {
+  stopProHlsPlayer();
+
+  // Pause YouTube iframe player & hide it when live HLS player is active
+  try {
+    if (proState.ytPlayer && typeof proState.ytPlayer.pauseVideo === "function") {
+      proState.ytPlayer.pauseVideo();
+    }
+  } catch (e) {}
+  const ytWrap = document.getElementById("pro-yt-player-wrap");
+  if (ytWrap) ytWrap.classList.add("hidden");
+
+  const vid = document.getElementById("pro-hls-video");
+  const ctrl = document.getElementById("pro-hls-controls");
+  if (!vid) {
+    loadProYouTubePlayer(videoId);
+    return;
+  }
+
+  vid.classList.remove("hidden");
+  if (ctrl) ctrl.classList.remove("hidden");
+  vid.muted = true; // Autoplays immediately without Chrome blocking
+  const muteBtn = document.getElementById("hls-mute-btn");
+  if (muteBtn) muteBtn.textContent = "🔇";
+  const playBtn = document.getElementById("hls-play-btn");
+  if (playBtn) playBtn.textContent = "⏸";
+
+  proState.hlsMode = true;
+
+  if (window.Hls && window.Hls.isSupported()) {
+    const hls = new window.Hls({
+      lowLatencyMode: false,
+      backBufferLength: 600,
+      maxBufferLength: 25,
+      liveSyncDurationCount: 3,
+      enableWorker: true,
+    });
+    proState.hlsInstance = hls;
+    hls.loadSource(hlsProxyUrl);
+    hls.attachMedia(vid);
+    hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+      vid.play().catch(() => {});
+      startPlayerClockSync();
+      startHlsPreviewLoop();
+    });
+    hls.on(window.Hls.Events.ERROR, (_ev, data) => {
+      if (data && data.fatal) {
+        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+          hls.startLoad();
+        } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+          hls.recoverMediaError();
+        } else {
+          // Graceful fallback to YouTube player only on unrecoverable fatal error
+          stopProHlsPlayer();
+          loadProYouTubePlayer(videoId);
+        }
+      }
+    });
+  } else if (vid.canPlayType("application/vnd.apple.mpegurl")) {
+    // Native HLS (Safari / iOS)
+    vid.src = hlsProxyUrl;
+    vid.play().catch(() => {});
+    startPlayerClockSync();
+    startHlsPreviewLoop();
+  } else {
+    stopProHlsPlayer();
+    loadProYouTubePlayer(videoId);
+  }
+}
+
+function getHlsSeekRange() {
+  const vid = document.getElementById("pro-hls-video");
+  if (!vid || !vid.seekable || vid.seekable.length === 0) return null;
+  const start = vid.seekable.start(0);
+  const end = vid.seekable.end(vid.seekable.length - 1);
+  if (isNaN(start) || isNaN(end) || end <= start) return null;
+  return { start, end, current: vid.currentTime || 0, vid };
+}
+
+function getCurrentHlsUtcSec() {
+  try {
+    if (proState.hlsInstance && proState.hlsInstance.playingDate) {
+      const ms = proState.hlsInstance.playingDate.getTime();
+      if (!isNaN(ms) && ms > 1_000_000_000_000) {
+        return ms / 1000.0;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function setupHlsPlayerControls() {
+  const vid = document.getElementById("pro-hls-video");
+  const playBtn = document.getElementById("hls-play-btn");
+  const back15 = document.getElementById("hls-back-15");
+  const fwd15 = document.getElementById("hls-fwd-15");
+  const jumpLive = document.getElementById("hls-jump-live");
+  const muteBtn = document.getElementById("hls-mute-btn");
+  const scrubber = document.getElementById("pro-hls-scrubber");
+  if (!vid) return;
+
+  if (playBtn) {
+    playBtn.addEventListener("click", () => {
+      if (vid.paused) {
+        vid.play().catch(() => {});
+        playBtn.textContent = "⏸";
+      } else {
+        vid.pause();
+        playBtn.textContent = "▶";
+      }
+    });
+  }
+
+  if (muteBtn) {
+    muteBtn.addEventListener("click", () => {
+      vid.muted = !vid.muted;
+      muteBtn.textContent = vid.muted ? "🔇" : "🔊";
+    });
+  }
+
+  if (back15) {
+    back15.addEventListener("click", () => {
+      const r = getHlsSeekRange();
+      if (r) vid.currentTime = Math.max(r.start + 1, r.current - 15);
+    });
+  }
+
+  if (fwd15) {
+    fwd15.addEventListener("click", () => {
+      const r = getHlsSeekRange();
+      if (r) vid.currentTime = Math.min(r.end - 2, r.current + 15);
+    });
+  }
+
+  if (jumpLive) {
+    jumpLive.addEventListener("click", () => {
+      const r = getHlsSeekRange();
+      if (r) {
+        vid.currentTime = Math.max(r.start, r.end - 4);
+        vid.play().catch(() => {});
+        if (playBtn) playBtn.textContent = "⏸";
+      }
+    });
+  }
+
+  if (scrubber) {
+    scrubber.addEventListener("pointerdown", () => { proState.hlsScrubbing = true; });
+    scrubber.addEventListener("input", () => {
+      const r = getHlsSeekRange();
+      if (!r) return;
+      const target = parseFloat(scrubber.value);
+      if (!isNaN(target)) {
+        vid.currentTime = Math.max(r.start + 0.5, Math.min(r.end - 2, target));
+      }
+    });
+    const finishScrub = () => { proState.hlsScrubbing = false; };
+    scrubber.addEventListener("pointerup", finishScrub);
+    scrubber.addEventListener("change", finishScrub);
+  }
+
+  vid.addEventListener("play", () => { if (playBtn) playBtn.textContent = "⏸"; });
+  vid.addEventListener("pause", () => { if (playBtn) playBtn.textContent = "▶"; });
+}
+
+// =============================================================
+// LIVE YOUTUBE PLAYER (VODs) + START / STOP CLIP RECORDER
 // =============================================================
 function loadProYouTubePlayer(videoId) {
   if (!videoId) return;
@@ -2191,6 +2436,31 @@ function startPlayerClockSync() {
     const clockEl = document.getElementById("pro-player-clock");
     if (!clockEl) return;
 
+    // 1. Live HLS Stream Player (exact DVR timeline!)
+    if (proState.hlsMode) {
+      const r = getHlsSeekRange();
+      if (!r) return;
+      const totalSpan = Math.max(1, r.end - r.start);
+      const pos = Math.max(0, r.current - r.start);
+      const behind = Math.max(0, Math.round(r.end - r.current));
+      const useH = totalSpan >= 3600;
+
+      const scrubber = document.getElementById("pro-hls-scrubber");
+      if (scrubber && !proState.hlsScrubbing) {
+        scrubber.min = r.start.toFixed(1);
+        scrubber.max = r.end.toFixed(1);
+        scrubber.value = r.current.toFixed(1);
+      }
+
+      if (behind <= 10) {
+        clockEl.textContent = `Stream: ${formatTime(pos, useH)} • 🔴 LIVE`;
+      } else {
+        clockEl.textContent = `Stream: ${formatTime(pos, useH)} (−${formatTime(behind, false)} behind live)`;
+      }
+      return;
+    }
+
+    // 2. YouTube IFrame Player (VODs or fallback)
     const cur = safeGetPlayerTime();
     const dur = safeGetPlayerDuration();
 
@@ -2213,11 +2483,16 @@ function startPlayerClockSync() {
       const useH = Math.max(cur, total) >= 3600;
       clockEl.textContent = `YouTube: ${formatTime(cur, useH)} / ${formatTime(total, useH)}`;
     }
-  }, 500);
+  }, 400);
 }
 
 function syncPreviewFrameToPlayer(showBtnSpinner = false) {
   if (!proState.source) return;
+  if (proState.hlsMode) {
+    // Live HLS player already updates the 9:16 preview in real time at 30fps!
+    drawProPreviewCanvas();
+    return;
+  }
   const val = document.getElementById("pro-youtube-url").value.trim();
   if (!val) return;
 
@@ -2239,15 +2514,46 @@ function startProRecording() {
   }
   hideProError();
 
-  const startCur = safeGetPlayerTime();
-  const startEdge = proState.source.is_live ? getExactYouTubeLiveEdge() : 0;
-  const startBehind = (proState.source.is_live && startEdge > 1 && startCur > 0 && startEdge >= startCur)
-    ? Math.max(0, Math.round(startEdge - startCur))
-    : 0;
+  let startCur = 0;
+  let startBehind = 0;
+  let startUtc = null;
+  let behindTag = "";
+
+  if (proState.hlsMode) {
+    const r = getHlsSeekRange();
+    if (!r) {
+      showProError("Wait 2 seconds for the live stream to finish buffering, then click Start Recording.");
+      return;
+    }
+    startCur = r.current;
+    startBehind = Math.max(0, Math.round(r.end - r.current));
+    startUtc = getCurrentHlsUtcSec();
+    const pos = Math.max(0, Math.round(r.current - r.start));
+    const useH = (r.end - r.start) >= 3600;
+    behindTag = startBehind > 10
+      ? ` • from ${formatTime(pos, useH)} (−${formatTime(startBehind, false)})`
+      : " • 🔴 LIVE";
+    r.vid.play().catch(() => {});
+  } else {
+    startCur = safeGetPlayerTime();
+    const startEdge = proState.source.is_live ? getExactYouTubeLiveEdge() : 0;
+    startBehind = (proState.source.is_live && startEdge > 1 && startCur > 0 && startEdge >= startCur)
+      ? Math.max(0, Math.round(startEdge - startCur))
+      : 0;
+    behindTag = (proState.source.is_live && startBehind > 8)
+      ? ` • −${formatTime(startBehind, false)} behind live`
+      : (proState.source.is_live ? " • LIVE" : "");
+    try {
+      if (proState.ytPlayer && typeof proState.ytPlayer.playVideo === "function") {
+        proState.ytPlayer.playVideo();
+      }
+    } catch (e) {}
+  }
 
   proState.isRecording = true;
   proState.recordedClip = null;
   proState.recStartTime = startCur;
+  proState.recStartUtc = startUtc;
   proState.recStartBehindLive = startBehind;
   proState.recStartWallMs = Date.now();
   updateLiveGuideStep(3);
@@ -2255,21 +2561,10 @@ function startProRecording() {
   const readyPill = document.getElementById("pro-rec-ready-pill");
   if (readyPill) readyPill.classList.add("hidden");
 
-  // Ensure video is playing when recording starts
-  try {
-    if (proState.ytPlayer && typeof proState.ytPlayer.playVideo === "function") {
-      proState.ytPlayer.playVideo();
-    }
-  } catch (e) {}
-
   const recBtn = document.getElementById("pro-rec-btn");
   const recTxt = document.getElementById("pro-rec-btn-text");
   const recTimer = document.getElementById("pro-rec-timer");
   const cancelBtn = document.getElementById("pro-rec-cancel-btn");
-
-  const behindTag = (proState.source.is_live && startBehind > 8)
-    ? ` • −${formatTime(startBehind, false)} behind live`
-    : (proState.source.is_live ? " • LIVE" : "");
 
   if (recBtn) recBtn.classList.add("is-recording");
   if (recTxt) recTxt.textContent = "Stop Recording";
@@ -2284,7 +2579,6 @@ function startProRecording() {
     if (!proState.isRecording) return;
     const elapsed = Math.floor((Date.now() - proState.recStartWallMs) / 1000);
     if (recTimer) recTimer.textContent = `REC ${formatTime(elapsed, false)}${behindTag}`;
-    // Auto-stop at 120s (max Reel/Short length)
     if (elapsed >= 120) {
       stopAndSaveRecordedClip();
     }
@@ -2311,12 +2605,23 @@ function cancelProRecording() {
 function stopAndSaveRecordedClip() {
   if (!proState.isRecording || !proState.source) return;
 
-  const endTime = safeGetPlayerTime();
-  const liveEdge = getExactYouTubeLiveEdge();
   const wallElapsed = (Date.now() - proState.recStartWallMs) / 1000;
   const startTime = proState.recStartTime;
+  const startUtc = proState.recStartUtc;
   const startBehind = proState.recStartBehindLive || 0;
 
+  let endTime = 0;
+  let endUtc = null;
+  let hlsRange = null;
+  if (proState.hlsMode) {
+    hlsRange = getHlsSeekRange();
+    endTime = hlsRange ? hlsRange.current : startTime + wallElapsed;
+    endUtc = getCurrentHlsUtcSec();
+  } else {
+    endTime = safeGetPlayerTime();
+  }
+
+  const liveEdge = proState.hlsMode && hlsRange ? hlsRange.end : getExactYouTubeLiveEdge();
   cancelProRecording();
 
   const rawDur = (endTime > startTime + 1.5) ? (endTime - startTime) : wallElapsed;
@@ -2329,22 +2634,41 @@ function stopAndSaveRecordedClip() {
 
   let rewindLabel = "";
   if (proState.source.is_live) {
-    // Anchor strictly to where Start Recording was clicked + how long playback ran!
     const behindFromEnd = (liveEdge > 1 && endTime > 0 && liveEdge >= endTime)
       ? Math.max(0, Math.round(liveEdge - endTime))
       : 0;
     const behindFromStart = Math.max(0, Math.round(startBehind + Math.max(0, wallElapsed - clipDur)));
-    const rewindAtStop = Math.max(behindFromEnd, behindFromStart);
+    const rewindAtStop = proState.hlsMode ? behindFromEnd : Math.max(behindFromEnd, behindFromStart);
+
+    // Exact UTC timestamps (0.00s drift!) when hls.js playingDate is present
+    let finalStartUtc = null;
+    let finalEndUtc = null;
+    if (typeof startUtc === "number" && startUtc > 1_000_000_000) {
+      finalStartUtc = startUtc;
+      finalEndUtc = (typeof endUtc === "number" && endUtc > startUtc + 2.0)
+        ? Math.min(startUtc + 120.0, endUtc)
+        : (startUtc + clipDur);
+    }
 
     proState.recordedClip = {
       isLive: true,
       duration: clipDur,
       rewindAtStop,
+      startUtc: finalStartUtc,
+      endUtc: finalEndUtc,
       stoppedAtMs: Date.now(),
       startTime: 0,
       endTime: clipDur,
     };
-    rewindLabel = rewindAtStop > 8 ? ` (−${formatTime(rewindAtStop, false)} behind live)` : " (LIVE)";
+
+    if (proState.hlsMode && hlsRange) {
+      const startPos = Math.max(0, Math.round(startTime - hlsRange.start));
+      const endPos = Math.max(startPos + 1, Math.round(endTime - hlsRange.start));
+      const useH = (hlsRange.end - hlsRange.start) >= 3600;
+      rewindLabel = ` (${formatTime(startPos, useH)} → ${formatTime(endPos, useH)})`;
+    } else {
+      rewindLabel = rewindAtStop > 8 ? ` (−${formatTime(rewindAtStop, false)} behind live)` : " (LIVE)";
+    }
   } else {
     const maxDur = Math.max(10, Math.floor(proState.source.duration || liveEdge || 3600));
     const s = Math.max(0, Math.min(maxDur - 5, Math.floor(startTime)));
@@ -2353,6 +2677,8 @@ function stopAndSaveRecordedClip() {
       isLive: false,
       duration: e - s,
       rewindAtStop: 0,
+      startUtc: null,
+      endUtc: null,
       stoppedAtMs: Date.now(),
       startTime: s,
       endTime: e,
@@ -2366,7 +2692,7 @@ function stopAndSaveRecordedClip() {
     readyPill.classList.remove("hidden");
   }
   updateLiveGuideStep(4);
-  syncPreviewFrameToPlayer(false);
+  if (!proState.hlsMode) syncPreviewFrameToPlayer(false);
 }
 
 function exportRecordedProClip() {
@@ -2375,7 +2701,6 @@ function exportRecordedProClip() {
     return;
   }
 
-  // If still recording when user clicks Export, stop & capture automatically!
   if (proState.isRecording) {
     stopAndSaveRecordedClip();
   }
@@ -2387,9 +2712,13 @@ function exportRecordedProClip() {
 
   const rec = proState.recordedClip;
   if (rec.isLive) {
-    // Compensate for elapsed seconds since user clicked Stop Recording so zero drift occurs!
     const waitSinceStop = Math.max(0, Math.round((Date.now() - rec.stoppedAtMs) / 1000));
-    submitProGenerate({ duration: rec.duration, rewind: rec.rewindAtStop + waitSinceStop });
+    submitProGenerate({
+      duration: rec.duration,
+      rewind: rec.rewindAtStop + waitSinceStop,
+      startUtc: rec.startUtc,
+      endUtc: rec.endUtc,
+    });
   } else {
     proState.vodStart = rec.startTime;
     proState.vodEnd = rec.endTime;
