@@ -1,5 +1,28 @@
 // --- ClipYT Simple Frontend ---
 
+// Safe API JSON parser: catches HTML error pages (Hugging Face paused, 502 Bad Gateway, 404s)
+// and displays a clear, actionable message instead of "Unexpected token '<', <!DOCTYPE... is not valid JSON"
+async function parseApiResponse(res) {
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    const text = await res.text().catch(() => "");
+    if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("huggingface")) {
+      throw new Error(
+        "Backend server is offline or paused on Hugging Face. Please open https://huggingface.co/spaces/Lucky136/ClipYt and click 'Restart this space' (or wait 20 seconds if it is booting). If testing locally, run 'python run.py'."
+      );
+    }
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new Error(`Server temporarily unavailable (${res.status} Bad Gateway). Backend is restarting, please retry in 10 seconds.`);
+    }
+    throw new Error(`Server returned unexpected response (${res.status} ${res.statusText || "Error"}).`);
+  }
+  try {
+    return await res.json();
+  } catch (err) {
+    throw new Error("Invalid response format from server. Please try again.");
+  }
+}
+
 let currentAnalysis = null;
 let heatmapChartInstance = null;
 let selectedAspectRatio = "9:16";
@@ -296,7 +319,7 @@ async function runFullAnalysis(url, force = false) {
       }),
     });
 
-    const data = await res.json();
+    const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
       throw new Error(data.detail || "Could not analyze this YouTube video.");
     }
@@ -318,7 +341,7 @@ async function fetchInstantPreview(url) {
   try {
     const res = await fetch(`/api/preview?url=${encodeURIComponent(url)}`);
     if (!res.ok) return;
-    const info = await res.json();
+    const info = await parseApiResponse(res);
 
     document.getElementById("meta-thumb").src = info.thumbnail;
     document.getElementById("meta-title").textContent = info.title;
@@ -815,7 +838,7 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
       throw new Error(data.detail || "Could not start creating Short.");
     }
@@ -838,7 +861,7 @@ function pollTaskProgress(taskId) {
         return;
       }
 
-      const task = await res.json();
+      const task = await parseApiResponse(res);
       updateProgressModal(task.message, task.progress);
 
       if (task.status === "completed" && task.result) {
@@ -1238,7 +1261,7 @@ async function inspectLiveStream(url, forceRefresh = false) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, force_refresh: forceRefresh }),
     });
-    const json = await res.json();
+    const json = await parseApiResponse(res);
     if (!res.ok || !json.success) {
       throw new Error(json.detail || "Could not load stream.");
     }
@@ -1427,7 +1450,7 @@ async function loadSelectedBoundaryFrames(manualClick = false) {
         end_time: proState.endSec,
       }),
     });
-    const json = await res.json();
+    const json = await parseApiResponse(res);
     if (mySeq !== proState.framesFetchSeq) return; // newer request superseded this one
     if (res.ok && json.success && json.data) {
       const d = json.data;
@@ -1619,7 +1642,7 @@ async function submitLiveClipExport() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
+    const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
       throw new Error(data.detail || "Could not start clip export.");
     }
@@ -1656,7 +1679,7 @@ async function scanAutoViralClips(url) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, max_peaks: 5, clip_duration: 30.0, hook_duration: 3.0 }),
     });
-    const json = await res.json();
+    const json = await parseApiResponse(res);
     if (!res.ok || !json.success) {
       throw new Error(json.detail || "Could not scan chat spikes.");
     }
@@ -1814,7 +1837,7 @@ async function generateAutoViralShort(peak, btnEl) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
+    const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
       throw new Error(data.detail || "Could not launch auto-viral render.");
     }
