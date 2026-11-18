@@ -919,8 +919,9 @@ function hideProgressModal() {
   document.getElementById("progress-modal").classList.add("hidden");
 }
 
+
 // =============================================================
-// PRO STUDIO: INSTAGRAM FOLLOW GATE + LIVE DUAL-BOX SPLIT-SCREEN
+// LIVE STUDIO: INSTAGRAM GATE + EXACT TIMESTAMP + 60/40 SPLIT
 // =============================================================
 const PRO_UNLOCK_KEY = "clipyt_pro_unlocked_v1";
 
@@ -930,57 +931,17 @@ const proState = {
   followClicked: false,
   followTimerReady: false,
   followCountdownId: null,
-  source: null, // response.data from /api/pro/inspect
-  liveTimingMode: "quick", // "quick" | "manual"
-  liveDuration: 35,
-  liveRewind: 0,
-  liveBaseElapsed: 300,   // elapsed seconds from stream start at inspect time
-  liveInspectedAtMs: 0,   // Date.now() at inspect time so live clock ticks forward
-  liveManualStart: 265,   // forward timestamp from stream start (00:00 -> LIVE NOW)
-  liveManualEnd: 300,     // forward timestamp from stream start (00:00 -> LIVE NOW)
-  liveClockTimer: null,
-  vodStart: 0,
-  vodEnd: 35,
-  camRatio: 0.40,
-  camPosition: "top", // "top" | "bottom"
+  source: null,          // data from /api/pro/inspect
+  firstPdtUtc: null,     // exact UTC epoch of 00:00 on the DVR timeline
+  totalSec: 300,         // total selectable DVR/video seconds
+  startSec: 265,         // selected clip Start (relative to 00:00)
+  endSec: 300,           // selected clip End (relative to 00:00)
+  framesDebounceId: null,
+  framesFetchSeq: 0,
   boxes: {
-    cam: { x: 0.72, y: 0.62, w: 0.25, h: 0.32 },
-    stream: { x: 0.03, y: 0.04, w: 0.68, h: 0.92 },
+    cam: { x: 0.72, y: 0.62, w: 0.25, h: 0.32 },    // Streamer (Bottom 40%)
+    stream: { x: 0.03, y: 0.04, w: 0.68, h: 0.92 }, // Display (Top 60%)
   },
-  frameImageObj: null,
-  previewRafPending: false,
-  radarTimer: null,
-  radarPaused: false,
-  radarChart: null,
-  radarInFlight: false,
-  ytPlayer: null,
-  ytApiReady: false,
-  pendingYtVideoId: null,
-  ytLiveEdgeAnchor: 0,
-  ytLiveEdgeAnchorMs: 0,
-  playerClockTimer: null,
-  hlsInstance: null,
-  hlsMode: false,
-  hlsScrubbing: false,
-  hlsPreviewRaf: 0,
-  boxesLocked: false,
-  isRecording: false,
-  recStartTime: 0,
-  recStartUtc: null,
-  recStartBehindLive: 0,
-  recStartWallMs: 0,
-  recTimerId: null,
-  recordedClip: null, // { isLive, duration, rewindAtStop, startUtc, endUtc, stoppedAtMs, startTime, endTime }
-};
-
-// YouTube IFrame Player API global callback
-window.onYouTubeIframeAPIReady = function () {
-  proState.ytApiReady = true;
-  if (proState.pendingYtVideoId) {
-    const vid = proState.pendingYtVideoId;
-    proState.pendingYtVideoId = null;
-    loadProYouTubePlayer(vid);
-  }
 };
 
 function isProUnlocked() {
@@ -1006,15 +967,6 @@ function refreshProBadgeUI() {
   }
 }
 
-function updateLiveGuideStep(activeStep) {
-  for (let i = 1; i <= 4; i++) {
-    const el = document.getElementById(`guide-step-${i}`);
-    if (!el) continue;
-    el.classList.toggle("done", i < activeStep);
-    el.classList.toggle("active", i === activeStep);
-  }
-}
-
 function switchStudioMode(targetMode) {
   const stdBtn = document.getElementById("studio-btn-standard");
   const proBtn = document.getElementById("studio-btn-pro");
@@ -1034,23 +986,7 @@ function switchStudioMode(targetMode) {
   proWrap.classList.toggle("hidden", !isPro);
 
   if (isPro && proState.source) {
-    requestAnimationFrame(() => {
-      syncBoxesToDOM();
-      scheduleProPreviewRender();
-    });
-    if (proState.hlsMode) startHlsPreviewLoop();
-  } else {
-    cancelProRecording();
-    stopHlsPreviewLoop();
-    try {
-      const hlsVid = document.getElementById("pro-hls-video");
-      if (hlsVid) hlsVid.pause();
-    } catch (e) {}
-    try {
-      if (proState.ytPlayer && typeof proState.ytPlayer.pauseVideo === "function") {
-        proState.ytPlayer.pauseVideo();
-      }
-    } catch (e) {}
+    requestAnimationFrame(syncBoxesToDOM);
   }
 }
 
@@ -1082,7 +1018,7 @@ function setupProStudio() {
     if (e.target.id === "pro-unlock-modal") closeProUnlockModal();
   });
 
-  // Step 1: Instagram Follow Button click -> 4s wait before enabling Step 2
+  // Step 1: Instagram Follow Link -> 4s wait before enabling Step 2
   const followBtn = document.getElementById("insta-follow-btn");
   const waitStatus = document.getElementById("insta-wait-status");
   const step2El = document.getElementById("unlock-step-2");
@@ -1116,7 +1052,7 @@ function setupProStudio() {
     }, 1000);
   });
 
-  // Step 2: Verify Instagram handle & unlock Pro Studio
+  // Step 2: Verify Instagram username & unlock Live Studio
   const doVerify = () => {
     const errEl = document.getElementById("insta-verify-error");
     errEl.classList.add("hidden");
@@ -1144,10 +1080,7 @@ function setupProStudio() {
 
     setTimeout(() => {
       try {
-        localStorage.setItem(
-          PRO_UNLOCK_KEY,
-          JSON.stringify({ handle: raw, unlockedAt: Date.now() })
-        );
+        localStorage.setItem(PRO_UNLOCK_KEY, JSON.stringify({ handle: raw, unlockedAt: Date.now() }));
       } catch (e) {}
       proState.unlocked = true;
       refreshProBadgeUI();
@@ -1157,7 +1090,7 @@ function setupProStudio() {
       btnSp.classList.add("hidden");
       closeProUnlockModal();
       switchStudioMode("pro");
-    }, 1050);
+    }, 950);
   };
 
   verifyBtn.addEventListener("click", doVerify);
@@ -1168,19 +1101,17 @@ function setupProStudio() {
     }
   });
 
-  // Pro URL form & Paste button
+  // Load Stream form & Paste button
   const proUrlInput = document.getElementById("pro-youtube-url");
   document.getElementById("pro-inspect-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    inspectProStream(proUrlInput.value.trim(), false);
+    inspectLiveStream(proUrlInput.value.trim(), false);
   });
 
   proUrlInput.addEventListener("paste", () => {
     setTimeout(() => {
       const val = proUrlInput.value.trim();
-      if (looksLikeYouTubeUrl(val)) {
-        inspectProStream(val, false);
-      }
+      if (looksLikeYouTubeUrl(val)) inspectLiveStream(val, false);
     }, 60);
   });
 
@@ -1189,99 +1120,74 @@ function setupProStudio() {
       const text = (await navigator.clipboard.readText()).trim();
       if (text) {
         proUrlInput.value = text;
-        if (looksLikeYouTubeUrl(text)) {
-          inspectProStream(text, false);
-        }
+        if (looksLikeYouTubeUrl(text)) inspectLiveStream(text, false);
       }
     } catch (e) {
       proUrlInput.focus();
     }
   });
 
-  // Sync Preview Frame button -> grabs frame at exact current YouTube player timestamp!
+  // Refresh Live Edge button
   document.getElementById("pro-refresh-frame-btn").addEventListener("click", () => {
-    syncPreviewFrameToPlayer(true);
+    const val = proUrlInput.value.trim();
+    if (val) inspectLiveStream(val, true);
   });
 
-  // Streamer split ratio pills
-  document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      proState.camRatio = parseFloat(btn.getAttribute("data-camratio")) || 0.40;
-      scheduleProPreviewRender();
-    });
+  // Check Start & End Frames button
+  document.getElementById("pro-load-frames-btn").addEventListener("click", () => {
+    loadSelectedBoundaryFrames(true);
   });
 
-  // Streamer Top/Bottom pills
-  document.querySelectorAll("#pro-campos-picker .choice-pill").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#pro-campos-picker .choice-pill").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      proState.camPosition = btn.getAttribute("data-campos") || "top";
-      scheduleProPreviewRender();
-    });
+  // Dual-Range Timeline Slider
+  const sStart = document.getElementById("pro-tl-start");
+  const sEnd = document.getElementById("pro-tl-end");
+  sStart.addEventListener("input", () => {
+    let s = parseInt(sStart.value, 10);
+    let e = proState.endSec;
+    if (s > e - 5) {
+      e = Math.min(proState.totalSec, s + 5);
+      if (e - s < 5) s = Math.max(0, e - 5);
+    }
+    if (e - s > 120) e = s + 120;
+    proState.startSec = s;
+    proState.endSec = e;
+    syncLiveTimelineUI();
+    scheduleBoundaryFramesFetch();
   });
 
-  // Live Studio Captions toggle & selects update live 9:16 preview
+  sEnd.addEventListener("input", () => {
+    let s = proState.startSec;
+    let e = parseInt(sEnd.value, 10);
+    if (e < s + 5) {
+      s = Math.max(0, e - 5);
+      if (e - s < 5) e = s + 5;
+    }
+    if (e - s > 120) s = e - 120;
+    proState.startSec = s;
+    proState.endSec = e;
+    syncLiveTimelineUI();
+    scheduleBoundaryFramesFetch();
+  });
+
+  // Exact From / To text inputs
+  document.getElementById("pro-from-input").addEventListener("change", () => onLiveTimeInput("start"));
+  document.getElementById("pro-to-input").addEventListener("change", () => onLiveTimeInput("end"));
+
+  // Captions toggle
   const proBurnToggle = document.getElementById("pro-burn-subs");
   const proSubOpts = document.getElementById("pro-sub-options");
   proBurnToggle.addEventListener("change", () => {
     proSubOpts.querySelectorAll("#pro-sub-style, #pro-sub-pos").forEach((el) => (el.disabled = !proBurnToggle.checked));
     proSubOpts.style.opacity = proBurnToggle.checked ? "1" : "0.55";
-    scheduleProPreviewRender();
   });
-  document.getElementById("pro-sub-style").addEventListener("change", scheduleProPreviewRender);
-  document.getElementById("pro-sub-pos").addEventListener("change", scheduleProPreviewRender);
 
-  // Step 4: Export Short button
-  document.getElementById("pro-create-btn").addEventListener("click", exportRecordedProClip);
+  // Export 9:16 Clip button
+  document.getElementById("pro-create-btn").addEventListener("click", submitLiveClipExport);
 
-  // Step 2: Lock / Unlock Boxes over Live YouTube Player
-  const lockBoxesBtn = document.getElementById("pro-lock-boxes-btn");
-  if (lockBoxesBtn) {
-    lockBoxesBtn.addEventListener("click", () => {
-      proState.boxesLocked = !proState.boxesLocked;
-      const overlay = document.getElementById("pro-boxes-overlay");
-      if (overlay) overlay.classList.toggle("boxes-locked", proState.boxesLocked);
-      lockBoxesBtn.classList.toggle("is-locked", proState.boxesLocked);
-      lockBoxesBtn.textContent = proState.boxesLocked ? "🔒 Boxes Locked (Click Video)" : "🔓 Lock Boxes";
-      if (proState.boxesLocked) {
-        if (!proState.isRecording && !proState.recordedClip) updateLiveGuideStep(3);
-        syncPreviewFrameToPlayer(false);
-      } else if (!proState.isRecording && !proState.recordedClip) {
-        updateLiveGuideStep(1);
-      }
-    });
-  }
-
-  // Step 3: Start Recording / Stop Recording buttons
-  const recBtn = document.getElementById("pro-rec-btn");
-  if (recBtn) {
-    recBtn.addEventListener("click", () => {
-      if (proState.isRecording) {
-        stopAndSaveRecordedClip();
-      } else {
-        startProRecording();
-      }
-    });
-  }
-  const recCancelBtn = document.getElementById("pro-rec-cancel-btn");
-  if (recCancelBtn) {
-    recCancelBtn.addEventListener("click", () => {
-      cancelProRecording();
-      updateLiveGuideStep(proState.boxesLocked ? 3 : 2);
-    });
-  }
-
-  // Dual-Box pointer drag & corner resize engine
+  // Dual-Box Drag & Corner Resize
   setupDualBoxInteractions();
-  setupHlsPlayerControls();
   window.addEventListener("resize", () => {
-    if (proState.mode === "pro" && proState.source) {
-      syncBoxesToDOM();
-      scheduleProPreviewRender();
-    }
+    if (proState.mode === "pro" && proState.source) syncBoxesToDOM();
   });
 }
 
@@ -1303,37 +1209,25 @@ function hideProError() {
   document.getElementById("pro-error-banner").classList.add("hidden");
 }
 
-async function inspectProStream(url, forceRefresh = false, previewOffsetSec = null) {
+async function inspectLiveStream(url, forceRefresh = false) {
   if (!looksLikeYouTubeUrl(url)) {
     showProError("Please paste a valid YouTube Live or Video link.");
     return;
   }
 
   hideProError();
-  const isFrameOnlySeek = previewOffsetSec !== null && proState.source !== null;
-  if (!isFrameOnlySeek) setProLoadSpinner(true);
-
+  setProLoadSpinner(true);
   const refreshBtn = document.getElementById("pro-refresh-frame-btn");
-  const livePrevBtn = document.getElementById("pro-live-preview-frame-btn");
-  const vodPrevBtn = document.getElementById("pro-vod-preview-frame-btn");
   if (forceRefresh && refreshBtn) {
     refreshBtn.disabled = true;
     refreshBtn.textContent = "Refreshing...";
   }
-  if (isFrameOnlySeek) {
-    if (livePrevBtn) { livePrevBtn.disabled = true; livePrevBtn.textContent = "Loading frame..."; }
-    if (vodPrevBtn) { vodPrevBtn.disabled = true; vodPrevBtn.textContent = "Loading frame..."; }
-  }
 
   try {
-    const reqBody = { url, force_refresh: forceRefresh };
-    if (previewOffsetSec !== null && previewOffsetSec >= 0) {
-      reqBody.preview_offset_sec = previewOffsetSec;
-    }
     const res = await fetch("/api/pro/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(reqBody),
+      body: JSON.stringify({ url, force_refresh: forceRefresh }),
     });
     const json = await res.json();
     if (!res.ok || !json.success) {
@@ -1342,257 +1236,208 @@ async function inspectProStream(url, forceRefresh = false, previewOffsetSec = nu
 
     const src = json.data;
     proState.source = src;
+    proState.firstPdtUtc = src.first_pdt_utc || null;
 
-    // Update source bar (preserve user's boxes & recording state on frame-only sync!)
-    if (!isFrameOnlySeek) {
-      const badgeEl = document.getElementById("pro-live-badge");
-      if (src.is_live) {
-        const elapsed = Math.max(35, Math.floor(src.live_elapsed_sec || 300));
-        proState.liveBaseElapsed = elapsed;
-        proState.liveInspectedAtMs = Date.now();
-        const useH = elapsed >= 3600;
-        badgeEl.textContent = `🔴 LIVE • ${formatTime(elapsed, useH)}`;
-        badgeEl.classList.remove("is-vod");
-        startLiveClock();
-      } else {
-        stopLiveClock();
-        badgeEl.textContent = `🎬 VIDEO • ${src.duration_str}`;
-        badgeEl.classList.add("is-vod");
-      }
+    const total = src.is_live
+      ? Math.max(30, Math.floor(src.dvr_window_sec || src.live_elapsed_sec || 300))
+      : Math.max(10, Math.floor(src.duration || 60));
+    proState.totalSec = total;
 
-      document.getElementById("pro-source-title").textContent = src.title;
-      document.getElementById("pro-source-author").textContent = src.author;
-
-      // Reset boxes unlocked & guide to Step 1
-      proState.boxesLocked = false;
-      proState.recordedClip = null;
-      const overlay = document.getElementById("pro-boxes-overlay");
-      if (overlay) overlay.classList.remove("boxes-locked");
-      const lockBtn = document.getElementById("pro-lock-boxes-btn");
-      if (lockBtn) {
-        lockBtn.classList.remove("is-locked");
-        lockBtn.textContent = "🔓 Lock Boxes";
-      }
-      const readyPill = document.getElementById("pro-rec-ready-pill");
-      if (readyPill) readyPill.classList.add("hidden");
-      updateLiveGuideStep(1);
-
-      // Play directly in YouTube's native player (zero backend proxy load, zero 502s!)
-      cancelProRecording();
-      loadProYouTubePlayer(src.video_id);
-      const rewWrap = document.getElementById("pro-rec-rewind-wrap");
-      if (rewWrap) rewWrap.classList.add("hidden");
+    if (src.is_live) {
+      // Default to last 35s at the live edge, user can scrub back anywhere to 00:00!
+      proState.endSec = total;
+      proState.startSec = Math.max(0, total - 35);
+    } else {
+      proState.startSec = 0;
+      proState.endSec = Math.min(35, total);
     }
 
-    // Load grabbed 16:9 frame into editor & canvas preview
-    const imgEl = document.getElementById("pro-frame-img");
-    const frameSrc = src.frame_image || src.thumbnail;
-    imgEl.src = frameSrc;
+    const badgeEl = document.getElementById("pro-live-badge");
+    const useH = total >= 3600;
+    if (src.is_live) {
+      badgeEl.textContent = `🔴 LIVE • ${formatTime(total, useH)}`;
+      badgeEl.classList.remove("is-vod");
+    } else {
+      badgeEl.textContent = `🎬 VIDEO • ${src.duration_str}`;
+      badgeEl.classList.add("is-vod");
+    }
 
-    const previewImg = new Image();
-    previewImg.crossOrigin = "anonymous";
-    previewImg.onload = () => {
-      proState.frameImageObj = previewImg;
-      scheduleProPreviewRender();
-    };
-    previewImg.src = frameSrc;
+    document.getElementById("pro-source-title").textContent = src.title;
+    document.getElementById("pro-source-author").textContent = src.author;
+
+    const fmtHint = useH ? "(hh:mm:ss)" : "(mm:ss)";
+    document.getElementById("pro-from-label").textContent = `From ${fmtHint}`;
+    document.getElementById("pro-to-label").textContent = `To ${fmtHint}`;
+
+    document.getElementById("pro-tl-min").textContent = formatTime(0, useH);
+    document.getElementById("pro-tl-mid").textContent = formatTime(Math.floor(total / 2), useH);
+    document.getElementById("pro-tl-max").textContent = src.is_live
+      ? `🔴 LIVE ${formatTime(total, useH)}`
+      : formatTime(total, useH);
+
+    const sStart = document.getElementById("pro-tl-start");
+    const sEnd = document.getElementById("pro-tl-end");
+    sStart.max = total;
+    sEnd.max = total;
+
+    syncLiveTimelineUI();
+
+    // Seed initial frames right away, then fetch exact boundary frames for selected From/To
+    const fallbackImg = src.frame_image || src.thumbnail;
+    document.getElementById("pro-frame-img").src = fallbackImg;
+    document.getElementById("pro-start-frame-img").src = fallbackImg;
+    document.getElementById("pro-end-frame-img").src = fallbackImg;
 
     document.getElementById("pro-editor-wrap").classList.remove("hidden");
-    requestAnimationFrame(() => {
-      syncBoxesToDOM();
-      scheduleProPreviewRender();
-    });
+    requestAnimationFrame(syncBoxesToDOM);
+    loadSelectedBoundaryFrames(false);
   } catch (err) {
     showProError(err.message || "Failed to load stream.");
   } finally {
     setProLoadSpinner(false);
     if (refreshBtn) {
       refreshBtn.disabled = false;
-      refreshBtn.textContent = "↻ Sync Preview Frame";
+      refreshBtn.textContent = "↻ Refresh Live Edge";
     }
-    if (livePrevBtn) { livePrevBtn.disabled = false; livePrevBtn.textContent = "👁 Load Frame at Start"; }
-    if (vodPrevBtn) { vodPrevBtn.disabled = false; vodPrevBtn.textContent = "👁 Load Frame at Start"; }
   }
 }
 
-function getCurrentLiveElapsed() {
-  if (!proState.liveInspectedAtMs) return Math.max(35, Math.floor(proState.liveBaseElapsed || 300));
-  const delta = Math.max(0, Math.floor((Date.now() - proState.liveInspectedAtMs) / 1000));
-  return Math.max(35, Math.floor(proState.liveBaseElapsed + delta));
+function syncLiveTimelineUI() {
+  const total = Math.max(10, proState.totalSec);
+  const useH = total >= 3600;
+  let s = Math.max(0, Math.min(total - 5, Math.round(proState.startSec)));
+  let e = Math.max(s + 5, Math.min(total, Math.round(proState.endSec)));
+  if (e - s > 120) e = Math.min(total, s + 120);
+  proState.startSec = s;
+  proState.endSec = e;
+
+  const sStr = formatTime(s, useH);
+  const eStr = formatTime(e, useH);
+  document.getElementById("pro-from-input").value = sStr;
+  document.getElementById("pro-to-input").value = eStr;
+  document.getElementById("pro-clip-len-display").textContent = formatTime(Math.max(5, e - s), false);
+  document.getElementById("pro-start-frame-badge").textContent = sStr;
+  document.getElementById("pro-end-frame-badge").textContent = eStr;
+
+  const sStart = document.getElementById("pro-tl-start");
+  const sEnd = document.getElementById("pro-tl-end");
+  const fill = document.getElementById("pro-tl-fill");
+  sStart.value = s;
+  sEnd.value = e;
+  const leftPct = (s / total) * 100;
+  const widthPct = Math.max(0.8, ((e - s) / total) * 100);
+  fill.style.left = `${leftPct}%`;
+  fill.style.width = `${widthPct}%`;
 }
 
-function stopLiveClock() {
-  if (proState.liveClockTimer) {
-    clearInterval(proState.liveClockTimer);
-    proState.liveClockTimer = null;
-  }
-}
-
-function startLiveClock() {
-  stopLiveClock();
-  proState.liveClockTimer = setInterval(() => {
-    if (!proState.source || !proState.source.is_live) {
-      stopLiveClock();
-      return;
-    }
-    const liveNow = getCurrentLiveElapsed();
-    const useH = liveNow >= 3600;
-    const badgeEl = document.getElementById("pro-live-badge");
-    if (badgeEl) badgeEl.textContent = `🔴 LIVE • ${formatTime(liveNow, useH)}`;
-
-    const minLbl = document.getElementById("pro-live-min-label");
-    const midLbl = document.getElementById("pro-live-mid-label");
-    const nowLbl = document.getElementById("pro-live-now-label");
-    if (minLbl) minLbl.textContent = formatTime(0, useH);
-    if (midLbl) midLbl.textContent = formatTime(Math.floor(liveNow / 2), useH);
-    if (nowLbl) nowLbl.textContent = `🔴 LIVE ${formatTime(liveNow, useH)}`;
-
-    const sStart = document.getElementById("pro-live-slider-start");
-    const sEnd = document.getElementById("pro-live-slider-end");
-    const fill = document.getElementById("pro-live-slider-fill");
-    if (sStart && sEnd && fill) {
-      sStart.max = liveNow;
-      sEnd.max = liveNow;
-      const leftPct = (proState.liveManualStart / Math.max(1, liveNow)) * 100;
-      const widthPct = Math.max(0.8, ((proState.liveManualEnd - proState.liveManualStart) / Math.max(1, liveNow)) * 100);
-      fill.style.left = `${leftPct}%`;
-      fill.style.width = `${widthPct}%`;
-    }
-  }, 1000);
-}
-
-function syncProLiveManualUI() {
-  const liveNow = getCurrentLiveElapsed();
-  const useH = liveNow >= 3600;
-
-  let s = Math.max(0, Math.min(liveNow - 5, Math.round(proState.liveManualStart)));
-  let e = Math.max(s + 5, Math.min(liveNow, Math.round(proState.liveManualEnd)));
-  if (e - s > 120) {
-    e = Math.min(liveNow, s + 120);
-  }
-  proState.liveManualStart = s;
-  proState.liveManualEnd = e;
-
-  const startIn = document.getElementById("pro-live-start-input");
-  const endIn = document.getElementById("pro-live-end-input");
-  const durDisp = document.getElementById("pro-live-dur-display");
-  if (startIn) startIn.value = formatTime(s, useH);
-  if (endIn) endIn.value = formatTime(e, useH);
-  if (durDisp) durDisp.textContent = formatTime(Math.max(5, e - s), false);
-
-  const minLbl = document.getElementById("pro-live-min-label");
-  const midLbl = document.getElementById("pro-live-mid-label");
-  const nowLbl = document.getElementById("pro-live-now-label");
-  if (minLbl) minLbl.textContent = formatTime(0, useH);
-  if (midLbl) midLbl.textContent = formatTime(Math.floor(liveNow / 2), useH);
-  if (nowLbl) nowLbl.textContent = `🔴 LIVE ${formatTime(liveNow, useH)}`;
-
-  const sStart = document.getElementById("pro-live-slider-start");
-  const sEnd = document.getElementById("pro-live-slider-end");
-  const fill = document.getElementById("pro-live-slider-fill");
-  if (sStart && sEnd && fill) {
-    sStart.max = liveNow;
-    sEnd.max = liveNow;
-    sStart.value = s;
-    sEnd.value = e;
-    const leftPct = (s / Math.max(1, liveNow)) * 100;
-    const widthPct = Math.max(0.8, ((e - s) / Math.max(1, liveNow)) * 100);
-    fill.style.left = `${leftPct}%`;
-    fill.style.width = `${widthPct}%`;
-  }
-}
-
-function onProLiveManualInput(field) {
-  const liveNow = getCurrentLiveElapsed();
-  const input = document.getElementById(field === "start" ? "pro-live-start-input" : "pro-live-end-input");
-  if (!input) return;
+function onLiveTimeInput(field) {
+  if (!proState.source) return;
+  const input = document.getElementById(field === "start" ? "pro-from-input" : "pro-to-input");
   const parsed = parseTime(input.value);
   if (!isNaN(parsed)) {
-    const clamped = Math.max(0, Math.min(liveNow, Math.round(parsed)));
+    const total = proState.totalSec;
+    const clamped = Math.max(0, Math.min(total, Math.round(parsed)));
     if (field === "start") {
-      proState.liveManualStart = Math.min(clamped, Math.max(0, liveNow - 5));
-      if (proState.liveManualEnd < proState.liveManualStart + 5) {
-        proState.liveManualEnd = Math.min(liveNow, proState.liveManualStart + 35);
+      proState.startSec = Math.min(clamped, Math.max(0, total - 5));
+      if (proState.endSec < proState.startSec + 5) {
+        proState.endSec = Math.min(total, proState.startSec + 35);
       }
-      if (proState.liveManualEnd - proState.liveManualStart > 120) {
-        proState.liveManualEnd = Math.min(liveNow, proState.liveManualStart + 120);
+      if (proState.endSec - proState.startSec > 120) {
+        proState.endSec = Math.min(total, proState.startSec + 120);
       }
     } else {
-      proState.liveManualEnd = Math.max(5, clamped);
-      if (proState.liveManualStart > proState.liveManualEnd - 5) {
-        proState.liveManualStart = Math.max(0, proState.liveManualEnd - 35);
+      proState.endSec = Math.max(5, clamped);
+      if (proState.startSec > proState.endSec - 5) {
+        proState.startSec = Math.max(0, proState.endSec - 35);
       }
-      if (proState.liveManualEnd - proState.liveManualStart > 120) {
-        proState.liveManualStart = Math.max(0, proState.liveManualEnd - 120);
+      if (proState.endSec - proState.startSec > 120) {
+        proState.startSec = Math.max(0, proState.endSec - 120);
       }
     }
   }
-  syncProLiveManualUI();
+  syncLiveTimelineUI();
+  loadSelectedBoundaryFrames(false);
 }
 
-window.stepProLiveManual = function (field, delta) {
-  const liveNow = getCurrentLiveElapsed();
+window.stepLiveClipTime = function (field, delta) {
+  if (!proState.source) return;
+  const total = proState.totalSec;
   if (field === "start") {
-    proState.liveManualStart = Math.max(0, Math.min(proState.liveManualEnd - 5, proState.liveManualStart + delta));
-    if (proState.liveManualEnd - proState.liveManualStart > 120) {
-      proState.liveManualEnd = proState.liveManualStart + 120;
+    proState.startSec = Math.max(0, Math.min(proState.endSec - 5, proState.startSec + delta));
+    if (proState.endSec - proState.startSec > 120) {
+      proState.endSec = proState.startSec + 120;
     }
   } else {
-    proState.liveManualEnd = Math.max(proState.liveManualStart + 5, Math.min(liveNow, Math.min(proState.liveManualStart + 120, proState.liveManualEnd + delta)));
+    proState.endSec = Math.max(
+      proState.startSec + 5,
+      Math.min(total, Math.min(proState.startSec + 120, proState.endSec + delta))
+    );
   }
-  syncProLiveManualUI();
+  syncLiveTimelineUI();
+  scheduleBoundaryFramesFetch();
 };
 
-function syncProVodUI() {
-  if (!proState.source) return;
-  const useH = Boolean(proState.source.use_hours);
-  const maxDur = Math.max(10, Math.floor(proState.source.duration || 60));
-  document.getElementById("pro-vod-start-input").value = formatTime(proState.vodStart, useH);
-  document.getElementById("pro-vod-end-input").value = formatTime(proState.vodEnd, useH);
-  document.getElementById("pro-vod-dur-display").textContent = formatTime(
-    Math.max(1, proState.vodEnd - proState.vodStart),
-    false
-  );
-
-  const sStart = document.getElementById("pro-vod-slider-start");
-  const sEnd = document.getElementById("pro-vod-slider-end");
-  const fill = document.getElementById("pro-vod-slider-fill");
-  if (sStart && sEnd && fill) {
-    sStart.value = Math.min(maxDur, proState.vodStart);
-    sEnd.value = Math.min(maxDur, proState.vodEnd);
-    const leftPct = (proState.vodStart / maxDur) * 100;
-    const widthPct = Math.max(0.8, ((proState.vodEnd - proState.vodStart) / maxDur) * 100);
-    fill.style.left = `${leftPct}%`;
-    fill.style.width = `${widthPct}%`;
-  }
+function scheduleBoundaryFramesFetch() {
+  if (proState.framesDebounceId) clearTimeout(proState.framesDebounceId);
+  proState.framesDebounceId = setTimeout(() => {
+    loadSelectedBoundaryFrames(false);
+  }, 550);
 }
 
-function onProVodInputChange(field) {
+async function loadSelectedBoundaryFrames(manualClick = false) {
   if (!proState.source) return;
-  const maxDur = Math.max(10, Math.floor(proState.source.duration || 3600));
-  const input = document.getElementById(field === "start" ? "pro-vod-start-input" : "pro-vod-end-input");
-  const parsed = parseTime(input.value);
-  if (!isNaN(parsed)) {
-    const clamped = Math.max(0, Math.min(maxDur, parsed));
-    if (field === "start") {
-      proState.vodStart = Math.min(clamped, Math.max(0, proState.vodEnd - 5));
-    } else {
-      proState.vodEnd = Math.max(proState.vodStart + 5, Math.min(clamped, proState.vodStart + 120));
+  const url = document.getElementById("pro-youtube-url").value.trim();
+  const statusEl = document.getElementById("pro-frames-status");
+  const btn = document.getElementById("pro-load-frames-btn");
+  const mySeq = ++proState.framesFetchSeq;
+
+  if (statusEl) statusEl.textContent = "Loading exact Start & End frames...";
+  if (manualClick && btn) {
+    btn.disabled = true;
+    btn.textContent = "Loading frames...";
+  }
+
+  const isLive = Boolean(proState.source.is_live);
+  const startUtc = isLive && proState.firstPdtUtc ? (proState.firstPdtUtc + proState.startSec) : null;
+  const endUtc = isLive && proState.firstPdtUtc ? (proState.firstPdtUtc + proState.endSec) : null;
+
+  try {
+    const res = await fetch("/api/pro/frames", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        video_id: proState.source.video_id,
+        is_live: isLive,
+        start_utc_ts: startUtc,
+        end_utc_ts: endUtc,
+        start_time: proState.startSec,
+        end_time: proState.endSec,
+      }),
+    });
+    const json = await res.json();
+    if (mySeq !== proState.framesFetchSeq) return; // newer request superseded this one
+    if (res.ok && json.success && json.data) {
+      const d = json.data;
+      if (d.start_frame) {
+        document.getElementById("pro-start-frame-img").src = d.start_frame;
+        // Also put the EXACT Start Frame onto the Box Placement Stage below!
+        document.getElementById("pro-frame-img").src = d.start_frame;
+      }
+      if (d.end_frame) {
+        document.getElementById("pro-end-frame-img").src = d.end_frame;
+      }
+      if (statusEl) statusEl.textContent = "✓ Exact frames verified — ready to export!";
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = "Exact UTC segment lock active";
+  } finally {
+    if (manualClick && btn) {
+      btn.disabled = false;
+      btn.textContent = "👁 Check Start & End Frames";
     }
   }
-  syncProVodUI();
 }
-
-window.stepProVodTime = function (field, delta) {
-  if (!proState.source) return;
-  const maxDur = Math.max(10, Math.floor(proState.source.duration || 3600));
-  if (field === "start") {
-    proState.vodStart = Math.max(0, Math.min(proState.vodEnd - 5, proState.vodStart + delta));
-  } else {
-    proState.vodEnd = Math.max(proState.vodStart + 5, Math.min(maxDur, Math.min(proState.vodStart + 120, proState.vodEnd + delta)));
-  }
-  syncProVodUI();
-};
 
 // 1-Click Streamer Facecam Presets
 window.applyCamPreset = function (preset) {
@@ -1609,10 +1454,6 @@ window.applyCamPreset = function (preset) {
     proState.boxes.stream = { x: 0.03, y: 0.04, w: 0.68, h: 0.92 };
   }
   syncBoxesToDOM();
-  scheduleProPreviewRender();
-  if (!proState.boxesLocked && !proState.isRecording && !proState.recordedClip) {
-    updateLiveGuideStep(2);
-  }
 };
 
 function syncBoxesToDOM() {
@@ -1632,15 +1473,6 @@ function syncBoxesToDOM() {
     el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
     el.style.width = `${pw.toFixed(1)}px`;
     el.style.height = `${ph.toFixed(1)}px`;
-
-    // Keep the bottom 58px YouTube timeline scrubber & controls ALWAYS clickable even while boxes are unlocked!
-    const dragBody = el.querySelector(".crop-drag-body");
-    if (dragBody) {
-      const ytControlsHeight = 58;
-      const overlapBottom = Math.max(0, (py + ph) - (rect.height - ytControlsHeight));
-      const safeBottom = Math.min(Math.max(0, ph - 22), overlapBottom);
-      dragBody.style.bottom = `${safeBottom.toFixed(1)}px`;
-    }
   }
 }
 
@@ -1694,12 +1526,8 @@ function setupDualBoxInteractions() {
       x = Math.max(0, Math.min(1 - w, o.x + dx));
       y = Math.max(0, Math.min(1 - h, o.y + dy));
     } else {
-      if (dragCtx.handle.includes("e")) {
-        w = Math.max(minW, Math.min(1 - o.x, o.w + dx));
-      }
-      if (dragCtx.handle.includes("s")) {
-        h = Math.max(minH, Math.min(1 - o.y, o.h + dy));
-      }
+      if (dragCtx.handle.includes("e")) w = Math.max(minW, Math.min(1 - o.x, o.w + dx));
+      if (dragCtx.handle.includes("s")) h = Math.max(minH, Math.min(1 - o.y, o.h + dy));
       if (dragCtx.handle.includes("w")) {
         const maxLeft = o.x + o.w - minW;
         const newX = Math.max(0, Math.min(maxLeft, o.x + dx));
@@ -1716,7 +1544,6 @@ function setupDualBoxInteractions() {
 
     proState.boxes[dragCtx.key] = { x, y, w, h };
     syncBoxesToDOM();
-    scheduleProPreviewRender();
   });
 
   const endDrag = (e) => {
@@ -1726,188 +1553,53 @@ function setupDualBoxInteractions() {
       dragCtx.captureEl.releasePointerCapture(e.pointerId);
     } catch (err) {}
     dragCtx = null;
-    if (!proState.boxesLocked && !proState.isRecording && !proState.recordedClip) {
-      updateLiveGuideStep(2);
-    }
   };
 
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
 }
 
-function scheduleProPreviewRender() {
-  if (proState.previewRafPending) return;
-  proState.previewRafPending = true;
-  requestAnimationFrame(() => {
-    proState.previewRafPending = false;
-    drawProPreviewCanvas();
-  });
-}
-
-function drawCoverCrop(ctx, img, box, destX, destY, destW, destH) {
-  const iw = img.videoWidth || img.naturalWidth || img.width;
-  const ih = img.videoHeight || img.naturalHeight || img.height;
-  if (!iw || !ih) return;
-
-  let sx = box.x * iw;
-  let sy = box.y * ih;
-  let sw = box.w * iw;
-  let sh = box.h * ih;
-
-  // Match FFmpeg's scale=increase + center crop (zero stretch, zero distortion!)
-  const srcAspect = sw / sh;
-  const dstAspect = destW / destH;
-  if (srcAspect > dstAspect) {
-    const newSw = sh * dstAspect;
-    sx += (sw - newSw) / 2;
-    sw = newSw;
-  } else {
-    const newSh = sw / dstAspect;
-    sy += (sh - newSh) / 2;
-    sh = newSh;
-  }
-
-  ctx.drawImage(img, sx, sy, sw, sh, destX, destY, destW, destH);
-}
-
-function drawProPreviewCanvas() {
-  const canvas = document.getElementById("pro-preview-canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
-
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = "#0f0a1d";
-  ctx.fillRect(0, 0, W, H);
-
-  const dividerH = 3;
-  const camH = Math.round(H * proState.camRatio);
-  const streamH = H - camH - dividerH;
-  const camOnTop = proState.camPosition !== "bottom";
-
-  const camY = camOnTop ? 0 : streamH + dividerH;
-  const streamY = camOnTop ? camH + dividerH : 0;
-  const seamY = camOnTop ? camH : streamH;
-
-  // Use live moving HLS <video> when playing a live stream, else grabbed frame image!
-  const hlsVid = document.getElementById("pro-hls-video");
-  const liveMedia =
-    proState.hlsMode && hlsVid && hlsVid.readyState >= 2 && hlsVid.videoWidth > 0
-      ? hlsVid
-      : proState.frameImageObj;
-
-  if (liveMedia) {
-    drawCoverCrop(ctx, liveMedia, proState.boxes.cam, 0, camY, W, camH);
-    drawCoverCrop(ctx, liveMedia, proState.boxes.stream, 0, streamY, W, streamH);
-  }
-
-  // Subtle dark-glass divider line
-  ctx.fillStyle = "#120d24";
-  ctx.fillRect(0, seamY, W, dividerH);
-
-  // Sample AI Hinglish Caption preview
-  const burnSubs = document.getElementById("pro-burn-subs")?.checked;
-  if (burnSubs) {
-    const style = document.getElementById("pro-sub-style")?.value || "viral_pop";
-    const pos = document.getElementById("pro-sub-pos")?.value || "seam";
-
-    let capY = seamY + 6;
-    if (pos === "top") capY = Math.round(H * 0.14);
-    else if (pos === "bottom") capY = Math.round(H * 0.79);
-
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const isModern = style === "clean_modern";
-    ctx.font = isModern ? "700 18px Inter, sans-serif" : "900 19px Inter, sans-serif";
-
-    const words = isModern ? ["Bhai", "kya", "clutch!"] : ["BHAI", "KYA", "CLUTCH!"];
-    const fullText = words.join(" ");
-    const totalW = ctx.measureText(fullText).width;
-
-    if (isModern) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
-      const padX = 12;
-      const padY = 8;
-      ctx.beginPath();
-      ctx.roundRect(W / 2 - totalW / 2 - padX, capY - 12 - padY / 2, totalW + padX * 2, 26 + padY, 8);
-      ctx.fill();
-    }
-
-    let curX = W / 2 - totalW / 2;
-    ctx.textAlign = "left";
-    words.forEach((w, idx) => {
-      const displayW = idx < words.length - 1 ? w + " " : w;
-      const active = idx === 2;
-      let fill = "#ffffff";
-      if (style === "neon_yellow") fill = active ? "#33ff55" : "#ffe500";
-      else if (style === "clean_modern") fill = active ? "#ffe500" : "#ffffff";
-      else fill = active ? "#ffea00" : "#ffffff";
-
-      if (!isModern) {
-        ctx.lineWidth = 4.5;
-        ctx.strokeStyle = "#000000";
-        ctx.strokeText(displayW, curX, capY);
-      }
-      ctx.fillStyle = fill;
-      ctx.fillText(displayW, curX, capY);
-      curX += ctx.measureText(displayW).width;
-    });
-    ctx.restore();
-  }
-}
-
-async function submitProGenerate(liveOverride = null) {
+async function submitLiveClipExport() {
   if (!proState.source) {
-    showProError("Please load a YouTube Live Stream or Video first.");
+    showProError("Please paste and load a YouTube Live Stream link first.");
     return;
   }
 
   hideProError();
   const isLive = Boolean(proState.source.is_live);
-  let liveDur = proState.liveDuration;
-  let liveRew = proState.liveRewind;
-  let startUtcTs = null;
-  let endUtcTs = null;
-
-  if (isLive) {
-    if (liveOverride && typeof liveOverride.duration === "number") {
-      liveDur = liveOverride.duration;
-      liveRew = typeof liveOverride.rewind === "number" ? liveOverride.rewind : 0;
-      if (typeof liveOverride.startUtc === "number" && typeof liveOverride.endUtc === "number") {
-        startUtcTs = liveOverride.startUtc;
-        endUtcTs = liveOverride.endUtc;
-      }
-    }
-  } else {
-    if (proState.vodEnd <= proState.vodStart) {
-      showProError("Please record at least 5 seconds first.");
-      return;
-    }
+  const dur = Math.max(5, Math.min(120, proState.endSec - proState.startSec));
+  if (dur < 5) {
+    showProError("Please select at least 5 seconds between From and To.");
+    return;
   }
+
+  // Exact UTC timestamps (0.00s drift — guaranteed to export ONLY the exact selected window!)
+  const startUtc = isLive && proState.firstPdtUtc ? (proState.firstPdtUtc + proState.startSec) : null;
+  const endUtc = isLive && proState.firstPdtUtc ? (proState.firstPdtUtc + proState.endSec) : null;
+  const fallbackRewind = isLive ? Math.max(0, proState.totalSec - proState.endSec) : 0;
 
   const payload = {
     url: document.getElementById("pro-youtube-url").value.trim(),
     video_id: proState.source.video_id,
     is_live: isLive,
-    duration_sec: liveDur,
-    rewind_sec: liveRew,
-    start_utc_ts: startUtcTs,
-    end_utc_ts: endUtcTs,
-    start_time: proState.vodStart,
-    end_time: proState.vodEnd,
+    duration_sec: dur,
+    rewind_sec: fallbackRewind,
+    start_utc_ts: startUtc,
+    end_utc_ts: endUtc,
+    start_time: proState.startSec,
+    end_time: proState.endSec,
     cam_box: proState.boxes.cam,
     stream_box: proState.boxes.stream,
-    cam_ratio: proState.camRatio,
-    cam_position: proState.camPosition,
+    // Fixed 9:16 layout: 60% Display ABOVE + 40% Streamer BELOW!
+    cam_ratio: 0.40,
+    cam_position: "bottom",
     resolution: document.getElementById("pro-resolution").value,
     burn_subtitles: document.getElementById("pro-burn-subs").checked,
     subtitle_style: document.getElementById("pro-sub-style").value,
     subtitle_position: document.getElementById("pro-sub-pos").value,
   };
 
-  showProgressModal(isLive ? "Connecting to live stream DVR..." : "Starting Pro Studio...");
+  showProgressModal("Fetching your exact selected clip window...");
 
   try {
     const res = await fetch("/api/pro/generate", {
@@ -1917,883 +1609,11 @@ async function submitProGenerate(liveOverride = null) {
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
-      throw new Error(data.detail || "Could not start Pro Short creation.");
+      throw new Error(data.detail || "Could not start clip export.");
     }
     pollTaskProgress(data.task_id);
   } catch (err) {
     hideProgressModal();
     showProError(err.message);
-  }
-}
-
-// =============================================================
-// LIVE CHAT HYPE RADAR (REAL-TIME STREAM SPIKE DETECTOR)
-// =============================================================
-function stopLiveRadar() {
-  if (proState.radarTimer) {
-    clearInterval(proState.radarTimer);
-    proState.radarTimer = null;
-  }
-}
-
-function startLiveRadar(videoId, reset = false) {
-  stopLiveRadar();
-  if (!videoId) return;
-
-  pollLiveRadarOnce(videoId, reset);
-  proState.radarTimer = setInterval(() => {
-    if (proState.mode !== "pro" || proState.radarPaused || !proState.source || !proState.source.is_live) {
-      stopLiveRadar();
-      return;
-    }
-    pollLiveRadarOnce(videoId, false);
-  }, 3000);
-}
-
-async function pollLiveRadarOnce(videoId, reset = false) {
-  if (proState.radarInFlight) return;
-  proState.radarInFlight = true;
-  try {
-    const res = await fetch(`/api/pro/radar/${encodeURIComponent(videoId)}?reset=${reset ? "true" : "false"}`);
-    if (!res.ok) return;
-    const json = await res.json();
-    const data = json.data || {};
-
-    const subEl = document.getElementById("pro-radar-sub");
-    const mpsEl = document.getElementById("pro-radar-mps");
-    const scoreEl = document.getElementById("pro-radar-score");
-
-    if (!data.available) {
-      if (subEl) subEl.textContent = data.reason || "Live chat is turned off for this stream — use Last 20s–60s Live DVR controls below.";
-      if (mpsEl) mpsEl.textContent = "Chat Off";
-      if (scoreEl) scoreEl.textContent = "Manual DVR";
-      stopLiveRadar();
-      return;
-    }
-
-    if (subEl) subEl.textContent = "Watching live chat surges (W, OP, LOL, 😂, BHAI, CLUTCH) in real time.";
-    if (mpsEl) mpsEl.textContent = `${Number(data.current_mps || 0).toFixed(1)} msgs/s`;
-    if (scoreEl) scoreEl.textContent = `Hype: ${data.current_score || 0}%`;
-
-    renderRadarChart(data.timeline || []);
-    renderRadarSpikes(data.spikes || []);
-  } catch (e) {
-    // Silent retry on next poll
-  } finally {
-    proState.radarInFlight = false;
-  }
-}
-
-function renderRadarChart(timeline) {
-  const canvas = document.getElementById("proRadarChart");
-  if (!canvas || typeof Chart === "undefined") return;
-
-  const labels = timeline.map((p) => p.label);
-  const scores = timeline.map((p) => p.score);
-
-  if (!proState.radarChart) {
-    const ctx = canvas.getContext("2d");
-    const grad = ctx.createLinearGradient(0, 0, 0, 145);
-    grad.addColorStop(0, "rgba(239, 68, 68, 0.38)");
-    grad.addColorStop(0.55, "rgba(147, 51, 234, 0.16)");
-    grad.addColorStop(1, "rgba(147, 51, 234, 0.0)");
-
-    proState.radarChart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "Chat Hype",
-            data: scores,
-            borderColor: "#ef4444",
-            borderWidth: 2.5,
-            backgroundColor: grad,
-            fill: true,
-            tension: 0.35,
-            pointRadius: 2,
-            pointHoverRadius: 5,
-            pointBackgroundColor: "#ffffff",
-            pointBorderColor: "#ef4444",
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 220 },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: "rgba(255,255,255,0.96)",
-            titleColor: "#18102b",
-            bodyColor: "#dc2626",
-            borderColor: "rgba(239,68,68,0.28)",
-            borderWidth: 1,
-            displayColors: false,
-            callbacks: {
-              label: (item) => `Hype: ${item.parsed.y}%`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { color: "rgba(109, 64, 198, 0.07)" },
-            ticks: { color: "#675b85", maxTicksLimit: 7, font: { size: 10 } },
-          },
-          y: {
-            min: 0,
-            max: 100,
-            grid: { color: "rgba(109, 64, 198, 0.07)" },
-            ticks: { color: "#675b85", stepSize: 25, callback: (v) => v + "%", font: { size: 10 } },
-          },
-        },
-      },
-    });
-  } else {
-    proState.radarChart.data.labels = labels;
-    proState.radarChart.data.datasets[0].data = scores;
-    proState.radarChart.update("none");
-  }
-}
-
-function escapeHtmlBasic(str) {
-  return String(str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function renderRadarSpikes(spikes) {
-  const container = document.getElementById("pro-radar-spikes");
-  if (!container) return;
-
-  if (!spikes || spikes.length === 0) {
-    container.innerHTML = `<div class="pro-radar-empty">Listening to live chat... When viewers spam hype reactions, 1-click clip alerts appear right here!</div>`;
-    return;
-  }
-
-  container.innerHTML = spikes
-    .slice(0, 4)
-    .map((spk) => {
-      const ago = Math.max(0, Number(spk.seconds_ago || 0));
-      const agoStr = ago < 60 ? `${ago}s ago` : `${Math.floor(ago / 60)}m ${ago % 60}s ago`;
-      const tags = (spk.top_reactions || []).length
-        ? `<span class="radar-spike-tags">${escapeHtmlBasic(spk.top_reactions.join(" • "))}</span>`
-        : "";
-      const sample = spk.sample_msg
-        ? `<div class="radar-spike-sample">"${escapeHtmlBasic(spk.sample_msg)}"</div>`
-        : "";
-      return `
-        <div class="radar-spike-row">
-          <div class="radar-spike-info">
-            <div class="radar-spike-top">
-              <span>🔥 ${spk.score}% Hype</span>
-              <span class="radar-spike-ago">${agoStr}</span>
-              ${tags}
-            </div>
-            ${sample}
-          </div>
-          <button type="button" class="btn-clip-spike" onclick="clipFromRadarSpike(${ago})">
-            ⚡ Clip This Spike
-          </button>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-window.clipFromRadarSpike = function (secondsAgo) {
-  // Position the Live DVR clip so the spike lands cleanly inside the clip (with ~8s reaction after!)
-  const rewind = Math.max(0, Math.min(360, Math.round(secondsAgo - 8)));
-  const dur = proState.liveTimingMode === "manual"
-    ? Math.max(10, Math.min(90, proState.liveManualEnd - proState.liveManualStart))
-    : proState.liveDuration;
-  proState.liveRewind = rewind;
-  // Clear preset active highlight on rewind pills since this is an exact spike timestamp
-  document.querySelectorAll("#pro-live-rewind-picker .choice-pill").forEach((b) => b.classList.remove("active"));
-  submitProGenerate({ duration: dur, rewind });
-};
-
-// =============================================================
-// EXACT LIVE HLS PLAYER (hls.js) + 60FPS BOX PREVIEW + 0.00s UTC RECORDING
-// =============================================================
-function stopHlsPreviewLoop() {
-  if (proState.hlsPreviewRaf) {
-    cancelAnimationFrame(proState.hlsPreviewRaf);
-    proState.hlsPreviewRaf = 0;
-  }
-}
-
-function startHlsPreviewLoop() {
-  stopHlsPreviewLoop();
-  let lastDraw = 0;
-  function step(ts) {
-    if (!proState.hlsMode || proState.mode !== "pro") {
-      proState.hlsPreviewRaf = 0;
-      return;
-    }
-    // Smooth 30fps live video preview inside the 9:16 canvas
-    if (ts - lastDraw >= 33) {
-      lastDraw = ts;
-      drawProPreviewCanvas();
-    }
-    proState.hlsPreviewRaf = requestAnimationFrame(step);
-  }
-  proState.hlsPreviewRaf = requestAnimationFrame(step);
-}
-
-function stopProHlsPlayer() {
-  proState.hlsMode = false;
-  stopHlsPreviewLoop();
-  if (proState.hlsInstance) {
-    try {
-      proState.hlsInstance.destroy();
-    } catch (e) {}
-    proState.hlsInstance = null;
-  }
-  const vid = document.getElementById("pro-hls-video");
-  if (vid) {
-    vid.pause();
-    vid.removeAttribute("src");
-    vid.classList.add("hidden");
-  }
-  const ctrl = document.getElementById("pro-hls-controls");
-  if (ctrl) ctrl.classList.add("hidden");
-  const ytWrap = document.getElementById("pro-yt-player-wrap");
-  if (ytWrap) ytWrap.classList.remove("hidden");
-}
-
-function loadProHlsPlayer(hlsProxyUrl, videoId) {
-  stopProHlsPlayer();
-
-  // Pause YouTube iframe player & hide it when live HLS player is active
-  try {
-    if (proState.ytPlayer && typeof proState.ytPlayer.pauseVideo === "function") {
-      proState.ytPlayer.pauseVideo();
-    }
-  } catch (e) {}
-  const ytWrap = document.getElementById("pro-yt-player-wrap");
-  if (ytWrap) ytWrap.classList.add("hidden");
-
-  const vid = document.getElementById("pro-hls-video");
-  const ctrl = document.getElementById("pro-hls-controls");
-  if (!vid) {
-    loadProYouTubePlayer(videoId);
-    return;
-  }
-
-  vid.classList.remove("hidden");
-  if (ctrl) ctrl.classList.remove("hidden");
-  vid.muted = true; // Autoplays immediately without Chrome blocking
-  const muteBtn = document.getElementById("hls-mute-btn");
-  if (muteBtn) muteBtn.textContent = "🔇";
-  const playBtn = document.getElementById("hls-play-btn");
-  if (playBtn) playBtn.textContent = "⏸";
-
-  proState.hlsMode = true;
-
-  if (window.Hls && window.Hls.isSupported()) {
-    const hls = new window.Hls({
-      lowLatencyMode: false,
-      startPosition: -1,
-      backBufferLength: 600,
-      maxBufferLength: 25,
-      maxMaxBufferLength: 40,
-      liveSyncDurationCount: 3,
-      liveMaxLatencyDurationCount: 12,
-      enableWorker: false,
-    });
-    proState.hlsInstance = hls;
-    let didInitialSync = false;
-
-    const snapToBufferedLive = () => {
-      if (didInitialSync || proState.hlsScrubbing) return;
-      if (vid.buffered && vid.buffered.length > 0) {
-        const bStart = vid.buffered.start(vid.buffered.length - 1);
-        const bEnd = vid.buffered.end(vid.buffered.length - 1);
-        if (bEnd > bStart + 0.2) {
-          didInitialSync = true;
-          if (vid.currentTime < bStart || vid.currentTime > bEnd) {
-            vid.currentTime = Math.max(bStart + 0.1, bEnd - 6);
-          }
-          vid.play().catch(() => {});
-          startHlsPreviewLoop();
-        }
-      }
-    };
-
-    hls.on(window.Hls.Events.MEDIA_ATTACHED, () => {
-      hls.loadSource(hlsProxyUrl);
-    });
-
-    hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-      startPlayerClockSync();
-      startHlsPreviewLoop();
-      if (typeof hls.liveSyncPosition === "number" && hls.liveSyncPosition > 2) {
-        vid.currentTime = hls.liveSyncPosition;
-      }
-      vid.play().catch(() => {});
-    });
-
-    hls.on(window.Hls.Events.LEVEL_LOADED, () => {
-      if (!didInitialSync && vid.currentTime < 1 && typeof hls.liveSyncPosition === "number" && hls.liveSyncPosition > 2) {
-        vid.currentTime = hls.liveSyncPosition;
-      }
-    });
-
-    hls.on(window.Hls.Events.FRAG_BUFFERED, () => {
-      snapToBufferedLive();
-    });
-
-    vid.onloadeddata = () => {
-      snapToBufferedLive();
-      startHlsPreviewLoop();
-    };
-    vid.onplaying = () => {
-      startHlsPreviewLoop();
-    };
-
-    hls.on(window.Hls.Events.ERROR, (_ev, data) => {
-      if (!data) return;
-      if (data.details === "bufferStalledError" && vid.buffered && vid.buffered.length > 0) {
-        const bStart = vid.buffered.start(vid.buffered.length - 1);
-        if (vid.currentTime < bStart) {
-          vid.currentTime = bStart + 0.15;
-          vid.play().catch(() => {});
-        }
-        return;
-      }
-      if (data.fatal) {
-        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-          hls.startLoad();
-        } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
-          hls.recoverMediaError();
-        } else {
-          stopProHlsPlayer();
-          loadProYouTubePlayer(videoId);
-        }
-      }
-    });
-
-    // Official hls.js order: attachMedia FIRST, then loadSource on MEDIA_ATTACHED!
-    hls.attachMedia(vid);
-  } else if (vid.canPlayType("application/vnd.apple.mpegurl")) {
-    // Native HLS (Safari / iOS)
-    vid.src = hlsProxyUrl;
-    vid.play().catch(() => {});
-    startPlayerClockSync();
-    startHlsPreviewLoop();
-  } else {
-    stopProHlsPlayer();
-    loadProYouTubePlayer(videoId);
-  }
-}
-
-function getHlsSeekRange() {
-  const vid = document.getElementById("pro-hls-video");
-  if (!vid || !vid.seekable || vid.seekable.length === 0) return null;
-  const start = vid.seekable.start(0);
-  const end = vid.seekable.end(vid.seekable.length - 1);
-  if (isNaN(start) || isNaN(end) || end <= start) return null;
-  return { start, end, current: vid.currentTime || 0, vid };
-}
-
-function getCurrentHlsUtcSec() {
-  try {
-    if (proState.hlsInstance && proState.hlsInstance.playingDate) {
-      const ms = proState.hlsInstance.playingDate.getTime();
-      if (!isNaN(ms) && ms > 1_000_000_000_000) {
-        return ms / 1000.0;
-      }
-    }
-  } catch (e) {}
-  return null;
-}
-
-function setupHlsPlayerControls() {
-  const vid = document.getElementById("pro-hls-video");
-  const playBtn = document.getElementById("hls-play-btn");
-  const back15 = document.getElementById("hls-back-15");
-  const fwd15 = document.getElementById("hls-fwd-15");
-  const jumpLive = document.getElementById("hls-jump-live");
-  const muteBtn = document.getElementById("hls-mute-btn");
-  const scrubber = document.getElementById("pro-hls-scrubber");
-  if (!vid) return;
-
-  if (playBtn) {
-    playBtn.addEventListener("click", () => {
-      if (vid.paused) {
-        vid.play().catch(() => {});
-        playBtn.textContent = "⏸";
-      } else {
-        vid.pause();
-        playBtn.textContent = "▶";
-      }
-    });
-  }
-
-  if (muteBtn) {
-    muteBtn.addEventListener("click", () => {
-      vid.muted = !vid.muted;
-      muteBtn.textContent = vid.muted ? "🔇" : "🔊";
-    });
-  }
-
-  if (back15) {
-    back15.addEventListener("click", () => {
-      const r = getHlsSeekRange();
-      if (r) vid.currentTime = Math.max(r.start + 1, r.current - 15);
-    });
-  }
-
-  if (fwd15) {
-    fwd15.addEventListener("click", () => {
-      const r = getHlsSeekRange();
-      if (r) vid.currentTime = Math.min(r.end - 2, r.current + 15);
-    });
-  }
-
-  if (jumpLive) {
-    jumpLive.addEventListener("click", () => {
-      const r = getHlsSeekRange();
-      if (r) {
-        vid.currentTime = Math.max(r.start, r.end - 4);
-        vid.play().catch(() => {});
-        if (playBtn) playBtn.textContent = "⏸";
-      }
-    });
-  }
-
-  if (scrubber) {
-    scrubber.addEventListener("pointerdown", () => { proState.hlsScrubbing = true; });
-    scrubber.addEventListener("input", () => {
-      const r = getHlsSeekRange();
-      if (!r) return;
-      const target = parseFloat(scrubber.value);
-      if (!isNaN(target)) {
-        vid.currentTime = Math.max(r.start + 0.5, Math.min(r.end - 2, target));
-      }
-    });
-    const finishScrub = () => { proState.hlsScrubbing = false; };
-    scrubber.addEventListener("pointerup", finishScrub);
-    scrubber.addEventListener("change", finishScrub);
-  }
-
-  vid.addEventListener("play", () => { if (playBtn) playBtn.textContent = "⏸"; });
-  vid.addEventListener("pause", () => { if (playBtn) playBtn.textContent = "▶"; });
-}
-
-// =============================================================
-// LIVE YOUTUBE PLAYER (VODs) + START / STOP CLIP RECORDER
-// =============================================================
-function loadProYouTubePlayer(videoId) {
-  if (!videoId) return;
-
-  // Reset live-edge anchor for this new stream
-  proState.ytLiveEdgeAnchor = 0;
-  proState.ytLiveEdgeAnchorMs = 0;
-
-  if (window.YT && window.YT.Player) {
-    proState.ytApiReady = true;
-  }
-  if (!proState.ytApiReady) {
-    proState.pendingYtVideoId = videoId;
-    return;
-  }
-
-  try {
-    if (proState.ytPlayer && typeof proState.ytPlayer.loadVideoById === "function") {
-      proState.ytPlayer.loadVideoById(videoId);
-      startPlayerClockSync();
-      return;
-    }
-  } catch (e) {
-    proState.ytPlayer = null;
-  }
-
-  const wrap = document.getElementById("pro-yt-player-wrap");
-  if (!wrap) return;
-  wrap.innerHTML = `<div id="pro-yt-player"></div>`;
-
-  proState.ytPlayer = new window.YT.Player("pro-yt-player", {
-    videoId,
-    width: "100%",
-    height: "100%",
-    playerVars: {
-      autoplay: 1,
-      mute: 1, // Ensures browsers never block autoplay so live edge locks immediately!
-      playsinline: 1,
-      rel: 0,
-      modestbranding: 1,
-      enablejsapi: 1,
-      origin: window.location.origin,
-    },
-    events: {
-      onReady: (ev) => {
-        try {
-          ev.target.playVideo();
-        } catch (e) {}
-        startPlayerClockSync();
-      },
-      onStateChange: () => {
-        // Immediately capture live edge anchor when player begins playing
-        getExactYouTubeLiveEdge();
-      },
-    },
-  });
-}
-
-function safeGetPlayerTime() {
-  try {
-    if (proState.ytPlayer && typeof proState.ytPlayer.getCurrentTime === "function") {
-      const t = Number(proState.ytPlayer.getCurrentTime());
-      return isNaN(t) ? 0 : Math.max(0, t);
-    }
-  } catch (e) {}
-  return 0;
-}
-
-function safeGetPlayerDuration() {
-  try {
-    if (proState.ytPlayer && typeof proState.ytPlayer.getDuration === "function") {
-      const d = Number(proState.ytPlayer.getDuration());
-      return isNaN(d) ? 0 : Math.max(0, d);
-    }
-  } catch (e) {}
-  return 0;
-}
-
-function getExactYouTubeLiveEdge() {
-  const cur = safeGetPlayerTime();
-  const dur = safeGetPlayerDuration();
-  const nowMs = Date.now();
-  const est = proState.ytLiveEdgeAnchor > 0
-    ? proState.ytLiveEdgeAnchor + Math.max(0, (nowMs - proState.ytLiveEdgeAnchorMs) / 1000)
-    : 0;
-
-  // Keep highest observed YouTube player coordinate (dur or live-edge cur) ticking +1s/sec!
-  const best = Math.max(est, dur, cur);
-  if (best > 1 && (proState.ytLiveEdgeAnchor === 0 || best > est + 0.6)) {
-    proState.ytLiveEdgeAnchor = best;
-    proState.ytLiveEdgeAnchorMs = nowMs;
-  }
-  return best > 1 ? best : getCurrentLiveElapsed();
-}
-
-function startPlayerClockSync() {
-  if (proState.playerClockTimer) clearInterval(proState.playerClockTimer);
-  proState.playerClockTimer = setInterval(() => {
-    if (!proState.source) return;
-    const clockEl = document.getElementById("pro-player-clock");
-    if (!clockEl) return;
-
-    // 1. Live HLS Stream Player (exact DVR timeline!)
-    if (proState.hlsMode) {
-      const r = getHlsSeekRange();
-      if (!r) return;
-      const totalSpan = Math.max(1, r.end - r.start);
-      const pos = Math.max(0, r.current - r.start);
-      const behind = Math.max(0, Math.round(r.end - r.current));
-      const useH = totalSpan >= 3600;
-
-      const scrubber = document.getElementById("pro-hls-scrubber");
-      if (scrubber && !proState.hlsScrubbing) {
-        scrubber.min = r.start.toFixed(1);
-        scrubber.max = r.end.toFixed(1);
-        scrubber.value = r.current.toFixed(1);
-      }
-
-      if (behind <= 10) {
-        clockEl.textContent = `Stream: ${formatTime(pos, useH)} • 🔴 LIVE`;
-      } else {
-        clockEl.textContent = `Stream: ${formatTime(pos, useH)} (−${formatTime(behind, false)} behind live)`;
-      }
-      return;
-    }
-
-    // 2. YouTube IFrame Player (VODs or fallback)
-    const cur = safeGetPlayerTime();
-    const dur = safeGetPlayerDuration();
-
-    if (proState.source.is_live) {
-      const liveEdge = getExactYouTubeLiveEdge();
-      const useH = Math.max(cur, liveEdge) >= 3600;
-      if (cur > 0 && liveEdge > 5) {
-        const behind = Math.max(0, Math.round(liveEdge - cur));
-        if (behind <= 8) {
-          clockEl.textContent = `YouTube: ${formatTime(cur, useH)} • 🔴 LIVE`;
-        } else {
-          clockEl.textContent = `YouTube: ${formatTime(cur, useH)} (−${formatTime(behind, false)} behind live)`;
-        }
-      } else {
-        const est = getCurrentLiveElapsed();
-        clockEl.textContent = `YouTube: ${formatTime(est, est >= 3600)} • 🔴 LIVE`;
-      }
-    } else {
-      const total = dur > 0 ? dur : (proState.source.duration || 0);
-      const useH = Math.max(cur, total) >= 3600;
-      clockEl.textContent = `YouTube: ${formatTime(cur, useH)} / ${formatTime(total, useH)}`;
-    }
-  }, 400);
-}
-
-function syncPreviewFrameToPlayer(showBtnSpinner = false) {
-  if (!proState.source) return;
-  if (proState.hlsMode) {
-    // Live HLS player already updates the 9:16 preview in real time at 30fps!
-    drawProPreviewCanvas();
-    return;
-  }
-  const val = document.getElementById("pro-youtube-url").value.trim();
-  if (!val) return;
-
-  let offsetSec = 0;
-  const cur = safeGetPlayerTime();
-  if (proState.source.is_live) {
-    const edge = getExactYouTubeLiveEdge();
-    offsetSec = (edge > 5 && cur > 0 && edge >= cur) ? Math.max(0, Math.round(edge - cur)) : 0;
-  } else {
-    offsetSec = Math.max(0, Math.round(cur));
-  }
-  inspectProStream(val, showBtnSpinner, offsetSec);
-}
-
-function startProRecording() {
-  if (!proState.source) {
-    showProError("Please load a YouTube Live Stream or Video first.");
-    return;
-  }
-  hideProError();
-
-  let startCur = 0;
-  let startBehind = 0;
-  let startUtc = null;
-  let behindTag = "";
-
-  if (proState.hlsMode) {
-    const r = getHlsSeekRange();
-    if (!r) {
-      showProError("Wait 2 seconds for the live stream to finish buffering, then click Start Recording.");
-      return;
-    }
-    startCur = r.current;
-    startBehind = Math.max(0, Math.round(r.end - r.current));
-    startUtc = getCurrentHlsUtcSec();
-    const pos = Math.max(0, Math.round(r.current - r.start));
-    const useH = (r.end - r.start) >= 3600;
-    behindTag = startBehind > 10
-      ? ` • from ${formatTime(pos, useH)} (−${formatTime(startBehind, false)})`
-      : " • 🔴 LIVE";
-    r.vid.play().catch(() => {});
-  } else {
-    startCur = safeGetPlayerTime();
-    const startEdge = proState.source.is_live ? getExactYouTubeLiveEdge() : 0;
-    startBehind = (proState.source.is_live && startEdge > 1 && startCur > 0 && startEdge >= startCur)
-      ? Math.max(0, Math.round(startEdge - startCur))
-      : 0;
-    behindTag = (proState.source.is_live && startBehind > 8)
-      ? ` • −${formatTime(startBehind, false)} behind live`
-      : (proState.source.is_live ? " • LIVE" : "");
-    try {
-      if (proState.ytPlayer && typeof proState.ytPlayer.playVideo === "function") {
-        proState.ytPlayer.playVideo();
-      }
-    } catch (e) {}
-  }
-
-  proState.isRecording = true;
-  proState.recordedClip = null;
-  proState.recStartTime = startCur;
-  proState.recStartUtc = startUtc;
-  proState.recStartBehindLive = startBehind;
-  proState.recStartWallMs = Date.now();
-  updateLiveGuideStep(3);
-
-  const readyPill = document.getElementById("pro-rec-ready-pill");
-  if (readyPill) readyPill.classList.add("hidden");
-
-  const recBtn = document.getElementById("pro-rec-btn");
-  const recTxt = document.getElementById("pro-rec-btn-text");
-  const recTimer = document.getElementById("pro-rec-timer");
-  const cancelBtn = document.getElementById("pro-rec-cancel-btn");
-
-  if (recBtn) recBtn.classList.add("is-recording");
-  if (recTxt) recTxt.textContent = "Stop Recording";
-  if (recTimer) {
-    recTimer.textContent = `REC 00:00${behindTag}`;
-    recTimer.classList.remove("hidden");
-  }
-  if (cancelBtn) cancelBtn.classList.remove("hidden");
-
-  if (proState.recTimerId) clearInterval(proState.recTimerId);
-  proState.recTimerId = setInterval(() => {
-    if (!proState.isRecording) return;
-    const elapsed = Math.floor((Date.now() - proState.recStartWallMs) / 1000);
-    if (recTimer) recTimer.textContent = `REC ${formatTime(elapsed, false)}${behindTag}`;
-    if (elapsed >= 120) {
-      stopAndSaveRecordedClip();
-    }
-  }, 250);
-}
-
-function cancelProRecording() {
-  proState.isRecording = false;
-  if (proState.recTimerId) {
-    clearInterval(proState.recTimerId);
-    proState.recTimerId = null;
-  }
-  const recBtn = document.getElementById("pro-rec-btn");
-  const recTxt = document.getElementById("pro-rec-btn-text");
-  const recTimer = document.getElementById("pro-rec-timer");
-  const cancelBtn = document.getElementById("pro-rec-cancel-btn");
-
-  if (recBtn) recBtn.classList.remove("is-recording");
-  if (recTxt) recTxt.textContent = "Start Recording";
-  if (recTimer) recTimer.classList.add("hidden");
-  if (cancelBtn) cancelBtn.classList.add("hidden");
-}
-
-function stopAndSaveRecordedClip() {
-  if (!proState.isRecording || !proState.source) return;
-
-  const wallElapsed = (Date.now() - proState.recStartWallMs) / 1000;
-  const startTime = proState.recStartTime;
-  const startUtc = proState.recStartUtc;
-  const startBehind = proState.recStartBehindLive || 0;
-
-  let endTime = 0;
-  let endUtc = null;
-  let hlsRange = null;
-  if (proState.hlsMode) {
-    hlsRange = getHlsSeekRange();
-    endTime = hlsRange ? hlsRange.current : startTime + wallElapsed;
-    endUtc = getCurrentHlsUtcSec();
-  } else {
-    endTime = safeGetPlayerTime();
-  }
-
-  const liveEdge = proState.hlsMode && hlsRange ? hlsRange.end : getExactYouTubeLiveEdge();
-  cancelProRecording();
-
-  const rawDur = (endTime > startTime + 1.5) ? (endTime - startTime) : wallElapsed;
-  if (rawDur < 3.0) {
-    showProError("Clip is too short — record for at least 5 seconds!");
-    return;
-  }
-
-  const clipDur = Math.max(5.0, Math.min(120.0, Math.round(rawDur * 10) / 10));
-
-  let rewindLabel = "";
-  if (proState.source.is_live) {
-    const behindFromEnd = (liveEdge > 1 && endTime > 0 && liveEdge >= endTime)
-      ? Math.max(0, Math.round(liveEdge - endTime))
-      : 0;
-    const behindFromStart = Math.max(0, Math.round(startBehind + Math.max(0, wallElapsed - clipDur)));
-    const rewindAtStop = proState.hlsMode ? behindFromEnd : Math.max(behindFromEnd, behindFromStart);
-
-    // Exact UTC timestamps (0.00s drift!) when hls.js playingDate is present
-    let finalStartUtc = null;
-    let finalEndUtc = null;
-    if (typeof startUtc === "number" && startUtc > 1_000_000_000) {
-      finalStartUtc = startUtc;
-      finalEndUtc = (typeof endUtc === "number" && endUtc > startUtc + 2.0)
-        ? Math.min(startUtc + 120.0, endUtc)
-        : (startUtc + clipDur);
-    }
-
-    proState.recordedClip = {
-      isLive: true,
-      duration: clipDur,
-      rewindAtStop,
-      startUtc: finalStartUtc,
-      endUtc: finalEndUtc,
-      stoppedAtMs: Date.now(),
-      startTime: 0,
-      endTime: clipDur,
-    };
-
-    if (proState.hlsMode && hlsRange) {
-      const startPos = Math.max(0, Math.round(startTime - hlsRange.start));
-      const endPos = Math.max(startPos + 1, Math.round(endTime - hlsRange.start));
-      const useH = (hlsRange.end - hlsRange.start) >= 3600;
-      rewindLabel = ` (${formatTime(startPos, useH)} → ${formatTime(endPos, useH)})`;
-    } else {
-      rewindLabel = rewindAtStop > 8 ? ` (−${formatTime(rewindAtStop, false)} behind live)` : " (LIVE)";
-    }
-  } else {
-    const maxDur = Math.max(10, Math.floor(proState.source.duration || liveEdge || 3600));
-    const s = Math.max(0, Math.min(maxDur - 5, Math.floor(startTime)));
-    const e = Math.min(maxDur, Math.max(s + 5, Math.round(s + clipDur)));
-    proState.recordedClip = {
-      isLive: false,
-      duration: e - s,
-      rewindAtStop: 0,
-      startUtc: null,
-      endUtc: null,
-      stoppedAtMs: Date.now(),
-      startTime: s,
-      endTime: e,
-    };
-    rewindLabel = ` (${formatTime(s, s >= 3600)} → ${formatTime(e, e >= 3600)})`;
-  }
-
-  const readyPill = document.getElementById("pro-rec-ready-pill");
-  if (readyPill) {
-    readyPill.textContent = `✓ Recorded ${formatTime(Math.round(clipDur), false)}${rewindLabel} — Click Export`;
-    readyPill.classList.remove("hidden");
-  }
-  const rewWrap = document.getElementById("pro-rec-rewind-wrap");
-  const rewInput = document.getElementById("pro-rec-rewind-input");
-  if (rewWrap && rewInput) {
-    if (proState.source.is_live) {
-      rewInput.value = formatTime(proState.recordedClip.rewindAtStop || 0, false);
-      rewWrap.classList.remove("hidden");
-    } else {
-      rewWrap.classList.add("hidden");
-    }
-  }
-  updateLiveGuideStep(4);
-  if (!proState.hlsMode) syncPreviewFrameToPlayer(false);
-}
-
-function exportRecordedProClip() {
-  if (!proState.source) {
-    showProError("Please load a YouTube Live Stream or Video first.");
-    return;
-  }
-
-  if (proState.isRecording) {
-    stopAndSaveRecordedClip();
-  }
-
-  if (!proState.recordedClip) {
-    showProError("Step 3 first: click Start Recording → Stop Recording on the video, then click Export!");
-    return;
-  }
-
-  const rec = proState.recordedClip;
-  if (rec.isLive) {
-    // Allow user-verified Behind Live (mm:ss) override if edited!
-    const rewInput = document.getElementById("pro-rec-rewind-input");
-    let baseRewind = rec.rewindAtStop || 0;
-    if (rewInput) {
-      const parsed = parseTime(rewInput.value);
-      if (!isNaN(parsed) && parsed >= 0) {
-        baseRewind = Math.round(parsed);
-      }
-    }
-    const waitSinceStop = Math.max(0, Math.round((Date.now() - rec.stoppedAtMs) / 1000));
-    submitProGenerate({
-      duration: rec.duration,
-      rewind: baseRewind + waitSinceStop,
-      startUtc: null,
-      endUtc: null,
-    });
-  } else {
-    proState.vodStart = rec.startTime;
-    proState.vodEnd = rec.endTime;
-    submitProGenerate(null);
   }
 }

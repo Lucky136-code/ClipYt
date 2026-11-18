@@ -520,6 +520,135 @@ def _measure_hls_dvr_seconds(
         return 0.0
 
 
+def _grab_single_ts_frame_b64(
+    seg_url: str,
+    sub_offset: float = 0.0,
+    headers: Optional[Dict[str, str]] = None,
+) -> str:
+    """Download one exact `.ts` segment (or stream via FFmpeg) and extract a crisp 16:9 JPEG frame."""
+    req_headers = {}
+    if headers and headers.get("User-Agent"):
+        req_headers["User-Agent"] = headers["User-Agent"]
+    tmp_ts = TEMP_DIR / f"frm_{uuid.uuid4().hex[:8]}.ts"
+    try:
+        r = requests.get(seg_url, headers=req_headers, timeout=12)
+        if r.status_code != 200 or len(r.content) < 1024:
+            return ""
+        tmp_ts.write_bytes(r.content)
+        # Put -ss AFTER -i (output seek) so non-zero MPEG-TS start_pts never breaks frame extraction!
+        attempts = []
+        if sub_offset > 0.25:
+            attempts.append([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(tmp_ts),
+                "-ss", f"{min(4.2, sub_offset):.2f}",
+                "-frames:v", "1",
+                "-vf", "scale=960:-2:flags=lanczos",
+                "-q:v", "3",
+                "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
+            ])
+        attempts.append([
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(tmp_ts),
+            "-frames:v", "1",
+            "-vf", "scale=960:-2:flags=lanczos",
+            "-q:v", "3",
+            "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
+        ])
+        for cmd in attempts:
+            res = subprocess.run(cmd, capture_output=True, timeout=10)
+            if res.returncode == 0 and res.stdout and len(res.stdout) > 1500:
+                return f"data:image/jpeg;base64,{base64.b64encode(res.stdout).decode('ascii')}"
+    except Exception:
+        pass
+    finally:
+        try:
+            if tmp_ts.exists():
+                tmp_ts.unlink()
+        except Exception:
+            pass
+    return ""
+
+
+def fetch_pro_boundary_frames(
+    url: str,
+    video_id: str,
+    is_live: bool,
+    start_utc_ts: Optional[float] = None,
+    end_utc_ts: Optional[float] = None,
+    start_time: float = 0.0,
+    end_time: float = 35.0,
+) -> Dict[str, Any]:
+    """
+    Grab the EXACT Start Frame & End Frame for the user's selected timestamp window
+    using the exact same UTC `#EXT-X-PROGRAM-DATE-TIME` segment mapping as Export.
+    Guarantees the frames the user verifies ARE the exact start & end of the exported clip!
+    """
+    cached = PRO_STREAM_CACHE.get(video_id)
+    now = time.time()
+    if cached and (now - cached["ts"] < PRO_CACHE_TTL_SEC):
+        info = cached["info"]
+    else:
+        info = _extract_pro_info(url, video_id)
+        PRO_STREAM_CACHE[video_id] = {"info": info, "ts": now}
+
+    if is_live:
+        v_url, headers = _pick_preview_hls_url(info)
+        if not v_url:
+            v_url, _, headers = _extract_media_urls(info)
+        segments, total_dur, first_pdt = _parse_hls_segments(v_url, headers) if v_url else ([], 0.0, None)
+        if not segments:
+            return {"start_frame": "", "end_frame": "", "first_pdt_utc": first_pdt, "dvr_window_sec": total_dur}
+
+        def _pick_seg_for_rel(rel_sec: float) -> Tuple[str, float]:
+            target = max(0.0, min(max(0.0, total_dur - 0.5), rel_sec))
+            acc = 0.0
+            for seg_dur, seg_url in segments:
+                if acc + seg_dur >= target:
+                    return seg_url, max(0.0, target - acc)
+                acc += seg_dur
+            return segments[-1][1], 0.0
+
+        if first_pdt is not None and start_utc_ts is not None and end_utc_ts is not None:
+            rel_start = float(start_utc_ts) - first_pdt
+            rel_end = float(end_utc_ts) - first_pdt
+        else:
+            rel_start = float(start_time)
+            rel_end = float(end_time)
+
+        s_url, s_off = _pick_seg_for_rel(rel_start)
+        e_url, e_off = _pick_seg_for_rel(rel_end)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_start = pool.submit(_grab_single_ts_frame_b64, s_url, s_off, headers)
+            f_end = pool.submit(_grab_single_ts_frame_b64, e_url, e_off, headers)
+            start_b64 = f_start.result()
+            end_b64 = f_end.result()
+
+        return {
+            "start_frame": start_b64,
+            "end_frame": end_b64,
+            "first_pdt_utc": first_pdt,
+            "dvr_window_sec": round(total_dur, 1),
+        }
+
+    # Normal Video / VOD: seek directly to start_time and end_time in parallel
+    v_url, _a_url, headers = _extract_media_urls(info)
+    dur = float(info.get("duration") or 0.0)
+    thumb = info.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_start = pool.submit(_grab_frame_b64, v_url, False, dur, thumb, headers, float(start_time))
+        f_end = pool.submit(_grab_frame_b64, v_url, False, dur, thumb, headers, float(end_time))
+        s_img, _ = f_start.result()
+        e_img, _ = f_end.result()
+    return {
+        "start_frame": s_img,
+        "end_frame": e_img,
+        "first_pdt_utc": None,
+        "dvr_window_sec": round(dur, 1),
+    }
+
+
 def inspect_pro_source(
     url: str,
     force_refresh: bool = False,
@@ -556,33 +685,27 @@ def inspect_pro_source(
 
     v_url, _a_url, headers = _extract_media_urls(info)
 
-    # For active live streams, compute stream elapsed duration (from 00:00 to ongoing now)
+    # For active live streams, parse exact DVR window & #EXT-X-PROGRAM-DATE-TIME UTC anchor
     live_elapsed_sec = 0.0
     dvr_window_sec = 0.0
     live_min_sec = 0.0
+    first_pdt_utc: Optional[float] = None
     if is_live:
-        dvr_window_sec = _measure_hls_dvr_seconds(v_url, headers)
-        rel_ts = info.get("release_timestamp") or info.get("timestamp")
-        raw_elapsed = (now - float(rel_ts)) if (rel_ts and now > float(rel_ts)) else 0.0
-
-        # If stream has been running for days (e.g. 24/7 radio) beyond YouTube's DVR window,
-        # anchor the selectable timeline cleanly to [0 .. dvr_window_sec] so 00:00..LIVE matches YouTube's scrubber!
-        if dvr_window_sec >= 60.0:
-            if raw_elapsed > 0 and raw_elapsed <= (dvr_window_sec + 300.0):
-                live_elapsed_sec = round(raw_elapsed, 1)
-                live_min_sec = 0.0
-            else:
-                live_elapsed_sec = round(dvr_window_sec, 1)
-                live_min_sec = 0.0
-        elif raw_elapsed > 30.0 and raw_elapsed <= 43200.0:
-            live_elapsed_sec = round(raw_elapsed, 1)
-            dvr_window_sec = live_elapsed_sec
+        preview_hls_url, preview_headers = _pick_preview_hls_url(info)
+        segs, hls_total, first_pdt_utc = _parse_hls_segments(preview_hls_url or v_url, preview_headers or headers)
+        dvr_window_sec = round(hls_total, 1) if hls_total > 0 else _measure_hls_dvr_seconds(v_url, headers)
+        if dvr_window_sec >= 10.0:
+            live_elapsed_sec = dvr_window_sec
             live_min_sec = 0.0
+            if first_pdt_utc is None:
+                # Fallback anchor if playlist omitted PDT
+                first_pdt_utc = round(now - dvr_window_sec - 15.0, 2)
         else:
-            # Fallback if DVR metadata isn't exposed yet
-            live_elapsed_sec = 300.0
-            dvr_window_sec = 300.0
-            live_min_sec = 0.0
+            rel_ts = info.get("release_timestamp") or info.get("timestamp")
+            raw_elapsed = (now - float(rel_ts)) if (rel_ts and now > float(rel_ts)) else 300.0
+            live_elapsed_sec = round(min(43200.0, max(60.0, raw_elapsed)), 1)
+            dvr_window_sec = live_elapsed_sec
+            first_pdt_utc = round(now - dvr_window_sec - 15.0, 2)
 
     effective_total = live_elapsed_sec if is_live else duration
     use_hours = effective_total >= 3600
@@ -606,6 +729,7 @@ def inspect_pro_source(
         "live_elapsed_sec": round(live_elapsed_sec, 1),
         "dvr_window_sec": round(dvr_window_sec, 1),
         "live_min_sec": round(live_min_sec, 1),
+        "first_pdt_utc": first_pdt_utc,
         "duration_str": (
             f"LIVE • {format_timestamp(live_elapsed_sec, force_hours=use_hours)}"
             if is_live

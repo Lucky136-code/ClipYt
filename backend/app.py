@@ -22,6 +22,7 @@ from backend.video_processor import (
 )
 from backend.pro_studio import (
     inspect_pro_source,
+    fetch_pro_boundary_frames,
     process_pro_split_pipeline,
 )
 from backend.live_radar import poll_live_chat_radar
@@ -81,6 +82,16 @@ class ProInspectRequest(BaseModel):
     url: str
     force_refresh: bool = False
     preview_offset_sec: Optional[float] = Field(default=None, ge=0.0)
+
+
+class ProFramesRequest(BaseModel):
+    url: str
+    video_id: str
+    is_live: bool = False
+    start_utc_ts: Optional[float] = None
+    end_utc_ts: Optional[float] = None
+    start_time: float = Field(default=0.0, ge=0.0)
+    end_time: float = Field(default=35.0, ge=0.0)
 
 
 class ProGenerateRequest(BaseModel):
@@ -292,13 +303,33 @@ async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
 
 @app.post("/api/pro/inspect")
 async def api_pro_inspect(req: ProInspectRequest):
-    """Inspect a YouTube Live Stream or video for Pro Studio and return a fresh 16:9 frame."""
+    """Inspect a YouTube Live Stream or video for Live Studio and return DVR timeline + frame."""
     try:
         data = await asyncio.to_thread(
             inspect_pro_source,
             url=req.url,
             force_refresh=req.force_refresh,
             preview_offset_sec=req.preview_offset_sec,
+        )
+        return {"success": True, "data": data}
+    except Exception as e:
+        clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        raise HTTPException(status_code=400, detail=clean_err)
+
+
+@app.post("/api/pro/frames")
+async def api_pro_frames(req: ProFramesRequest):
+    """Grab exact Start & End frames directly from the exact DVR/VOD timestamps selected by the user."""
+    try:
+        data = await asyncio.to_thread(
+            fetch_pro_boundary_frames,
+            url=req.url,
+            video_id=req.video_id,
+            is_live=req.is_live,
+            start_utc_ts=req.start_utc_ts,
+            end_utc_ts=req.end_utc_ts,
+            start_time=req.start_time,
+            end_time=req.end_time,
         )
         return {"success": True, "data": data}
     except Exception as e:

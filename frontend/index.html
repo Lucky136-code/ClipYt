@@ -11,7 +11,6 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
     rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://www.youtube.com/iframe_api" async></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -277,12 +276,12 @@
     </section>
     </div><!-- /#standard-workspace -->
 
-    <!-- ==================== LIVE STUDIO (LIVE PLAYER + DUAL-BOX + AI HINGLISH) ==================== -->
+    <!-- ==================== LIVE STUDIO (EXACT TIMESTAMP + 60% DISPLAY / 40% STREAMER) ==================== -->
     <section id="pro-studio-section" class="hidden">
       <section class="hero-section pro-hero">
         <div class="pro-hero-badge">
           <span class="live-dot"></span>
-          <span>LIVE STUDIO • REAL-TIME CLIPPING • AI ENGLISH + HINGLISH</span>
+          <span>LIVE STUDIO • 9:16 • 60% DISPLAY TOP / 40% STREAMER BOTTOM</span>
         </div>
         <h1 class="hero-title">Live Studio</h1>
 
@@ -290,7 +289,7 @@
           <form id="pro-inspect-form" class="url-form">
             <div class="url-row">
               <div class="url-input-wrap">
-                <input type="text" id="pro-youtube-url" placeholder="Paste YouTube Live Stream or Video link..."
+                <input type="text" id="pro-youtube-url" placeholder="Paste YouTube Live Stream link here..."
                   required autocomplete="off">
                 <button type="button" id="pro-paste-btn" class="btn-paste">Paste</button>
               </div>
@@ -321,144 +320,140 @@
             </div>
           </div>
           <button type="button" id="pro-refresh-frame-btn" class="btn-saved pro-refresh-btn">
-            ↻ Sync Preview Frame
+            ↻ Refresh Live Edge
           </button>
         </div>
 
-        <!-- Simple 4-Step Guide Bar -->
-        <div class="glass-card live-steps-bar" id="live-steps-bar">
-          <div class="live-step-item active" id="guide-step-1">
-            <span class="live-step-num">1</span>
-            <span>Place the 2 boxes</span>
-          </div>
-          <span class="live-step-arrow">→</span>
-          <div class="live-step-item" id="guide-step-2">
-            <span class="live-step-num">2</span>
-            <span>Lock the boxes</span>
-          </div>
-          <span class="live-step-arrow">→</span>
-          <div class="live-step-item" id="guide-step-3">
-            <span class="live-step-num">3</span>
-            <span>Start recording</span>
-          </div>
-          <span class="live-step-arrow">→</span>
-          <div class="live-step-item" id="guide-step-4">
-            <span class="live-step-num">4</span>
-            <span>Export it</span>
-          </div>
-        </div>
-
-        <!-- Dual-Box Interactive Editor + Live 9:16 Split-Screen Preview -->
-        <div class="pro-editor-grid">
-          <!-- Left: Live Playing YouTube Stream + Draggable/Resizable Boxes + Record Controls -->
-          <div class="glass-card pro-canvas-card">
-            <div class="pro-card-head">
-              <div>
-                <h3 class="section-title">Live Player & Boxes</h3>
-                <p class="section-sub">Place <strong class="tag-cam">Box 1: Streamer</strong> & <strong class="tag-stream">Box 2: Stream</strong>, then lock boxes to scrub/play.</p>
-              </div>
-              <button type="button" id="pro-lock-boxes-btn" class="btn-saved pro-lock-boxes-btn" title="Lock boxes so clicks control the YouTube video">
-                🔓 Lock Boxes
-              </button>
+        <!-- Step 1: Go Back in Timeframe & Select Exact From -> To Clip Window -->
+        <div class="glass-card pro-timing-card">
+          <div class="pro-card-head" style="margin-bottom:0.85rem;">
+            <div>
+              <h3 class="section-title">1. Select Exact Clip Timestamp</h3>
+              <p class="section-sub">Go back in the live stream timeline, pick <strong>From</strong> & <strong>To</strong>, and verify the exact Start & End frames below.</p>
             </div>
+            <button type="button" id="pro-load-frames-btn" class="btn-saved pro-refresh-btn">
+              👁 Check Start & End Frames
+            </button>
+          </div>
 
-            <div id="pro-stage" class="pro-stage">
-              <img id="pro-frame-img" class="pro-frame-fallback" src="" alt="Stream frame" draggable="false">
-              <div id="pro-yt-player-wrap" class="pro-yt-player-wrap">
-                <div id="pro-yt-player"></div>
-              </div>
-              <div id="pro-boxes-overlay" class="pro-boxes-overlay">
-                <!-- Box 2: Stream / Gameplay -->
-                <div id="box-stream" class="crop-box crop-box-stream" data-box="stream">
-                  <div class="crop-drag-body"></div>
-                  <div class="crop-box-label label-stream">Box 2 • Stream</div>
-                  <div class="crop-handle handle-nw" data-handle="nw"></div>
-                  <div class="crop-handle handle-ne" data-handle="ne"></div>
-                  <div class="crop-handle handle-sw" data-handle="sw"></div>
-                  <div class="crop-handle handle-se" data-handle="se"></div>
-                </div>
-                <!-- Box 1: Streamer Facecam -->
-                <div id="box-cam" class="crop-box crop-box-cam" data-box="cam">
-                  <div class="crop-drag-body"></div>
-                  <div class="crop-box-label label-cam">Box 1 • Streamer</div>
-                  <div class="crop-handle handle-nw" data-handle="nw"></div>
-                  <div class="crop-handle handle-ne" data-handle="ne"></div>
-                  <div class="crop-handle handle-sw" data-handle="sw"></div>
-                  <div class="crop-handle handle-se" data-handle="se"></div>
-                </div>
+          <!-- Dual-Range Timeline Slider (00:00 -> LIVE NOW) -->
+          <div class="pro-dvr-scale-labels">
+            <span id="pro-tl-min">00:00</span>
+            <span id="pro-tl-mid">50%</span>
+            <span id="pro-tl-max" class="dvr-live-edge">🔴 LIVE 00:00</span>
+          </div>
+          <div class="dual-slider-wrap">
+            <div class="dual-slider-track">
+              <div id="pro-tl-fill" class="dual-slider-fill"></div>
+            </div>
+            <input type="range" id="pro-tl-start" class="dual-range" min="0" max="300" step="1" value="265">
+            <input type="range" id="pro-tl-end" class="dual-range" min="0" max="300" step="1" value="300">
+          </div>
+
+          <!-- Exact From / To Inputs & Quick Nudges -->
+          <div class="pro-vod-controls" style="margin-top:0.75rem;">
+            <div class="timing-field">
+              <span id="pro-from-label" class="timing-label">From (mm:ss)</span>
+              <div class="timing-controls">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', -5)" title="-5s">−5</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', -1)" title="-1s">−</button>
+                <input type="text" id="pro-from-input" class="time-text-input" value="00:00">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', 1)" title="+1s">+</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('start', 5)" title="+5s">+5</button>
               </div>
             </div>
 
-            <!-- Step 3: Start / Stop Recording Bar -->
-            <div class="pro-recorder-bar">
-              <div class="pro-rec-actions">
-                <button type="button" id="pro-rec-btn" class="btn-rec-start">
-                  <span class="rec-dot"></span>
-                  <span id="pro-rec-btn-text">Start Recording</span>
-                </button>
-                <button type="button" id="pro-rec-cancel-btn" class="btn-saved pro-rec-cancel hidden">
-                  Cancel
-                </button>
-              </div>
-              <div class="pro-rec-status-wrap">
-                <span id="pro-rec-timer" class="pro-rec-timer hidden">REC 00:00</span>
-                <span id="pro-rec-ready-pill" class="pro-rec-ready-pill hidden">✓ Clip Ready</span>
-                <label id="pro-rec-rewind-wrap" class="pro-rewind-inline hidden" title="How far behind LIVE this clip ended (matches YouTube's −MM:SS)">
-                  <span>Behind Live:</span>
-                  <input type="text" id="pro-rec-rewind-input" class="pro-rewind-mini-input" value="00:00">
-                </label>
-                <span id="pro-player-clock" class="pro-player-clock">YouTube: 00:00</span>
+            <div class="timing-field">
+              <span id="pro-to-label" class="timing-label">To (mm:ss)</span>
+              <div class="timing-controls">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', -5)" title="-5s">−5</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', -1)" title="-1s">−</button>
+                <input type="text" id="pro-to-input" class="time-text-input" value="00:35">
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', 1)" title="+1s">+</button>
+                <button type="button" class="step-btn" onclick="stepLiveClipTime('end', 5)" title="+5s">+5</button>
               </div>
             </div>
 
-            <!-- 1-Click Facecam Corner Presets -->
-            <div class="pro-presets-row">
-              <span class="preset-label">Quick Facecam:</span>
-              <button type="button" class="choice-pill" onclick="applyCamPreset('tl')">Top-Left</button>
-              <button type="button" class="choice-pill" onclick="applyCamPreset('tr')">Top-Right</button>
-              <button type="button" class="choice-pill" onclick="applyCamPreset('bl')">Bottom-Left</button>
-              <button type="button" class="choice-pill" onclick="applyCamPreset('br')">Bottom-Right</button>
-              <button type="button" class="choice-pill" onclick="applyCamPreset('reset')">Reset</button>
+            <div class="manual-summary-box">
+              <span>Clip Length: <strong id="pro-clip-len-display">00:35</strong></span>
+              <span id="pro-frames-status" class="setting-hint">Exact UTC segment lock (5s–120s)</span>
             </div>
           </div>
 
-          <!-- Right: Live 9:16 Vertical Split-Screen Preview of Placed Boxes -->
-          <div class="glass-card pro-preview-card">
-            <div class="pro-card-head">
-              <div>
-                <h3 class="section-title">9:16 Box Preview</h3>
-                <p class="section-sub">Exact preview of your 2 boxes</p>
+          <!-- Exact Start & End Boundary Frames (Direct visual proof of exact recorded window!) -->
+          <div class="pro-boundary-grid">
+            <div class="pro-boundary-col">
+              <div class="manual-frame-label">
+                <span>Clip Starts Here</span>
+                <span id="pro-start-frame-badge" class="peak-pill">00:00</span>
+              </div>
+              <div class="pro-boundary-box">
+                <img id="pro-start-frame-img" src="" alt="Start frame">
               </div>
             </div>
-            <div class="pro-phone-frame">
-              <canvas id="pro-preview-canvas" width="270" height="480"></canvas>
+            <div class="pro-boundary-col">
+              <div class="manual-frame-label">
+                <span>Clip Ends Here</span>
+                <span id="pro-end-frame-badge" class="peak-pill">00:35</span>
+              </div>
+              <div class="pro-boundary-box">
+                <img id="pro-end-frame-img" src="" alt="End frame">
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Step 4: Output Settings & Export Button -->
+        <!-- Step 2: Place Your Two Boxes (Display Top 60% + Streamer Bottom 40%, NO Preview Box!) -->
+        <div class="glass-card pro-canvas-card" style="margin-bottom:1.25rem;">
+          <div class="pro-card-head">
+            <div>
+              <h3 class="section-title">2. Place Your Two Boxes</h3>
+              <p class="section-sub">Place <strong class="tag-stream">Display Box (Top 60%)</strong> and <strong class="tag-cam">Streamer Box (Bottom 40%)</strong>.</p>
+            </div>
+            <span class="status-pill">9:16 • 60% Display / 40% Streamer</span>
+          </div>
+
+          <div id="pro-stage" class="pro-stage">
+            <img id="pro-frame-img" class="pro-frame-fallback" src="" alt="Selected stream frame" draggable="false">
+            <div id="pro-boxes-overlay" class="pro-boxes-overlay">
+              <!-- Display / Gameplay Box (Top 60%) -->
+              <div id="box-stream" class="crop-box crop-box-stream" data-box="stream">
+                <div class="crop-drag-body"></div>
+                <div class="crop-box-label label-stream">Display (Top 60%)</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+              <!-- Streamer Facecam Box (Bottom 40%) -->
+              <div id="box-cam" class="crop-box crop-box-cam" data-box="cam">
+                <div class="crop-drag-body"></div>
+                <div class="crop-box-label label-cam">Streamer (Bottom 40%)</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1-Click Streamer Facecam Corner Presets -->
+          <div class="pro-presets-row">
+            <span class="preset-label">Quick Streamer Box:</span>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('tl')">Top-Left</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('tr')">Top-Right</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('bl')">Bottom-Left</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('br')">Bottom-Right</button>
+            <button type="button" class="choice-pill" onclick="applyCamPreset('reset')">Reset</button>
+          </div>
+        </div>
+
+        <!-- Step 3: AI Captions & Export 9:16 Short -->
         <div class="glass-card pro-settings-card">
           <div class="pro-settings-grid">
             <div class="setting-block">
-              <label class="block-label">Streamer Size</label>
-              <div class="pill-group" id="pro-ratio-picker">
-                <button type="button" class="choice-pill" data-camratio="0.35">35 / 65</button>
-                <button type="button" class="choice-pill active" data-camratio="0.40">40 / 60</button>
-                <button type="button" class="choice-pill" data-camratio="0.50">50 / 50</button>
-              </div>
-            </div>
-
-            <div class="setting-block">
-              <label class="block-label">Streamer Position</label>
-              <div class="pill-group" id="pro-campos-picker">
-                <button type="button" class="choice-pill active" data-campos="top">Top</button>
-                <button type="button" class="choice-pill" data-campos="bottom">Bottom</button>
-              </div>
-            </div>
-
-            <div class="setting-block">
               <div class="caption-top-row">
-                <label class="block-label" style="margin:0;">AI Captions (English + Hinglish)</label>
+                <label class="block-label" style="margin:0;">AI Captions (English / Hinglish)</label>
                 <label class="toggle-switch">
                   <input type="checkbox" id="pro-burn-subs" checked>
                   <span class="slider"></span>
@@ -484,7 +479,7 @@
           </div>
 
           <button type="button" id="pro-create-btn" class="btn-create-short pro-create-btn">
-            ⚡ Export Short
+            ⚡ Create & Export 9:16 Clip
           </button>
         </div>
       </div>
