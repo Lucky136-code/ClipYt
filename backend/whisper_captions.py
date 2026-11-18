@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 from backend.config import TEMP_DIR
 
 _MODEL_LOCK = threading.Lock()
+_TRANSCRIBE_LOCK = threading.Lock()
 _WHISPER_MODEL = None
 _WHISPER_MODEL_NAME = None
 _LAST_WHISPER_ERROR = ""
@@ -397,45 +398,47 @@ def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]
         model = _get_whisper_model()
         target_lang = _choose_en_or_hi_language(model, media_path)
 
-        # Pass 1: Gentle Silero VAD (captions vanish cleanly during real silence)
-        words_out: List[Dict[str, Any]] = []
-        try:
-            segments, _info = model.transcribe(
-                str(media_path),
-                language=target_lang,
-                task="transcribe",
-                beam_size=2,
-                best_of=1,
-                word_timestamps=True,
-                vad_filter=True,
-                vad_parameters={
-                    "threshold": 0.30,
-                    "min_silence_duration_ms": 450,
-                    "speech_pad_ms": 200,
-                },
-                initial_prompt=HINGLISH_PROMPT,
-                condition_on_previous_text=False,
-            )
-            words_out = _extract_words_from_segments(segments)
-        except Exception as vad_err:
-            _LAST_WHISPER_ERROR = f"VAD pass fallback: {str(vad_err)[:140]}"
-            words_out = []
+        # Thread-safe GPU/CPU execution guard for 20-30 concurrent users
+        with _TRANSCRIBE_LOCK:
+            # Pass 1: Gentle Silero VAD (captions vanish cleanly during real silence)
+            words_out: List[Dict[str, Any]] = []
+            try:
+                segments, _info = model.transcribe(
+                    str(media_path),
+                    language=target_lang,
+                    task="transcribe",
+                    beam_size=2,
+                    best_of=1,
+                    word_timestamps=True,
+                    vad_filter=True,
+                    vad_parameters={
+                        "threshold": 0.30,
+                        "min_silence_duration_ms": 450,
+                        "speech_pad_ms": 200,
+                    },
+                    initial_prompt=HINGLISH_PROMPT,
+                    condition_on_previous_text=False,
+                )
+                words_out = _extract_words_from_segments(segments)
+            except Exception as vad_err:
+                _LAST_WHISPER_ERROR = f"VAD pass fallback: {str(vad_err)[:140]}"
+                words_out = []
 
-        # Pass 2: No-VAD retry if stream has loud game SFX/music or ONNX VAD errored
-        if not words_out:
-            segments2, _info2 = model.transcribe(
-                str(media_path),
-                language=target_lang,
-                task="transcribe",
-                beam_size=2,
-                best_of=1,
-                word_timestamps=True,
-                vad_filter=False,
-                no_speech_threshold=0.78,
-                initial_prompt=HINGLISH_PROMPT,
-                condition_on_previous_text=False,
-            )
-            words_out = _extract_words_from_segments(segments2)
+            # Pass 2: No-VAD retry if stream has loud game SFX/music or ONNX VAD errored
+            if not words_out:
+                segments2, _info2 = model.transcribe(
+                    str(media_path),
+                    language=target_lang,
+                    task="transcribe",
+                    beam_size=2,
+                    best_of=1,
+                    word_timestamps=True,
+                    vad_filter=False,
+                    no_speech_threshold=0.78,
+                    initial_prompt=HINGLISH_PROMPT,
+                    condition_on_previous_text=False,
+                )
+                words_out = _extract_words_from_segments(segments2)
 
         if words_out:
             _LAST_WHISPER_ERROR = ""

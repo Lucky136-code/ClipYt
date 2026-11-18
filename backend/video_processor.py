@@ -4,6 +4,7 @@ import os
 import time
 import subprocess
 import uuid
+import concurrent.futures
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Tuple
 import yt_dlp
@@ -269,6 +270,28 @@ def _measure_exact_leading_pad(
     return round(fallback_pad, 3)
 
 
+def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False, timeout_sec: int = 15):
+    """
+    Run yt-dlp download in a guarded thread pool with a strict timeout.
+    If YouTube stalls or gets stuck in the middle, it aborts fast and tries the next strategy!
+    Uses wait=False so a hanging socket cannot block the server or subsequent strategies.
+    """
+    def _worker():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            if is_info_dict:
+                return ydl.process_ie_result(copy.deepcopy(target), download=True)
+            return ydl.extract_info(target, download=True)
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(_worker)
+    try:
+        return future.result(timeout=timeout_sec)
+    except concurrent.futures.TimeoutError:
+        raise TimeoutError(f"Stream download timed out after {timeout_sec}s")
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
 def download_clip_segment(
     url: str,
     video_id: str,
@@ -280,6 +303,7 @@ def download_clip_segment(
     """
     Downloads ONLY the requested segment using stream-copy (-c copy, NO CPU re-encode!)
     with -copyts so exact original YouTube PTS is preserved for millisecond caption sync.
+    Guarded with strict per-strategy timeouts so downloads never stall in the middle.
     """
     if progress_cb:
         progress_cb("Fetching video clip...", 20)
@@ -295,9 +319,8 @@ def download_clip_segment(
         "external_downloader_args": {"ffmpeg_i": ["-copyts"]},
         "outtmpl": str(output_path.with_suffix(".%(ext)s")),
         "merge_output_format": "mp4",
-        "concurrent_fragment_downloads": 8,
-        "buffersize": 16 * 1024 * 1024,
-        "http_chunk_size": 10485760,
+        "concurrent_fragment_downloads": 4,
+        "buffersize": 8 * 1024 * 1024,
     }
 
     # Attempt 0: Instant pre-warmed cached metadata (skips webpage + JS solve!)
@@ -306,8 +329,7 @@ def download_clip_segment(
         ydl_opts = _make_ydl_opts(cached["strat_opts"], cached.get("allow_cookies", True))
         ydl_opts.update(dl_common)
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.process_ie_result(copy.deepcopy(cached["info"]), download=True)
+            _download_with_guard(ydl_opts, cached["info"], is_info_dict=True, timeout_sec=14)
             candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
             for cand in candidates:
                 if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
@@ -333,17 +355,16 @@ def download_clip_segment(
         ydl_opts.update(dl_common)
 
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                # Cache for subsequent clips from the same video
-                if info:
-                    STREAM_INFO_CACHE[video_id] = {
-                        "info": info,
-                        "strat_opts": strat_opts,
-                        "allow_cookies": allow_cookies,
-                        "label": label,
-                        "ts": time.time(),
-                    }
+            info = _download_with_guard(ydl_opts, url, is_info_dict=False, timeout_sec=14)
+            # Cache for subsequent clips from the same video
+            if info:
+                STREAM_INFO_CACHE[video_id] = {
+                    "info": info,
+                    "strat_opts": strat_opts,
+                    "allow_cookies": allow_cookies,
+                    "label": label,
+                    "ts": time.time(),
+                }
 
             candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
             for cand in candidates:

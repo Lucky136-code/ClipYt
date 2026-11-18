@@ -67,7 +67,7 @@ body::before {
 
 @media (max-width: 768px) {
   body::before {
-    background-image: url('/static/mobilebackground.png');
+    background-image: url('/mobilebackground.png');
   }
 }
 
@@ -82,20 +82,19 @@ body::before {
   z-index: 1;
 }
 
-/* Liquid Glass Card — 100% GPU-Compositor Sheen (0ms repaint, locked 144fps+) */
+/* Liquid Glass Card — Pure CSS GPU Compositor (60–144fps butter-smooth) */
 .glass-card {
   position: relative;
   overflow: hidden;
   background: var(--glass-bg);
-  backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
-  -webkit-backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
+  backdrop-filter: blur(8px) saturate(140%) brightness(1.02);
+  -webkit-backdrop-filter: blur(8px) saturate(140%) brightness(1.02);
   border: 1.5px solid var(--glass-border);
   outline: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
   contain: layout style paint;
-  transform: translate3d(0, 0, 0);
-  transition: border-color 0.18s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .glass-card > *,
@@ -104,53 +103,43 @@ body::before {
   z-index: 2;
 }
 
-/* Top-rim specular lens glint — moves ONLY via GPU transform: translate3d() */
+/* Top-rim specular lens glint — 100% pure CSS, 0 JS reflows */
 .glass-card::before,
 .clip-card::before {
   content: "";
   position: absolute;
   top: 0;
-  left: -130px;
-  width: 260px;
-  height: 3px;
-  border-radius: 9999px;
+  left: 15%;
+  right: 15%;
+  height: 2px;
   background: radial-gradient(
     ellipse at center,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(218, 246, 255, 0.85) 40%,
-    transparent 75%
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(218, 246, 255, 0.4) 50%,
+    transparent 100%
   );
-  transform: translate3d(var(--mx, 50%), 0, 0);
-  will-change: transform, opacity;
   pointer-events: none;
   z-index: 4;
-  opacity: 0.35;
-  transition: opacity 0.2s ease;
+  opacity: 0.55;
+  transition: opacity 0.25s ease;
 }
 
-/* Fluid radial liquid-glass sheen — moves ONLY via GPU transform: translate3d() (zero repaint!) */
+/* Fluid radial liquid-glass sheen — pure CSS hover shine */
 .glass-card::after,
 .clip-card::after {
   content: "";
   position: absolute;
-  top: -210px;
-  left: -210px;
-  width: 420px;
-  height: 420px;
-  border-radius: 50%;
+  inset: 0;
   background: radial-gradient(
-    circle at center,
-    rgba(255, 255, 255, 0.62) 0%,
-    rgba(220, 244, 255, 0.28) 32%,
-    rgba(216, 180, 254, 0.14) 56%,
-    transparent 74%
+    circle at 50% 0%,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(220, 244, 255, 0.08) 40%,
+    transparent 70%
   );
-  transform: translate3d(var(--mx, 200px), var(--my, 120px), 0);
-  will-change: transform, opacity;
-  opacity: 0;
+  opacity: 0.25;
   pointer-events: none;
   z-index: 1;
-  transition: opacity 0.22s ease;
+  transition: opacity 0.25s ease;
 }
 
 .glass-card:hover::before,
@@ -160,7 +149,7 @@ body::before {
 
 .glass-card:hover::after,
 .clip-card:hover::after {
-  opacity: 1;
+  opacity: 0.7;
 }
 
 .glass-card:hover {
@@ -1027,8 +1016,8 @@ input:checked + .slider:before {
 .clip-card {
   position: relative;
   background: var(--glass-bg-strong);
-  backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
-  -webkit-backdrop-filter: blur(14px) saturate(180%) brightness(1.04);
+  backdrop-filter: blur(8px) saturate(140%) brightness(1.02);
+  -webkit-backdrop-filter: blur(8px) saturate(140%) brightness(1.02);
   border: 1.5px solid var(--glass-border);
   outline: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
@@ -1039,8 +1028,6 @@ input:checked + .slider:before {
   contain: layout style paint;
   content-visibility: auto;
   contain-intrinsic-size: 320px 380px;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
   transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.16s ease;
 }
 
