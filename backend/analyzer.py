@@ -7,6 +7,8 @@ from PIL import Image
 import yt_dlp
 import numpy as np
 from backend.config import YTDLP_BASE_OPTS, ensure_fresh_cookiefile
+from backend.smart_hype import build_smart_hype_heatmap
+from backend.subtitles import fetch_youtube_transcript
 
 
 def extract_video_id(url: str) -> Optional[str]:
@@ -199,8 +201,35 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
     view_count = info.get("view_count", 0)
     v_id = info.get("id", video_id or "video")
 
+    caption_info = {
+        "language": info.get("language"),
+        "subtitles": info.get("subtitles") or {},
+        "automatic_captions": info.get("automatic_captions") or {},
+    }
+
     raw_heatmap = info.get("heatmap") or []
     has_heatmap = bool(raw_heatmap and len(raw_heatmap) > 0)
+    hype_source = "youtube_heatmap" if has_heatmap else "fallback"
+    hype_signals: List[str] = ["YouTube Most Replayed"] if has_heatmap else []
+    prefetched_transcript = None
+
+    if not has_heatmap and duration > 10.0:
+        # Fresh upload / no YouTube replay graph yet -> build Smart Hype Graph!
+        try:
+            prefetched_transcript = fetch_youtube_transcript(v_id, caption_info)
+        except Exception:
+            prefetched_transcript = None
+        smart_points, smart_labels = build_smart_hype_heatmap(
+            video_id=v_id,
+            info=info,
+            duration=duration,
+            transcript_words=prefetched_transcript,
+        )
+        if smart_points:
+            raw_heatmap = smart_points
+            has_heatmap = True
+            hype_source = "smart_hype"
+            hype_signals = smart_labels
 
     if has_heatmap:
         clips = _detect_peaks_from_heatmap(
@@ -249,14 +278,13 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "thumbnail": thumbnail,
         "view_count": view_count,
         "has_heatmap": has_heatmap,
+        "hype_source": hype_source,
+        "hype_signals": hype_signals,
         "heatmap": timeline_chart_data,
         "storyboard": sb_meta,
         "clips": clips,
-        "_caption_info": {
-            "language": info.get("language"),
-            "subtitles": info.get("subtitles") or {},
-            "automatic_captions": info.get("automatic_captions") or {},
-        },
+        "_caption_info": caption_info,
+        "_prefetched_transcript": prefetched_transcript,
     }
 
 

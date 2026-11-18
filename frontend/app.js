@@ -377,12 +377,16 @@ function renderFullAnalysis(data) {
 
   // Captions & Heatmap status
   const capStatus = document.getElementById("captions-status");
-  capStatus.textContent = data.has_transcript ? "Auto-Captions Ready" : "No YouTube Captions";
+  capStatus.textContent = "AI English + Hinglish Captions";
 
   const mapSub = document.getElementById("map-subtitle");
-  mapSub.textContent = data.has_heatmap
-    ? "Higher peaks show where viewers replayed and interacted the most."
-    : "YouTube hasn't published a replay graph for this video yet — showing suggested moments.";
+  if (data.hype_source === "smart_hype" && Array.isArray(data.hype_signals) && data.hype_signals.length > 0) {
+    mapSub.textContent = `⚡ Smart Hype Map (No YouTube replay graph yet) — detected via ${data.hype_signals.join(" + ")}.`;
+  } else if (data.has_heatmap) {
+    mapSub.textContent = "Higher peaks show where viewers replayed and interacted the most.";
+  } else {
+    mapSub.textContent = "YouTube hasn't published a replay graph for this video yet — showing suggested moments.";
+  }
 
   renderHeatmapChart(data.heatmap);
   renderClipsGrid(data.clips, data.video_id, data.use_hours, data.duration);
@@ -937,6 +941,10 @@ const proState = {
   },
   frameImageObj: null,
   previewRafPending: false,
+  radarTimer: null,
+  radarPaused: false,
+  radarChart: null,
+  radarInFlight: false,
 };
 
 function isProUnlocked() {
@@ -985,6 +993,11 @@ function switchStudioMode(targetMode) {
       syncBoxesToDOM();
       scheduleProPreviewRender();
     });
+    if (proState.source.is_live && !proState.radarPaused) {
+      startLiveRadar(proState.source.video_id, false);
+    }
+  } else {
+    stopLiveRadar();
   }
 }
 
@@ -1196,6 +1209,20 @@ function setupProStudio() {
   // Create Pro Short button
   document.getElementById("pro-create-btn").addEventListener("click", submitProGenerate);
 
+  // Live Chat Hype Radar Pause/Resume button
+  const radarToggleBtn = document.getElementById("pro-radar-toggle-btn");
+  if (radarToggleBtn) {
+    radarToggleBtn.addEventListener("click", () => {
+      proState.radarPaused = !proState.radarPaused;
+      radarToggleBtn.textContent = proState.radarPaused ? "Resume" : "Pause";
+      if (proState.radarPaused) {
+        stopLiveRadar();
+      } else if (proState.source && proState.source.is_live) {
+        startLiveRadar(proState.source.video_id, false);
+      }
+    });
+  }
+
   // Dual-Box pointer drag & corner resize engine
   setupDualBoxInteractions();
   window.addEventListener("resize", () => {
@@ -1254,18 +1281,28 @@ async function inspectProStream(url, forceRefresh = false) {
 
     // Update source bar
     const badgeEl = document.getElementById("pro-live-badge");
+    const radarCard = document.getElementById("pro-radar-card");
     if (src.is_live) {
       badgeEl.textContent = "🔴 LIVE NOW";
       badgeEl.classList.remove("is-vod");
       document.getElementById("pro-live-controls").classList.remove("hidden");
       document.getElementById("pro-vod-controls").classList.add("hidden");
       refreshBtn.textContent = "↻ Refresh Live Frame";
+
+      if (radarCard) radarCard.classList.remove("hidden");
+      proState.radarPaused = false;
+      const toggleBtn = document.getElementById("pro-radar-toggle-btn");
+      if (toggleBtn) toggleBtn.textContent = "Pause";
+      startLiveRadar(src.video_id, !forceRefresh);
     } else {
       badgeEl.textContent = `🎬 VIDEO • ${src.duration_str}`;
       badgeEl.classList.add("is-vod");
       document.getElementById("pro-live-controls").classList.add("hidden");
       document.getElementById("pro-vod-controls").classList.remove("hidden");
       refreshBtn.textContent = "↻ Refresh Frame";
+
+      stopLiveRadar();
+      if (radarCard) radarCard.classList.add("hidden");
 
       const maxDur = Math.max(10, Math.floor(src.duration || 60));
       proState.vodStart = 0;
@@ -1639,3 +1676,190 @@ async function submitProGenerate() {
     showProError(err.message);
   }
 }
+
+// =============================================================
+// LIVE CHAT HYPE RADAR (REAL-TIME STREAM SPIKE DETECTOR)
+// =============================================================
+function stopLiveRadar() {
+  if (proState.radarTimer) {
+    clearInterval(proState.radarTimer);
+    proState.radarTimer = null;
+  }
+}
+
+function startLiveRadar(videoId, reset = false) {
+  stopLiveRadar();
+  if (!videoId) return;
+
+  pollLiveRadarOnce(videoId, reset);
+  proState.radarTimer = setInterval(() => {
+    if (proState.mode !== "pro" || proState.radarPaused || !proState.source || !proState.source.is_live) {
+      stopLiveRadar();
+      return;
+    }
+    pollLiveRadarOnce(videoId, false);
+  }, 3000);
+}
+
+async function pollLiveRadarOnce(videoId, reset = false) {
+  if (proState.radarInFlight) return;
+  proState.radarInFlight = true;
+  try {
+    const res = await fetch(`/api/pro/radar/${encodeURIComponent(videoId)}?reset=${reset ? "true" : "false"}`);
+    if (!res.ok) return;
+    const json = await res.json();
+    const data = json.data || {};
+
+    const subEl = document.getElementById("pro-radar-sub");
+    const mpsEl = document.getElementById("pro-radar-mps");
+    const scoreEl = document.getElementById("pro-radar-score");
+
+    if (!data.available) {
+      if (subEl) subEl.textContent = data.reason || "Live chat is turned off for this stream — use Last 20s–60s Live DVR controls below.";
+      if (mpsEl) mpsEl.textContent = "Chat Off";
+      if (scoreEl) scoreEl.textContent = "Manual DVR";
+      stopLiveRadar();
+      return;
+    }
+
+    if (subEl) subEl.textContent = "Watching live chat surges (W, OP, LOL, 😂, BHAI, CLUTCH) in real time.";
+    if (mpsEl) mpsEl.textContent = `${Number(data.current_mps || 0).toFixed(1)} msgs/s`;
+    if (scoreEl) scoreEl.textContent = `Hype: ${data.current_score || 0}%`;
+
+    renderRadarChart(data.timeline || []);
+    renderRadarSpikes(data.spikes || []);
+  } catch (e) {
+    // Silent retry on next poll
+  } finally {
+    proState.radarInFlight = false;
+  }
+}
+
+function renderRadarChart(timeline) {
+  const canvas = document.getElementById("proRadarChart");
+  if (!canvas || typeof Chart === "undefined") return;
+
+  const labels = timeline.map((p) => p.label);
+  const scores = timeline.map((p) => p.score);
+
+  if (!proState.radarChart) {
+    const ctx = canvas.getContext("2d");
+    const grad = ctx.createLinearGradient(0, 0, 0, 145);
+    grad.addColorStop(0, "rgba(239, 68, 68, 0.38)");
+    grad.addColorStop(0.55, "rgba(147, 51, 234, 0.16)");
+    grad.addColorStop(1, "rgba(147, 51, 234, 0.0)");
+
+    proState.radarChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Chat Hype",
+            data: scores,
+            borderColor: "#ef4444",
+            borderWidth: 2.5,
+            backgroundColor: grad,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#ffffff",
+            pointBorderColor: "#ef4444",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 220 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "rgba(255,255,255,0.96)",
+            titleColor: "#18102b",
+            bodyColor: "#dc2626",
+            borderColor: "rgba(239,68,68,0.28)",
+            borderWidth: 1,
+            displayColors: false,
+            callbacks: {
+              label: (item) => `Hype: ${item.parsed.y}%`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(109, 64, 198, 0.07)" },
+            ticks: { color: "#675b85", maxTicksLimit: 7, font: { size: 10 } },
+          },
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: "rgba(109, 64, 198, 0.07)" },
+            ticks: { color: "#675b85", stepSize: 25, callback: (v) => v + "%", font: { size: 10 } },
+          },
+        },
+      },
+    });
+  } else {
+    proState.radarChart.data.labels = labels;
+    proState.radarChart.data.datasets[0].data = scores;
+    proState.radarChart.update("none");
+  }
+}
+
+function escapeHtmlBasic(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderRadarSpikes(spikes) {
+  const container = document.getElementById("pro-radar-spikes");
+  if (!container) return;
+
+  if (!spikes || spikes.length === 0) {
+    container.innerHTML = `<div class="pro-radar-empty">Listening to live chat... When viewers spam hype reactions, 1-click clip alerts appear right here!</div>`;
+    return;
+  }
+
+  container.innerHTML = spikes
+    .slice(0, 4)
+    .map((spk) => {
+      const ago = Math.max(0, Number(spk.seconds_ago || 0));
+      const agoStr = ago < 60 ? `${ago}s ago` : `${Math.floor(ago / 60)}m ${ago % 60}s ago`;
+      const tags = (spk.top_reactions || []).length
+        ? `<span class="radar-spike-tags">${escapeHtmlBasic(spk.top_reactions.join(" • "))}</span>`
+        : "";
+      const sample = spk.sample_msg
+        ? `<div class="radar-spike-sample">"${escapeHtmlBasic(spk.sample_msg)}"</div>`
+        : "";
+      return `
+        <div class="radar-spike-row">
+          <div class="radar-spike-info">
+            <div class="radar-spike-top">
+              <span>🔥 ${spk.score}% Hype</span>
+              <span class="radar-spike-ago">${agoStr}</span>
+              ${tags}
+            </div>
+            ${sample}
+          </div>
+          <button type="button" class="btn-clip-spike" onclick="clipFromRadarSpike(${ago})">
+            ⚡ Clip This Spike
+          </button>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+window.clipFromRadarSpike = function (secondsAgo) {
+  // Position the Live DVR clip so the spike lands cleanly inside the clip (with ~8s reaction after!)
+  const rewind = Math.max(0, Math.min(360, Math.round(secondsAgo - 8)));
+  proState.liveRewind = rewind;
+  // Clear preset active highlight on rewind pills since this is an exact spike timestamp
+  document.querySelectorAll("#pro-live-rewind-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+  submitProGenerate();
+};

@@ -24,6 +24,7 @@ from backend.pro_studio import (
     inspect_pro_source,
     process_pro_split_pipeline,
 )
+from backend.live_radar import poll_live_chat_radar
 
 app = FastAPI(title="ClipYT - YouTube Shorts Creator", version="2.0.0")
 
@@ -208,7 +209,12 @@ async def api_analyze(req: AnalyzeRequest, background_tasks: BackgroundTasks):
         )
         vid = data["video_id"]
         caption_info = data.pop("_caption_info", None)
-        transcript = await asyncio.to_thread(fetch_youtube_transcript, vid, caption_info)
+        prefetched = data.pop("_prefetched_transcript", None)
+        transcript = (
+            prefetched
+            if prefetched is not None
+            else await asyncio.to_thread(fetch_youtube_transcript, vid, caption_info)
+        )
         data["has_transcript"] = bool(transcript and len(transcript) > 0)
         TRANSCRIPT_CACHE[vid] = transcript
         HEATMAP_CACHE[vid] = data.get("heatmap") or []
@@ -292,6 +298,19 @@ async def api_pro_inspect(req: ProInspectRequest):
     except Exception as e:
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
         raise HTTPException(status_code=400, detail=clean_err)
+
+
+@app.get("/api/pro/radar/{video_id}")
+async def api_pro_radar(video_id: str, reset: bool = False):
+    """Real-time YouTube Live Chat Hype Radar: chat speed graph + auto-detected viral spikes."""
+    try:
+        data = await asyncio.to_thread(poll_live_chat_radar, video_id, reset)
+        return {"success": True, "data": data}
+    except Exception as e:
+        return {
+            "success": False,
+            "data": {"available": False, "reason": str(e)[:120], "timeline": [], "spikes": []},
+        }
 
 
 def _run_pro_generate_task(task_id: str, req: ProGenerateRequest):

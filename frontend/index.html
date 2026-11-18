@@ -327,6 +327,31 @@
           </button>
         </div>
 
+        <!-- Live Chat Hype Radar (Auto-shown on active YouTube Live Streams!) -->
+        <div id="pro-radar-card" class="glass-card pro-radar-card hidden">
+          <div class="pro-radar-head">
+            <div>
+              <h3 class="section-title">🔥 Live Chat Hype Radar</h3>
+              <p id="pro-radar-sub" class="section-sub">Watching live chat surges (W, OP, LOL, 😂, BHAI, CLUTCH) in real time.</p>
+            </div>
+            <div class="pro-radar-stats">
+              <span id="pro-radar-mps" class="status-pill">0.0 msgs/s</span>
+              <span id="pro-radar-score" class="engagement-badge">Hype: 0%</span>
+              <button type="button" id="pro-radar-toggle-btn" class="btn-saved pro-radar-toggle">Pause</button>
+            </div>
+          </div>
+
+          <div class="pro-radar-chart-wrap">
+            <canvas id="proRadarChart"></canvas>
+          </div>
+
+          <div id="pro-radar-spikes" class="pro-radar-spikes">
+            <div class="pro-radar-empty">
+              Listening to live chat... When viewers spam hype reactions, 1-click clip alerts appear right here!
+            </div>
+          </div>
+        </div>
+
         <!-- Timing Bar: Live DVR vs VOD -->
         <div class="glass-card pro-timing-card">
           <!-- LIVE DVR Controls -->
