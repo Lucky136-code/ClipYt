@@ -1,0 +1,157 @@
+"""
+ClipYt Public Server Launcher
+Runs the backend on your laptop and connects it to https://clipyt.vercel.app
+so users worldwide are served directly by your laptop's CPU/GPU!
+"""
+
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+VERCEL_JSON_PATH = BASE_DIR / "vercel.json"
+CLOUDFLARED_PATH = Path(r"C:\Program Files (x86)\cloudflared\cloudflared.exe")
+
+if not CLOUDFLARED_PATH.exists():
+    which_cf = shutil.which("cloudflared")
+    if which_cf:
+        CLOUDFLARED_PATH = Path(which_cf)
+    else:
+        print("[ERROR] cloudflared.exe not found.")
+        print("Please install cloudflared or place cloudflared.exe in your PATH.")
+        sys.exit(1)
+
+
+def update_vercel_json_destination(tunnel_url: str) -> bool:
+    """Updates vercel.json with the laptop's public tunnel URL and pushes to GitHub."""
+    if not VERCEL_JSON_PATH.exists():
+        print(f"[ERROR] vercel.json not found at {VERCEL_JSON_PATH}")
+        return False
+
+    try:
+        content = json.loads(VERCEL_JSON_PATH.read_text(encoding="utf-8"))
+        updated = False
+        target_dest = f"{tunnel_url}/api/:path*"
+
+        for rule in content.get("rewrites", []):
+            if rule.get("source") == "/api/:path*":
+                if rule.get("destination") != target_dest:
+                    rule["destination"] = target_dest
+                    updated = True
+                break
+
+        if updated:
+            VERCEL_JSON_PATH.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
+            print(f"[OK] Updated vercel.json destination -> {target_dest}")
+
+            # Auto git commit & push to deploy on Vercel
+            print("[INFO] Pushing updated routing to GitHub for Vercel auto-deploy...")
+            subprocess.run(["git", "add", "vercel.json"], cwd=str(BASE_DIR), check=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"chore(deploy): point API to laptop tunnel {tunnel_url}"],
+                cwd=str(BASE_DIR),
+                capture_output=True,
+            )
+            push_res = subprocess.run(["git", "push", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, text=True)
+            if push_res.returncode == 0:
+                print("[OK] Pushed to GitHub! Vercel is now routing to your laptop.")
+            else:
+                print(f"[WARN] Git push output: {push_res.stderr.strip()[:200]}")
+        else:
+            print("[INFO] vercel.json is already pointing to this tunnel.")
+
+        return True
+    except Exception as e:
+        print(f"[WARN] Could not auto-update vercel.json: {e}")
+        return False
+
+
+def main():
+    print("=" * 72)
+    print("  🚀 ClipYt Laptop Server — Serving Worldwide Users from Your Laptop")
+    print("=" * 72)
+
+    # 1. Start local FastAPI Uvicorn server on port 8000
+    print("[1/3] Starting backend server on port 8000...")
+    server_cmd = [sys.executable, "-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "8000"]
+    server_proc = subprocess.Popen(server_cmd, cwd=str(BASE_DIR))
+
+    time.sleep(1.5)
+
+    # 2. Start Cloudflare Tunnel to expose port 8000 to public HTTPS
+    print("[2/3] Establishing Cloudflare HTTPS public tunnel...")
+    tunnel_cmd = [str(CLOUDFLARED_PATH), "tunnel", "--url", "http://127.0.0.1:8000"]
+    tunnel_proc = subprocess.Popen(
+        tunnel_cmd,
+        cwd=str(BASE_DIR),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    tunnel_url = None
+    t0 = time.time()
+    for line in tunnel_proc.stdout:
+        m = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", line)
+        if m:
+            tunnel_url = m.group(0)
+            break
+        if time.time() - t0 > 25:
+            break
+
+    if not tunnel_url:
+        print("[ERROR] Failed to obtain Cloudflare tunnel URL.")
+        server_proc.terminate()
+        tunnel_proc.terminate()
+        sys.exit(1)
+
+    print(f"[OK] Public Tunnel established: {tunnel_url}")
+
+    # 3. Connect Vercel to your laptop tunnel
+    print("[3/3] Connecting https://clipyt.vercel.app to your laptop...")
+    update_vercel_json_destination(tunnel_url)
+
+    print()
+    print("=" * 72)
+    print("  🎉 CLIPYT IS NOW LIVE FOR ALL USERS WORLDWIDE!")
+    print("=" * 72)
+    print(f"  🌐 Live Public Website : https://clipyt.vercel.app")
+    print(f"  🔗 Laptop Public API   : {tunnel_url}")
+    print(f"  💻 Local Dashboard     : http://127.0.0.1:8000")
+    print()
+    print("  All user requests on clipyt.vercel.app are being processed")
+    print("  directly on your laptop (zero cloud limits, zero bans!).")
+    print()
+    print("  [Press Ctrl+C to stop the server when you are done]")
+    print("=" * 72)
+    print()
+
+    # Handle graceful shutdown
+    def _shutdown(sig, frame):
+        print("\n[INFO] Shutting down server and tunnel...")
+        try:
+            tunnel_proc.terminate()
+            server_proc.terminate()
+        except Exception:
+            pass
+        print("[OK] Stopped cleanly. Goodbye!")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
+    try:
+        server_proc.wait()
+    except KeyboardInterrupt:
+        _shutdown(None, None)
+
+
+if __name__ == "__main__":
+    main()
