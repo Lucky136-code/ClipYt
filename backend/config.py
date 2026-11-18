@@ -34,11 +34,23 @@ YTDLP_BASE_OPTS = {
 }
 
 # Optional YouTube cookies support for cloud hosting (e.g. Hugging Face Spaces Secret: YOUTUBE_COOKIES)
-_env_cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
-if _env_cookies:
-    _cookies_file = TEMP_DIR / "yt_cookies.txt"
-    _cookies_file.write_text(_env_cookies, encoding="utf-8")
-    YTDLP_BASE_OPTS["cookiefile"] = str(_cookies_file)
+_ENV_COOKIES = os.environ.get("YOUTUBE_COOKIES", "").strip()
+_COOKIES_FILE = TEMP_DIR / "yt_cookies.txt"
+
+
+def ensure_fresh_cookiefile() -> str:
+    """
+    Re-writes yt_cookies.txt from the immutable YOUTUBE_COOKIES env secret so
+    yt-dlp's automatic cookiejar save can never overwrite or strip auth cookies!
+    """
+    if _ENV_COOKIES:
+        _COOKIES_FILE.write_text(_ENV_COOKIES, encoding="utf-8")
+        return str(_COOKIES_FILE)
+    return ""
+
+
+if _ENV_COOKIES:
+    YTDLP_BASE_OPTS["cookiefile"] = ensure_fresh_cookiefile()
 
 ASPECT_RATIOS = {
     "9:16": {"width": 1080, "height": 1920, "label": "9:16 Vertical (Shorts / Reels / TikTok)"},

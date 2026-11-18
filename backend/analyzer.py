@@ -6,7 +6,7 @@ import requests
 from PIL import Image
 import yt_dlp
 import numpy as np
-from backend.config import YTDLP_BASE_OPTS
+from backend.config import YTDLP_BASE_OPTS, ensure_fresh_cookiefile
 
 
 def extract_video_id(url: str) -> Optional[str]:
@@ -175,6 +175,7 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
     video_id = extract_video_id(url)
     clean_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else url
 
+    ensure_fresh_cookiefile()
     ydl_opts = dict(YTDLP_BASE_OPTS)
     ydl_opts.update({
         "extract_flat": False,

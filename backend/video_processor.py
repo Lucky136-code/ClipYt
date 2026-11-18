@@ -14,6 +14,7 @@ from backend.config import (
     YTDLP_BASE_OPTS,
     ASPECT_RATIOS,
     ASPECT_RATIOS_720,
+    ensure_fresh_cookiefile,
 )
 from backend.subtitles import generate_ass_subtitles
 
@@ -176,7 +177,9 @@ def _build_stream_strategies() -> list:
 
 def _make_ydl_opts(strat_opts: dict, allow_cookies: bool) -> dict:
     ydl_opts = dict(YTDLP_BASE_OPTS)
-    if not allow_cookies:
+    if allow_cookies and ydl_opts.get("cookiefile"):
+        ensure_fresh_cookiefile()
+    elif not allow_cookies:
         ydl_opts.pop("cookiefile", None)
     ydl_opts.update(strat_opts)
     return ydl_opts
