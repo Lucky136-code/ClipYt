@@ -1712,12 +1712,38 @@ input:checked + .slider:before {
 }
 
 .pro-boxes-overlay .crop-box {
+  pointer-events: none;
+}
+
+.pro-boxes-overlay .crop-drag-body {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+}
+
+.pro-boxes-overlay .crop-box-label {
+  pointer-events: auto;
+  cursor: move;
+}
+
+.pro-boxes-overlay .crop-handle {
   pointer-events: auto;
 }
 
 /* When Boxes Locked (Interact with YouTube Video mode), clicks pass straight to YouTube player! */
-.pro-boxes-overlay.boxes-locked .crop-box {
+.pro-boxes-overlay.boxes-locked .crop-box,
+.pro-boxes-overlay.boxes-locked .crop-drag-body,
+.pro-boxes-overlay.boxes-locked .crop-box-label,
+.pro-boxes-overlay.boxes-locked .crop-handle {
   pointer-events: none;
+}
+
+.pro-boxes-overlay.boxes-locked .crop-box {
   border-style: dashed;
   opacity: 0.72;
 }

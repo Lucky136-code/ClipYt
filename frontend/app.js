@@ -1617,6 +1617,15 @@ function syncBoxesToDOM() {
     el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
     el.style.width = `${pw.toFixed(1)}px`;
     el.style.height = `${ph.toFixed(1)}px`;
+
+    // Keep the bottom 58px YouTube timeline scrubber & controls ALWAYS clickable even while boxes are unlocked!
+    const dragBody = el.querySelector(".crop-drag-body");
+    if (dragBody) {
+      const ytControlsHeight = 58;
+      const overlapBottom = Math.max(0, (py + ph) - (rect.height - ytControlsHeight));
+      const safeBottom = Math.min(Math.max(0, ph - 22), overlapBottom);
+      dragBody.style.bottom = `${safeBottom.toFixed(1)}px`;
+    }
   }
 }
 
@@ -1637,12 +1646,16 @@ function setupDualBoxInteractions() {
     const stageRect = stage.getBoundingClientRect();
 
     boxEl.classList.add("is-dragging");
-    boxEl.setPointerCapture(e.pointerId);
+    const captureEl = e.target;
+    try {
+      captureEl.setPointerCapture(e.pointerId);
+    } catch (err) {}
 
     dragCtx = {
       key,
       handle,
       boxEl,
+      captureEl,
       pointerId: e.pointerId,
       stageRect,
       startX: e.clientX,
@@ -1651,7 +1664,7 @@ function setupDualBoxInteractions() {
     };
   });
 
-  stage.addEventListener("pointermove", (e) => {
+  window.addEventListener("pointermove", (e) => {
     if (!dragCtx || e.pointerId !== dragCtx.pointerId) return;
     e.preventDefault();
 
@@ -1695,7 +1708,7 @@ function setupDualBoxInteractions() {
     if (!dragCtx || e.pointerId !== dragCtx.pointerId) return;
     dragCtx.boxEl.classList.remove("is-dragging");
     try {
-      dragCtx.boxEl.releasePointerCapture(e.pointerId);
+      dragCtx.captureEl.releasePointerCapture(e.pointerId);
     } catch (err) {}
     dragCtx = null;
     if (!proState.boxesLocked && !proState.isRecording && !proState.recordedClip) {
@@ -1703,8 +1716,8 @@ function setupDualBoxInteractions() {
     }
   };
 
-  stage.addEventListener("pointerup", endDrag);
-  stage.addEventListener("pointercancel", endDrag);
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
 }
 
 function scheduleProPreviewRender() {
