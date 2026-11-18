@@ -170,22 +170,36 @@ def _grab_frame_b64(
     duration: float,
     thumbnail_url: str,
     headers: Optional[Dict[str, str]] = None,
+    preview_offset_sec: Optional[float] = None,
 ) -> Tuple[str, str]:
     """
     Grab a crisp 16:9 JPEG frame from the live stream or VOD so the creator can
     position the Streamer Facecam box & Stream box with pixel accuracy.
+    If `preview_offset_sec` is set:
+      - For LIVE streams: grabs the frame `preview_offset_sec` seconds ago from Live DVR!
+      - For VODs: grabs the frame at exact timestamp `preview_offset_sec` seconds!
     Returns (data_uri_base64, source_kind).
     """
     if video_url:
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
         if headers and headers.get("User-Agent"):
             cmd.extend(["-user_agent", headers["User-Agent"]])
-        if not is_live and duration > 15:
-            seek_sec = min(max(8.0, duration * 0.22), 90.0)
-            cmd.extend(["-ss", f"{seek_sec:.2f}"])
-        elif is_live:
-            # Start right near the live edge for an instant current frame
-            cmd.extend(["-live_start_index", "-2"])
+        if not is_live:
+            if preview_offset_sec is not None and preview_offset_sec >= 0:
+                seek_sec = min(max(0.0, float(preview_offset_sec)), max(0.0, duration - 1.0)) if duration > 2 else float(preview_offset_sec)
+            elif duration > 15:
+                seek_sec = min(max(8.0, duration * 0.22), 90.0)
+            else:
+                seek_sec = 0.0
+            if seek_sec > 0.1:
+                cmd.extend(["-ss", f"{seek_sec:.2f}"])
+        else:
+            # Live stream: jump back in DVR if preview_offset_sec > 0, else near live edge
+            if preview_offset_sec is not None and preview_offset_sec > 4.0:
+                idx = _estimate_hls_live_start_index(video_url, float(preview_offset_sec), headers)
+                cmd.extend(["-live_start_index", str(idx if idx is not None else -max(2, math.ceil(preview_offset_sec / 5.0)))])
+            else:
+                cmd.extend(["-live_start_index", "-2"])
 
         cmd.extend([
             "-i", video_url,
@@ -222,12 +236,16 @@ def _grab_frame_b64(
     return "", "none"
 
 
-def inspect_pro_source(url: str, force_refresh: bool = False) -> Dict[str, Any]:
+def inspect_pro_source(
+    url: str,
+    force_refresh: bool = False,
+    preview_offset_sec: Optional[float] = None,
+) -> Dict[str, Any]:
     """
     Inspect a YouTube Live Stream or normal video for Pro Studio:
     - Supports watch?v=, /live/ID, youtu.be/ID, AND @Channel/live links!
     - Detects live vs VOD status
-    - Grabs a fresh 16:9 frame (actual live video frame for streams!)
+    - Grabs a fresh 16:9 frame (at live edge, DVR rewind offset, or exact VOD timestamp!)
     - Caches stream URLs so clicking 'Create Pro Short' is super fast
     """
     video_id = extract_video_id(url)
@@ -260,6 +278,7 @@ def inspect_pro_source(url: str, force_refresh: bool = False) -> Dict[str, Any]:
         duration=duration,
         thumbnail_url=thumbnail,
         headers=headers,
+        preview_offset_sec=preview_offset_sec,
     )
 
     return {
@@ -598,7 +617,7 @@ def process_pro_split_pipeline(
 
     try:
         if is_live:
-            clip_duration = max(10.0, min(90.0, float(duration_sec)))
+            clip_duration = max(5.0, min(120.0, float(duration_sec)))
             downloaded_raw = download_live_dvr_segment(
                 url=url,
                 video_id=video_id,

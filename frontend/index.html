@@ -352,52 +352,121 @@
           </div>
         </div>
 
-        <!-- Timing Bar: Live DVR vs VOD -->
+        <!-- Timing Bar: Live DVR (Quick + Manual) vs VOD (Slider + Manual) -->
         <div class="glass-card pro-timing-card">
           <!-- LIVE DVR Controls -->
-          <div id="pro-live-controls" class="pro-live-controls">
-            <div class="setting-block">
-              <label class="block-label">Clip Length</label>
-              <div class="pill-group" id="pro-live-dur-picker">
-                <button type="button" class="choice-pill" data-dur="20">Last 20s</button>
-                <button type="button" class="choice-pill active" data-dur="35">Last 35s</button>
-                <button type="button" class="choice-pill" data-dur="50">Last 50s</button>
-                <button type="button" class="choice-pill" data-dur="60">Last 60s</button>
+          <div id="pro-live-controls" class="pro-live-wrap">
+            <div class="pro-timing-mode-row">
+              <div class="mode-tabs pro-sub-tabs">
+                <button type="button" id="pro-live-tab-quick" class="mode-tab active">⚡ Quick Presets</button>
+                <button type="button" id="pro-live-tab-manual" class="mode-tab">🎛️ Manual Timing</button>
+              </div>
+              <span class="pro-timing-hint">00:00 = Live right now • rewind up to 60 min in Live DVR</span>
+            </div>
+
+            <!-- Live Sub-tab 1: Quick Presets -->
+            <div id="pro-live-quick-panel" class="pro-live-controls">
+              <div class="setting-block">
+                <label class="block-label">Clip Length</label>
+                <div class="pill-group" id="pro-live-dur-picker">
+                  <button type="button" class="choice-pill" data-dur="20">Last 20s</button>
+                  <button type="button" class="choice-pill active" data-dur="35">Last 35s</button>
+                  <button type="button" class="choice-pill" data-dur="50">Last 50s</button>
+                  <button type="button" class="choice-pill" data-dur="60">Last 60s</button>
+                </div>
+              </div>
+              <div class="setting-block">
+                <label class="block-label">Rewind Live DVR</label>
+                <div class="pill-group" id="pro-live-rewind-picker">
+                  <button type="button" class="choice-pill active" data-rewind="0">Right Now</button>
+                  <button type="button" class="choice-pill" data-rewind="30">30s ago</button>
+                  <button type="button" class="choice-pill" data-rewind="60">1m ago</button>
+                  <button type="button" class="choice-pill" data-rewind="120">2m ago</button>
+                  <button type="button" class="choice-pill" data-rewind="300">5m ago</button>
+                </div>
               </div>
             </div>
-            <div class="setting-block">
-              <label class="block-label">Rewind Live DVR</label>
-              <div class="pill-group" id="pro-live-rewind-picker">
-                <button type="button" class="choice-pill active" data-rewind="0">Right Now</button>
-                <button type="button" class="choice-pill" data-rewind="30">30s ago</button>
-                <button type="button" class="choice-pill" data-rewind="60">1m ago</button>
-                <button type="button" class="choice-pill" data-rewind="120">2m ago</button>
-                <button type="button" class="choice-pill" data-rewind="300">5m ago</button>
+
+            <!-- Live Sub-tab 2: Manual Timing from Live Stream DVR -->
+            <div id="pro-live-manual-panel" class="pro-manual-panel hidden">
+              <div class="pro-dvr-scale-labels">
+                <span>−15:00 ago</span>
+                <span>−07:30 ago</span>
+                <span class="dvr-live-edge">🔴 LIVE NOW (00:00)</span>
+              </div>
+              <div class="dual-slider-wrap">
+                <div class="dual-slider-track">
+                  <div id="pro-live-slider-fill" class="dual-slider-fill"></div>
+                </div>
+                <input type="range" id="pro-live-slider-start" class="dual-range" min="0" max="900" step="1" value="865">
+                <input type="range" id="pro-live-slider-end" class="dual-range" min="0" max="900" step="1" value="900">
+              </div>
+
+              <div class="pro-vod-controls">
+                <div class="timing-field">
+                  <span class="timing-label">Start (Time Ago mm:ss)</span>
+                  <div class="timing-controls">
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', 5)">−</button>
+                    <input type="text" id="pro-live-start-input" class="time-text-input" value="00:35">
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('start', -5)">+</button>
+                  </div>
+                </div>
+                <div class="timing-field">
+                  <span class="timing-label">End (Time Ago mm:ss)</span>
+                  <div class="timing-controls">
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', 5)">−</button>
+                    <input type="text" id="pro-live-end-input" class="time-text-input" value="00:00">
+                    <button type="button" class="step-btn" onclick="stepProLiveManual('end', -5)">+</button>
+                  </div>
+                </div>
+                <div class="manual-summary-box">
+                  <span>Reel Length: <strong id="pro-live-dur-display">00:35</strong></span>
+                  <button type="button" id="pro-live-preview-frame-btn" class="btn-saved pro-preview-at-btn">
+                    👁 Load Frame at Start
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Normal Video (VOD) Timing Controls -->
-          <div id="pro-vod-controls" class="pro-vod-controls hidden">
-            <div class="timing-field">
-              <span id="pro-vod-start-label" class="timing-label">Start (mm:ss)</span>
-              <div class="timing-controls">
-                <button type="button" class="step-btn" onclick="stepProVodTime('start', -1)">−</button>
-                <input type="text" id="pro-vod-start-input" class="time-text-input" value="00:00">
-                <button type="button" class="step-btn" onclick="stepProVodTime('start', 1)">+</button>
-              </div>
+          <!-- Normal Video / Past Stream (VOD) Manual Timing Controls -->
+          <div id="pro-vod-controls" class="pro-manual-panel hidden">
+            <div class="pro-dvr-scale-labels">
+              <span>00:00</span>
+              <span id="pro-vod-mid-label">50%</span>
+              <span id="pro-vod-total-label">00:00</span>
             </div>
-            <div class="timing-field">
-              <span id="pro-vod-end-label" class="timing-label">End (mm:ss)</span>
-              <div class="timing-controls">
-                <button type="button" class="step-btn" onclick="stepProVodTime('end', -1)">−</button>
-                <input type="text" id="pro-vod-end-input" class="time-text-input" value="00:35">
-                <button type="button" class="step-btn" onclick="stepProVodTime('end', 1)">+</button>
+            <div class="dual-slider-wrap">
+              <div class="dual-slider-track">
+                <div id="pro-vod-slider-fill" class="dual-slider-fill"></div>
               </div>
+              <input type="range" id="pro-vod-slider-start" class="dual-range" min="0" max="100" step="1" value="0">
+              <input type="range" id="pro-vod-slider-end" class="dual-range" min="0" max="100" step="1" value="35">
             </div>
-            <div class="manual-summary-box">
-              <span>Clip Length: <strong id="pro-vod-dur-display">00:35</strong></span>
-              <span class="setting-hint">Max 120s per Pro Short</span>
+
+            <div class="pro-vod-controls">
+              <div class="timing-field">
+                <span id="pro-vod-start-label" class="timing-label">Start (mm:ss)</span>
+                <div class="timing-controls">
+                  <button type="button" class="step-btn" onclick="stepProVodTime('start', -1)">−</button>
+                  <input type="text" id="pro-vod-start-input" class="time-text-input" value="00:00">
+                  <button type="button" class="step-btn" onclick="stepProVodTime('start', 1)">+</button>
+                </div>
+              </div>
+              <div class="timing-field">
+                <span id="pro-vod-end-label" class="timing-label">End (mm:ss)</span>
+                <div class="timing-controls">
+                  <button type="button" class="step-btn" onclick="stepProVodTime('end', -1)">−</button>
+                  <input type="text" id="pro-vod-end-input" class="time-text-input" value="00:35">
+                  <button type="button" class="step-btn" onclick="stepProVodTime('end', 1)">+</button>
+                </div>
+              </div>
+              <div class="manual-summary-box">
+                <span>Reel Length: <strong id="pro-vod-dur-display">00:35</strong></span>
+                <button type="button" id="pro-vod-preview-frame-btn" class="btn-saved pro-preview-at-btn">
+                  👁 Load Frame at Start
+                </button>
+              </div>
             </div>
           </div>
         </div>

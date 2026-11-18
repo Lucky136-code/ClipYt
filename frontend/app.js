@@ -929,8 +929,11 @@ const proState = {
   followTimerReady: false,
   followCountdownId: null,
   source: null, // response.data from /api/pro/inspect
+  liveTimingMode: "quick", // "quick" | "manual"
   liveDuration: 35,
   liveRewind: 0,
+  liveManualStartAgo: 35, // seconds ago where clip starts (must be > endAgo)
+  liveManualEndAgo: 0,    // seconds ago where clip ends (0 = live right now)
   vodStart: 0,
   vodEnd: 35,
   camRatio: 0.40,
@@ -1169,11 +1172,130 @@ function setupProStudio() {
     });
   });
 
-  // VOD manual timing inputs
+  // Live Timing sub-tabs: Quick Presets vs Manual Timing
+  const liveTabQuick = document.getElementById("pro-live-tab-quick");
+  const liveTabManual = document.getElementById("pro-live-tab-manual");
+  const liveQuickPanel = document.getElementById("pro-live-quick-panel");
+  const liveManualPanel = document.getElementById("pro-live-manual-panel");
+
+  if (liveTabQuick && liveTabManual) {
+    liveTabQuick.addEventListener("click", () => {
+      proState.liveTimingMode = "quick";
+      liveTabQuick.classList.add("active");
+      liveTabManual.classList.remove("active");
+      liveQuickPanel.classList.remove("hidden");
+      liveManualPanel.classList.add("hidden");
+    });
+    liveTabManual.addEventListener("click", () => {
+      proState.liveTimingMode = "manual";
+      liveTabManual.classList.add("active");
+      liveTabQuick.classList.remove("active");
+      liveManualPanel.classList.remove("hidden");
+      liveQuickPanel.classList.add("hidden");
+      syncProLiveManualUI();
+    });
+  }
+
+  // Live Manual Dual-Range Sliders (0 = -15:00 ago, 900 = LIVE NOW)
+  const liveSStart = document.getElementById("pro-live-slider-start");
+  const liveSEnd = document.getElementById("pro-live-slider-end");
+  if (liveSStart && liveSEnd) {
+    const LIVE_SLIDER_MAX = 900;
+    liveSStart.addEventListener("input", () => {
+      let posStart = parseInt(liveSStart.value, 10);
+      let posEnd = parseInt(liveSEnd.value, 10);
+      if (posStart > posEnd - 5) {
+        posStart = Math.max(0, posEnd - 5);
+        liveSStart.value = posStart;
+      }
+      if (posEnd - posStart > 120) {
+        posEnd = posStart + 120;
+        liveSEnd.value = posEnd;
+      }
+      proState.liveManualStartAgo = LIVE_SLIDER_MAX - posStart;
+      proState.liveManualEndAgo = LIVE_SLIDER_MAX - posEnd;
+      syncProLiveManualUI();
+    });
+    liveSEnd.addEventListener("input", () => {
+      let posStart = parseInt(liveSStart.value, 10);
+      let posEnd = parseInt(liveSEnd.value, 10);
+      if (posEnd < posStart + 5) {
+        posEnd = Math.min(LIVE_SLIDER_MAX, posStart + 5);
+        liveSEnd.value = posEnd;
+      }
+      if (posEnd - posStart > 120) {
+        posStart = posEnd - 120;
+        liveSStart.value = posStart;
+      }
+      proState.liveManualStartAgo = LIVE_SLIDER_MAX - posStart;
+      proState.liveManualEndAgo = LIVE_SLIDER_MAX - posEnd;
+      syncProLiveManualUI();
+    });
+  }
+
+  // Live Manual exact mm:ss text inputs
+  const liveStartIn = document.getElementById("pro-live-start-input");
+  const liveEndIn = document.getElementById("pro-live-end-input");
+  if (liveStartIn) liveStartIn.addEventListener("change", () => onProLiveManualInput("start"));
+  if (liveEndIn) liveEndIn.addEventListener("change", () => onProLiveManualInput("end"));
+
+  // Load Frame at exact Live Manual Start button
+  const livePrevFrameBtn = document.getElementById("pro-live-preview-frame-btn");
+  if (livePrevFrameBtn) {
+    livePrevFrameBtn.addEventListener("click", () => {
+      onProLiveManualInput("start");
+      const val = document.getElementById("pro-youtube-url").value.trim();
+      if (val) inspectProStream(val, false, proState.liveManualStartAgo);
+    });
+  }
+
+  // VOD manual dual-range sliders & inputs
+  const vodSStart = document.getElementById("pro-vod-slider-start");
+  const vodSEnd = document.getElementById("pro-vod-slider-end");
+  if (vodSStart && vodSEnd) {
+    vodSStart.addEventListener("input", () => {
+      if (!proState.source) return;
+      const maxDur = Math.max(10, Math.floor(proState.source.duration || 60));
+      let s = parseInt(vodSStart.value, 10);
+      let e = proState.vodEnd;
+      if (s > e - 5) {
+        e = Math.min(maxDur, s + 5);
+        if (e - s < 5) s = Math.max(0, e - 5);
+      }
+      if (e - s > 120) e = s + 120;
+      proState.vodStart = s;
+      proState.vodEnd = e;
+      syncProVodUI();
+    });
+    vodSEnd.addEventListener("input", () => {
+      if (!proState.source) return;
+      let s = proState.vodStart;
+      let e = parseInt(vodSEnd.value, 10);
+      if (e < s + 5) {
+        s = Math.max(0, e - 5);
+        if (e - s < 5) e = s + 5;
+      }
+      if (e - s > 120) s = e - 120;
+      proState.vodStart = s;
+      proState.vodEnd = e;
+      syncProVodUI();
+    });
+  }
+
   const vodStartIn = document.getElementById("pro-vod-start-input");
   const vodEndIn = document.getElementById("pro-vod-end-input");
   vodStartIn.addEventListener("change", () => onProVodInputChange("start"));
   vodEndIn.addEventListener("change", () => onProVodInputChange("end"));
+
+  // Load Frame at exact VOD Start button
+  const vodPrevFrameBtn = document.getElementById("pro-vod-preview-frame-btn");
+  if (vodPrevFrameBtn) {
+    vodPrevFrameBtn.addEventListener("click", () => {
+      onProVodInputChange("start");
+      const val = document.getElementById("pro-youtube-url").value.trim();
+      if (val) inspectProStream(val, false, proState.vodStart);
+    });
+  }
 
   // Streamer split ratio pills
   document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((btn) => {
@@ -1207,7 +1329,7 @@ function setupProStudio() {
   document.getElementById("pro-sub-pos").addEventListener("change", scheduleProPreviewRender);
 
   // Create Pro Short button
-  document.getElementById("pro-create-btn").addEventListener("click", submitProGenerate);
+  document.getElementById("pro-create-btn").addEventListener("click", () => submitProGenerate(null));
 
   // Live Chat Hype Radar Pause/Resume button
   const radarToggleBtn = document.getElementById("pro-radar-toggle-btn");
@@ -1251,25 +1373,37 @@ function hideProError() {
   document.getElementById("pro-error-banner").classList.add("hidden");
 }
 
-async function inspectProStream(url, forceRefresh = false) {
+async function inspectProStream(url, forceRefresh = false, previewOffsetSec = null) {
   if (!looksLikeYouTubeUrl(url)) {
     showProError("Please paste a valid YouTube Live or Video link.");
     return;
   }
 
   hideProError();
-  setProLoadSpinner(true);
+  const isFrameOnlySeek = previewOffsetSec !== null && proState.source !== null;
+  if (!isFrameOnlySeek) setProLoadSpinner(true);
+
   const refreshBtn = document.getElementById("pro-refresh-frame-btn");
+  const livePrevBtn = document.getElementById("pro-live-preview-frame-btn");
+  const vodPrevBtn = document.getElementById("pro-vod-preview-frame-btn");
   if (forceRefresh && refreshBtn) {
     refreshBtn.disabled = true;
     refreshBtn.textContent = "Refreshing...";
   }
+  if (isFrameOnlySeek) {
+    if (livePrevBtn) { livePrevBtn.disabled = true; livePrevBtn.textContent = "Loading frame..."; }
+    if (vodPrevBtn) { vodPrevBtn.disabled = true; vodPrevBtn.textContent = "Loading frame..."; }
+  }
 
   try {
+    const reqBody = { url, force_refresh: forceRefresh };
+    if (previewOffsetSec !== null && previewOffsetSec >= 0) {
+      reqBody.preview_offset_sec = previewOffsetSec;
+    }
     const res = await fetch("/api/pro/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, force_refresh: forceRefresh }),
+      body: JSON.stringify(reqBody),
     });
     const json = await res.json();
     if (!res.ok || !json.success) {
@@ -1279,42 +1413,55 @@ async function inspectProStream(url, forceRefresh = false) {
     const src = json.data;
     proState.source = src;
 
-    // Update source bar
-    const badgeEl = document.getElementById("pro-live-badge");
-    const radarCard = document.getElementById("pro-radar-card");
-    if (src.is_live) {
-      badgeEl.textContent = "🔴 LIVE NOW";
-      badgeEl.classList.remove("is-vod");
-      document.getElementById("pro-live-controls").classList.remove("hidden");
-      document.getElementById("pro-vod-controls").classList.add("hidden");
-      refreshBtn.textContent = "↻ Refresh Live Frame";
+    // Update source bar & timing UI (preserve user's chosen timing on frame-only seek!)
+    if (!isFrameOnlySeek) {
+      const badgeEl = document.getElementById("pro-live-badge");
+      const radarCard = document.getElementById("pro-radar-card");
+      if (src.is_live) {
+        badgeEl.textContent = "🔴 LIVE NOW";
+        badgeEl.classList.remove("is-vod");
+        document.getElementById("pro-live-controls").classList.remove("hidden");
+        document.getElementById("pro-vod-controls").classList.add("hidden");
+        refreshBtn.textContent = "↻ Refresh Live Frame";
 
-      if (radarCard) radarCard.classList.remove("hidden");
-      proState.radarPaused = false;
-      const toggleBtn = document.getElementById("pro-radar-toggle-btn");
-      if (toggleBtn) toggleBtn.textContent = "Pause";
-      startLiveRadar(src.video_id, !forceRefresh);
-    } else {
-      badgeEl.textContent = `🎬 VIDEO • ${src.duration_str}`;
-      badgeEl.classList.add("is-vod");
-      document.getElementById("pro-live-controls").classList.add("hidden");
-      document.getElementById("pro-vod-controls").classList.remove("hidden");
-      refreshBtn.textContent = "↻ Refresh Frame";
+        if (radarCard) radarCard.classList.remove("hidden");
+        proState.radarPaused = false;
+        const toggleBtn = document.getElementById("pro-radar-toggle-btn");
+        if (toggleBtn) toggleBtn.textContent = "Pause";
+        startLiveRadar(src.video_id, !forceRefresh);
+        syncProLiveManualUI();
+      } else {
+        badgeEl.textContent = `🎬 VIDEO • ${src.duration_str}`;
+        badgeEl.classList.add("is-vod");
+        document.getElementById("pro-live-controls").classList.add("hidden");
+        document.getElementById("pro-vod-controls").classList.remove("hidden");
+        refreshBtn.textContent = "↻ Refresh Frame";
 
-      stopLiveRadar();
-      if (radarCard) radarCard.classList.add("hidden");
+        stopLiveRadar();
+        if (radarCard) radarCard.classList.add("hidden");
 
-      const maxDur = Math.max(10, Math.floor(src.duration || 60));
-      proState.vodStart = 0;
-      proState.vodEnd = Math.min(35, maxDur);
-      const fmtHint = src.use_hours ? "(hh:mm:ss)" : "(mm:ss)";
-      document.getElementById("pro-vod-start-label").textContent = `Start ${fmtHint}`;
-      document.getElementById("pro-vod-end-label").textContent = `End ${fmtHint}`;
-      syncProVodUI();
+        const maxDur = Math.max(10, Math.floor(src.duration || 60));
+        proState.vodStart = 0;
+        proState.vodEnd = Math.min(35, maxDur);
+        const fmtHint = src.use_hours ? "(hh:mm:ss)" : "(mm:ss)";
+        document.getElementById("pro-vod-start-label").textContent = `Start ${fmtHint}`;
+        document.getElementById("pro-vod-end-label").textContent = `End ${fmtHint}`;
+        const vodSStart = document.getElementById("pro-vod-slider-start");
+        const vodSEnd = document.getElementById("pro-vod-slider-end");
+        if (vodSStart && vodSEnd) {
+          vodSStart.max = maxDur;
+          vodSEnd.max = maxDur;
+        }
+        const midLbl = document.getElementById("pro-vod-mid-label");
+        const totLbl = document.getElementById("pro-vod-total-label");
+        if (midLbl) midLbl.textContent = formatTime(Math.floor(maxDur / 2), src.use_hours);
+        if (totLbl) totLbl.textContent = formatTime(maxDur, src.use_hours);
+        syncProVodUI();
+      }
+
+      document.getElementById("pro-source-title").textContent = src.title;
+      document.getElementById("pro-source-author").textContent = src.author;
     }
-
-    document.getElementById("pro-source-title").textContent = src.title;
-    document.getElementById("pro-source-author").textContent = src.author;
 
     // Load grabbed 16:9 frame into editor & canvas preview
     const imgEl = document.getElementById("pro-frame-img");
@@ -1344,18 +1491,113 @@ async function inspectProStream(url, forceRefresh = false) {
         refreshBtn.textContent = proState.source.is_live ? "↻ Refresh Live Frame" : "↻ Refresh Frame";
       }
     }
+    if (livePrevBtn) { livePrevBtn.disabled = false; livePrevBtn.textContent = "👁 Load Frame at Start"; }
+    if (vodPrevBtn) { vodPrevBtn.disabled = false; vodPrevBtn.textContent = "👁 Load Frame at Start"; }
   }
 }
+
+function syncProLiveManualUI() {
+  const LIVE_SLIDER_MAX = 900;
+  let startAgo = Math.max(5, Math.min(3600, Math.round(proState.liveManualStartAgo)));
+  let endAgo = Math.max(0, Math.min(startAgo - 5, Math.round(proState.liveManualEndAgo)));
+  if (startAgo - endAgo > 120) {
+    startAgo = endAgo + 120;
+  }
+  proState.liveManualStartAgo = startAgo;
+  proState.liveManualEndAgo = endAgo;
+
+  const startIn = document.getElementById("pro-live-start-input");
+  const endIn = document.getElementById("pro-live-end-input");
+  const durDisp = document.getElementById("pro-live-dur-display");
+  if (startIn) startIn.value = formatTime(startAgo, false);
+  if (endIn) endIn.value = formatTime(endAgo, false);
+  if (durDisp) durDisp.textContent = formatTime(Math.max(5, startAgo - endAgo), false);
+
+  const sStart = document.getElementById("pro-live-slider-start");
+  const sEnd = document.getElementById("pro-live-slider-end");
+  const fill = document.getElementById("pro-live-slider-fill");
+  if (sStart && sEnd && fill) {
+    const posStart = Math.max(0, Math.min(LIVE_SLIDER_MAX, LIVE_SLIDER_MAX - startAgo));
+    const posEnd = Math.max(0, Math.min(LIVE_SLIDER_MAX, LIVE_SLIDER_MAX - endAgo));
+    sStart.value = posStart;
+    sEnd.value = posEnd;
+    const leftPct = (posStart / LIVE_SLIDER_MAX) * 100;
+    const widthPct = Math.max(0.8, ((posEnd - posStart) / LIVE_SLIDER_MAX) * 100);
+    fill.style.left = `${leftPct}%`;
+    fill.style.width = `${widthPct}%`;
+  }
+}
+
+function onProLiveManualInput(field) {
+  const input = document.getElementById(field === "start" ? "pro-live-start-input" : "pro-live-end-input");
+  if (!input) return;
+  const parsed = parseTime(input.value);
+  if (!isNaN(parsed)) {
+    const clamped = Math.max(0, Math.min(3600, Math.round(parsed)));
+    if (field === "start") {
+      proState.liveManualStartAgo = Math.max(5, clamped);
+      if (proState.liveManualEndAgo > proState.liveManualStartAgo - 5) {
+        proState.liveManualEndAgo = Math.max(0, proState.liveManualStartAgo - 35);
+      }
+      if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
+        proState.liveManualEndAgo = proState.liveManualStartAgo - 120;
+      }
+    } else {
+      proState.liveManualEndAgo = Math.max(0, Math.min(3595, clamped));
+      if (proState.liveManualStartAgo < proState.liveManualEndAgo + 5) {
+        proState.liveManualStartAgo = Math.min(3600, proState.liveManualEndAgo + 35);
+      }
+      if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
+        proState.liveManualStartAgo = proState.liveManualEndAgo + 120;
+      }
+    }
+  }
+  syncProLiveManualUI();
+}
+
+window.stepProLiveManual = function (field, deltaAgo) {
+  if (field === "start") {
+    proState.liveManualStartAgo = Math.max(5, Math.min(3600, proState.liveManualStartAgo + deltaAgo));
+    if (proState.liveManualEndAgo > proState.liveManualStartAgo - 5) {
+      proState.liveManualEndAgo = Math.max(0, proState.liveManualStartAgo - 5);
+    }
+    if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
+      proState.liveManualEndAgo = proState.liveManualStartAgo - 120;
+    }
+  } else {
+    proState.liveManualEndAgo = Math.max(0, Math.min(3595, proState.liveManualEndAgo + deltaAgo));
+    if (proState.liveManualStartAgo < proState.liveManualEndAgo + 5) {
+      proState.liveManualStartAgo = Math.min(3600, proState.liveManualEndAgo + 5);
+    }
+    if (proState.liveManualStartAgo - proState.liveManualEndAgo > 120) {
+      proState.liveManualStartAgo = proState.liveManualEndAgo + 120;
+    }
+  }
+  syncProLiveManualUI();
+};
 
 function syncProVodUI() {
   if (!proState.source) return;
   const useH = Boolean(proState.source.use_hours);
+  const maxDur = Math.max(10, Math.floor(proState.source.duration || 60));
   document.getElementById("pro-vod-start-input").value = formatTime(proState.vodStart, useH);
   document.getElementById("pro-vod-end-input").value = formatTime(proState.vodEnd, useH);
   document.getElementById("pro-vod-dur-display").textContent = formatTime(
     Math.max(1, proState.vodEnd - proState.vodStart),
     false
   );
+
+  const sStart = document.getElementById("pro-vod-slider-start");
+  const sEnd = document.getElementById("pro-vod-slider-end");
+  const fill = document.getElementById("pro-vod-slider-fill");
+  if (sStart && sEnd && fill) {
+    sStart.value = Math.min(maxDur, proState.vodStart);
+    sEnd.value = Math.min(maxDur, proState.vodEnd);
+    const leftPct = (proState.vodStart / maxDur) * 100;
+    const widthPct = Math.max(0.8, ((proState.vodEnd - proState.vodStart) / maxDur) * 100);
+    fill.style.left = `${leftPct}%`;
+    fill.style.width = `${widthPct}%`;
+  }
 }
 
 function onProVodInputChange(field) {
@@ -1623,7 +1865,7 @@ function drawProPreviewCanvas() {
   }
 }
 
-async function submitProGenerate() {
+async function submitProGenerate(liveOverride = null) {
   if (!proState.source) {
     showProError("Please load a YouTube Live Stream or Video first.");
     return;
@@ -1631,7 +1873,20 @@ async function submitProGenerate() {
 
   hideProError();
   const isLive = Boolean(proState.source.is_live);
-  if (!isLive) {
+  let liveDur = proState.liveDuration;
+  let liveRew = proState.liveRewind;
+
+  if (isLive) {
+    if (liveOverride && typeof liveOverride.duration === "number" && typeof liveOverride.rewind === "number") {
+      liveDur = liveOverride.duration;
+      liveRew = liveOverride.rewind;
+    } else if (proState.liveTimingMode === "manual") {
+      onProLiveManualInput("start");
+      onProLiveManualInput("end");
+      liveDur = Math.max(5, Math.min(120, proState.liveManualStartAgo - proState.liveManualEndAgo));
+      liveRew = Math.max(0, proState.liveManualEndAgo);
+    }
+  } else {
     onProVodInputChange("start");
     onProVodInputChange("end");
     if (proState.vodEnd <= proState.vodStart) {
@@ -1644,8 +1899,8 @@ async function submitProGenerate() {
     url: document.getElementById("pro-youtube-url").value.trim(),
     video_id: proState.source.video_id,
     is_live: isLive,
-    duration_sec: proState.liveDuration,
-    rewind_sec: proState.liveRewind,
+    duration_sec: liveDur,
+    rewind_sec: liveRew,
     start_time: proState.vodStart,
     end_time: proState.vodEnd,
     cam_box: proState.boxes.cam,
@@ -1858,8 +2113,11 @@ function renderRadarSpikes(spikes) {
 window.clipFromRadarSpike = function (secondsAgo) {
   // Position the Live DVR clip so the spike lands cleanly inside the clip (with ~8s reaction after!)
   const rewind = Math.max(0, Math.min(360, Math.round(secondsAgo - 8)));
+  const dur = proState.liveTimingMode === "manual"
+    ? Math.max(10, Math.min(90, proState.liveManualStartAgo - proState.liveManualEndAgo))
+    : proState.liveDuration;
   proState.liveRewind = rewind;
   // Clear preset active highlight on rewind pills since this is an exact spike timestamp
   document.querySelectorAll("#pro-live-rewind-picker .choice-pill").forEach((b) => b.classList.remove("active"));
-  submitProGenerate();
+  submitProGenerate({ duration: dur, rewind });
 };

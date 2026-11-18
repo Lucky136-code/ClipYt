@@ -80,14 +80,15 @@ class BoxModel(BaseModel):
 class ProInspectRequest(BaseModel):
     url: str
     force_refresh: bool = False
+    preview_offset_sec: Optional[float] = Field(default=None, ge=0.0)
 
 
 class ProGenerateRequest(BaseModel):
     url: str
     video_id: str
     is_live: bool = False
-    duration_sec: float = Field(default=35.0, ge=10.0, le=90.0)
-    rewind_sec: float = Field(default=0.0, ge=0.0, le=600.0)
+    duration_sec: float = Field(default=35.0, ge=5.0, le=120.0)
+    rewind_sec: float = Field(default=0.0, ge=0.0, le=3600.0)
     start_time: float = Field(default=0.0, ge=0.0)
     end_time: float = Field(default=35.0, ge=5.0)
     cam_box: BoxModel
@@ -293,6 +294,7 @@ async def api_pro_inspect(req: ProInspectRequest):
             inspect_pro_source,
             url=req.url,
             force_refresh=req.force_refresh,
+            preview_offset_sec=req.preview_offset_sec,
         )
         return {"success": True, "data": data}
     except Exception as e:
