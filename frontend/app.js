@@ -953,6 +953,25 @@ const proState = {
   radarPaused: false,
   radarChart: null,
   radarInFlight: false,
+  ytPlayer: null,
+  ytApiReady: false,
+  pendingYtVideoId: null,
+  playerClockTimer: null,
+  boxesLocked: false,
+  isRecording: false,
+  recStartTime: 0,
+  recStartWallMs: 0,
+  recTimerId: null,
+};
+
+// YouTube IFrame Player API global callback
+window.onYouTubeIframeAPIReady = function () {
+  proState.ytApiReady = true;
+  if (proState.pendingYtVideoId) {
+    const vid = proState.pendingYtVideoId;
+    proState.pendingYtVideoId = null;
+    loadProYouTubePlayer(vid);
+  }
 };
 
 function isProUnlocked() {
@@ -1006,6 +1025,12 @@ function switchStudioMode(targetMode) {
     }
   } else {
     stopLiveRadar();
+    cancelProRecording();
+    try {
+      if (proState.ytPlayer && typeof proState.ytPlayer.pauseVideo === "function") {
+        proState.ytPlayer.pauseVideo();
+      }
+    } catch (e) {}
   }
 }
 
@@ -1333,6 +1358,34 @@ function setupProStudio() {
   // Create Pro Short button
   document.getElementById("pro-create-btn").addEventListener("click", () => submitProGenerate(null));
 
+  // Lock / Unlock Boxes over Live YouTube Player
+  const lockBoxesBtn = document.getElementById("pro-lock-boxes-btn");
+  if (lockBoxesBtn) {
+    lockBoxesBtn.addEventListener("click", () => {
+      proState.boxesLocked = !proState.boxesLocked;
+      const overlay = document.getElementById("pro-boxes-overlay");
+      if (overlay) overlay.classList.toggle("boxes-locked", proState.boxesLocked);
+      lockBoxesBtn.classList.toggle("is-locked", proState.boxesLocked);
+      lockBoxesBtn.textContent = proState.boxesLocked ? "🔒 Interact with Video" : "🔓 Move Boxes";
+    });
+  }
+
+  // Live Start Recording / Stop & Create Short buttons
+  const recBtn = document.getElementById("pro-rec-btn");
+  if (recBtn) {
+    recBtn.addEventListener("click", () => {
+      if (proState.isRecording) {
+        stopAndCreateRecordedClip();
+      } else {
+        startProRecording();
+      }
+    });
+  }
+  const recCancelBtn = document.getElementById("pro-rec-cancel-btn");
+  if (recCancelBtn) {
+    recCancelBtn.addEventListener("click", cancelProRecording);
+  }
+
   // Live Chat Hype Radar Pause/Resume button
   const radarToggleBtn = document.getElementById("pro-radar-toggle-btn");
   if (radarToggleBtn) {
@@ -1476,6 +1529,10 @@ async function inspectProStream(url, forceRefresh = false, previewOffsetSec = nu
 
       document.getElementById("pro-source-title").textContent = src.title;
       document.getElementById("pro-source-author").textContent = src.author;
+
+      // Start playing the actual live YouTube video right inside the 16:9 stage!
+      cancelProRecording();
+      loadProYouTubePlayer(src.video_id);
     }
 
     // Load grabbed 16:9 frame into editor & canvas preview
@@ -2185,3 +2242,206 @@ window.clipFromRadarSpike = function (secondsAgo) {
   document.querySelectorAll("#pro-live-rewind-picker .choice-pill").forEach((b) => b.classList.remove("active"));
   submitProGenerate({ duration: dur, rewind });
 };
+
+// =============================================================
+// LIVE YOUTUBE PLAYER + START / STOP CLIP RECORDER
+// =============================================================
+function loadProYouTubePlayer(videoId) {
+  if (!videoId) return;
+
+  if (window.YT && window.YT.Player) {
+    proState.ytApiReady = true;
+  }
+  if (!proState.ytApiReady) {
+    proState.pendingYtVideoId = videoId;
+    return;
+  }
+
+  try {
+    if (proState.ytPlayer && typeof proState.ytPlayer.loadVideoById === "function") {
+      proState.ytPlayer.loadVideoById(videoId);
+      startPlayerClockSync();
+      return;
+    }
+  } catch (e) {
+    proState.ytPlayer = null;
+  }
+
+  const wrap = document.getElementById("pro-yt-player-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = `<div id="pro-yt-player"></div>`;
+
+  proState.ytPlayer = new window.YT.Player("pro-yt-player", {
+    videoId,
+    width: "100%",
+    height: "100%",
+    playerVars: {
+      autoplay: 1,
+      playsinline: 1,
+      rel: 0,
+      modestbranding: 1,
+      enablejsapi: 1,
+      origin: window.location.origin,
+    },
+    events: {
+      onReady: (ev) => {
+        try {
+          ev.target.playVideo();
+        } catch (e) {}
+        startPlayerClockSync();
+      },
+    },
+  });
+}
+
+function safeGetPlayerTime() {
+  try {
+    if (proState.ytPlayer && typeof proState.ytPlayer.getCurrentTime === "function") {
+      const t = Number(proState.ytPlayer.getCurrentTime());
+      return isNaN(t) ? 0 : Math.max(0, t);
+    }
+  } catch (e) {}
+  return 0;
+}
+
+function safeGetPlayerDuration() {
+  try {
+    if (proState.ytPlayer && typeof proState.ytPlayer.getDuration === "function") {
+      const d = Number(proState.ytPlayer.getDuration());
+      return isNaN(d) ? 0 : Math.max(0, d);
+    }
+  } catch (e) {}
+  return 0;
+}
+
+function startPlayerClockSync() {
+  if (proState.playerClockTimer) clearInterval(proState.playerClockTimer);
+  proState.playerClockTimer = setInterval(() => {
+    if (!proState.source) return;
+    const clockEl = document.getElementById("pro-player-clock");
+    if (!clockEl) return;
+
+    const cur = safeGetPlayerTime();
+    const dur = safeGetPlayerDuration();
+    const useH = Math.max(cur, dur) >= 3600;
+
+    if (proState.source.is_live) {
+      if (dur > 10 && cur > 0) {
+        const behind = Math.max(0, Math.round(dur - cur));
+        if (behind <= 8) {
+          clockEl.textContent = `YouTube: ${formatTime(cur, useH)} • 🔴 LIVE`;
+        } else {
+          clockEl.textContent = `YouTube: ${formatTime(cur, useH)} (−${formatTime(behind, false)} behind live)`;
+        }
+      } else {
+        const est = getCurrentLiveElapsed();
+        clockEl.textContent = `YouTube: ${formatTime(est, est >= 3600)} • 🔴 LIVE`;
+      }
+    } else {
+      const total = dur > 0 ? dur : (proState.source.duration || 0);
+      clockEl.textContent = `YouTube: ${formatTime(cur, useH)} / ${formatTime(total, useH)}`;
+    }
+  }, 500);
+}
+
+function startProRecording() {
+  if (!proState.source) {
+    showProError("Please load a YouTube Live Stream or Video first.");
+    return;
+  }
+  hideProError();
+
+  proState.isRecording = true;
+  proState.recStartTime = safeGetPlayerTime();
+  proState.recStartWallMs = Date.now();
+
+  // Ensure video is playing when recording starts
+  try {
+    if (proState.ytPlayer && typeof proState.ytPlayer.playVideo === "function") {
+      proState.ytPlayer.playVideo();
+    }
+  } catch (e) {}
+
+  const recBtn = document.getElementById("pro-rec-btn");
+  const recTxt = document.getElementById("pro-rec-btn-text");
+  const recTimer = document.getElementById("pro-rec-timer");
+  const cancelBtn = document.getElementById("pro-rec-cancel-btn");
+
+  if (recBtn) recBtn.classList.add("is-recording");
+  if (recTxt) recTxt.textContent = "Stop & Create Short";
+  if (recTimer) {
+    recTimer.textContent = "REC 00:00";
+    recTimer.classList.remove("hidden");
+  }
+  if (cancelBtn) cancelBtn.classList.remove("hidden");
+
+  if (proState.recTimerId) clearInterval(proState.recTimerId);
+  proState.recTimerId = setInterval(() => {
+    if (!proState.isRecording) return;
+    const elapsed = Math.floor((Date.now() - proState.recStartWallMs) / 1000);
+    if (recTimer) recTimer.textContent = `REC ${formatTime(elapsed, false)}`;
+    // Auto-finish at 120s (max Reel/Short length)
+    if (elapsed >= 120) {
+      stopAndCreateRecordedClip();
+    }
+  }, 250);
+}
+
+function cancelProRecording() {
+  proState.isRecording = false;
+  if (proState.recTimerId) {
+    clearInterval(proState.recTimerId);
+    proState.recTimerId = null;
+  }
+  const recBtn = document.getElementById("pro-rec-btn");
+  const recTxt = document.getElementById("pro-rec-btn-text");
+  const recTimer = document.getElementById("pro-rec-timer");
+  const cancelBtn = document.getElementById("pro-rec-cancel-btn");
+
+  if (recBtn) recBtn.classList.remove("is-recording");
+  if (recTxt) recTxt.textContent = "Start Recording Clip";
+  if (recTimer) recTimer.classList.add("hidden");
+  if (cancelBtn) cancelBtn.classList.add("hidden");
+}
+
+function stopAndCreateRecordedClip() {
+  if (!proState.isRecording || !proState.source) return;
+
+  const endTime = safeGetPlayerTime();
+  const liveEdge = safeGetPlayerDuration();
+  const wallElapsed = (Date.now() - proState.recStartWallMs) / 1000;
+  const startTime = proState.recStartTime;
+
+  cancelProRecording();
+
+  const rawDur = (endTime > startTime + 1.5) ? (endTime - startTime) : wallElapsed;
+  if (rawDur < 3.0) {
+    showProError("Clip is too short — record for at least 5 seconds!");
+    return;
+  }
+
+  const clipDur = Math.max(5.0, Math.min(120.0, Math.round(rawDur * 10) / 10));
+
+  if (proState.source.is_live) {
+    // Exact distance from the live edge right now (works both at LIVE NOW and if rewound earlier in the stream!)
+    let rewindSec = 0;
+    if (liveEdge > 10 && endTime > 0 && liveEdge >= endTime) {
+      rewindSec = Math.max(0, Math.round(liveEdge - endTime));
+    }
+    // Sync manual timing display to match what the user just recorded
+    const liveNow = getCurrentLiveElapsed();
+    proState.liveManualEnd = Math.max(5, liveNow - rewindSec);
+    proState.liveManualStart = Math.max(0, proState.liveManualEnd - Math.round(clipDur));
+    syncProLiveManualUI();
+
+    submitProGenerate({ duration: clipDur, rewind: rewindSec });
+  } else {
+    const maxDur = Math.max(10, Math.floor(proState.source.duration || liveEdge || 3600));
+    const s = Math.max(0, Math.min(maxDur - 5, Math.floor(startTime)));
+    const e = Math.min(maxDur, Math.max(s + 5, Math.round(s + clipDur)));
+    proState.vodStart = s;
+    proState.vodEnd = e;
+    syncProVodUI();
+    submitProGenerate(null);
+  }
+}

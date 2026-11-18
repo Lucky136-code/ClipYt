@@ -11,6 +11,7 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
     rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://www.youtube.com/iframe_api" async></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -473,32 +474,57 @@
 
         <!-- Dual-Box Interactive Editor + Live 9:16 Split-Screen Preview -->
         <div class="pro-editor-grid">
-          <!-- Left: 16:9 Stream Frame with Draggable/Resizable Boxes -->
+          <!-- Left: Live Playing YouTube Stream + Draggable/Resizable Boxes + Record Controls -->
           <div class="glass-card pro-canvas-card">
             <div class="pro-card-head">
               <div>
-                <h3 class="section-title">Place Your Two Boxes</h3>
-                <p class="section-sub">Drag & resize corners — <strong class="tag-cam">Box 1: Streamer</strong> and <strong class="tag-stream">Box 2: Stream</strong></p>
+                <h3 class="section-title">Live Player & Two-Box Setup</h3>
+                <p class="section-sub">Place <strong class="tag-cam">Box 1: Streamer</strong> & <strong class="tag-stream">Box 2: Stream</strong> on the playing video, then hit <strong>Start Recording</strong>!</p>
               </div>
+              <button type="button" id="pro-lock-boxes-btn" class="btn-saved pro-lock-boxes-btn" title="Toggle between moving boxes and clicking YouTube player">
+                🔓 Move Boxes
+              </button>
             </div>
 
             <div id="pro-stage" class="pro-stage">
-              <img id="pro-frame-img" src="" alt="Stream frame" draggable="false">
-              <!-- Box 2: Stream / Gameplay -->
-              <div id="box-stream" class="crop-box crop-box-stream" data-box="stream">
-                <div class="crop-box-label label-stream">Box 2 • Stream</div>
-                <div class="crop-handle handle-nw" data-handle="nw"></div>
-                <div class="crop-handle handle-ne" data-handle="ne"></div>
-                <div class="crop-handle handle-sw" data-handle="sw"></div>
-                <div class="crop-handle handle-se" data-handle="se"></div>
+              <img id="pro-frame-img" class="pro-frame-fallback" src="" alt="Stream frame" draggable="false">
+              <div id="pro-yt-player-wrap" class="pro-yt-player-wrap">
+                <div id="pro-yt-player"></div>
               </div>
-              <!-- Box 1: Streamer Facecam -->
-              <div id="box-cam" class="crop-box crop-box-cam" data-box="cam">
-                <div class="crop-box-label label-cam">Box 1 • Streamer</div>
-                <div class="crop-handle handle-nw" data-handle="nw"></div>
-                <div class="crop-handle handle-ne" data-handle="ne"></div>
-                <div class="crop-handle handle-sw" data-handle="sw"></div>
-                <div class="crop-handle handle-se" data-handle="se"></div>
+              <div id="pro-boxes-overlay" class="pro-boxes-overlay">
+                <!-- Box 2: Stream / Gameplay -->
+                <div id="box-stream" class="crop-box crop-box-stream" data-box="stream">
+                  <div class="crop-box-label label-stream">Box 2 • Stream</div>
+                  <div class="crop-handle handle-nw" data-handle="nw"></div>
+                  <div class="crop-handle handle-ne" data-handle="ne"></div>
+                  <div class="crop-handle handle-sw" data-handle="sw"></div>
+                  <div class="crop-handle handle-se" data-handle="se"></div>
+                </div>
+                <!-- Box 1: Streamer Facecam -->
+                <div id="box-cam" class="crop-box crop-box-cam" data-box="cam">
+                  <div class="crop-box-label label-cam">Box 1 • Streamer</div>
+                  <div class="crop-handle handle-nw" data-handle="nw"></div>
+                  <div class="crop-handle handle-ne" data-handle="ne"></div>
+                  <div class="crop-handle handle-sw" data-handle="sw"></div>
+                  <div class="crop-handle handle-se" data-handle="se"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Start / Stop Recording Bar -->
+            <div class="pro-recorder-bar">
+              <div class="pro-rec-actions">
+                <button type="button" id="pro-rec-btn" class="btn-rec-start">
+                  <span class="rec-dot"></span>
+                  <span id="pro-rec-btn-text">Start Recording Clip</span>
+                </button>
+                <button type="button" id="pro-rec-cancel-btn" class="btn-saved pro-rec-cancel hidden">
+                  Cancel
+                </button>
+              </div>
+              <div class="pro-rec-status-wrap">
+                <span id="pro-rec-timer" class="pro-rec-timer hidden">REC 00:00</span>
+                <span id="pro-player-clock" class="pro-player-clock">Player: 00:00</span>
               </div>
             </div>
 
