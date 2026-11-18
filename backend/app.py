@@ -54,11 +54,13 @@ ACTIVE_RENDERS = 0
 WAITING_QUEUE = 0
 
 # =========================================================================
-# RATE LIMITING: 3 CLIPS PER 4 HOURS (14,400s) PER CLIENT IP
+# RATE LIMITING: 3 YOUTUBE LINK PASTES/ANALYSES PER 4 HOURS (14,400s) PER CLIENT IP
+# Users can export and download generated shorts unlimited times from their analyzed videos!
 # =========================================================================
+RATE_LIMIT_MAX_LINKS = 3
 RATE_LIMIT_MAX_CLIPS = 3
 RATE_LIMIT_WINDOW_SECONDS = 4 * 3600  # 4 hours
-EXPORT_RATE_LIMITS: Dict[str, List[float]] = {}
+PASTE_RATE_LIMITS: Dict[str, List[float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
 
 
@@ -78,20 +80,20 @@ def get_client_ip(request: Request) -> str:
     return "127.0.0.1"
 
 
-def check_rate_limit(client_id: str) -> Tuple[bool, int, float]:
+def check_link_rate_limit(client_id: str) -> Tuple[bool, int, float]:
     """
-    Check if client can export a clip.
-    Returns: (allowed: bool, remaining_clips: int, next_reset_in_seconds: float)
+    Check if client can paste/analyze a new YouTube link.
+    Returns: (allowed: bool, remaining_links: int, next_reset_in_seconds: float)
     """
     now = time.time()
     cutoff = now - RATE_LIMIT_WINDOW_SECONDS
     with RATE_LIMIT_LOCK:
-        timestamps = EXPORT_RATE_LIMITS.get(client_id, [])
+        timestamps = PASTE_RATE_LIMITS.get(client_id, [])
         valid_ts = [t for t in timestamps if t > cutoff]
-        EXPORT_RATE_LIMITS[client_id] = valid_ts
+        PASTE_RATE_LIMITS[client_id] = valid_ts
 
-        remaining = max(0, RATE_LIMIT_MAX_CLIPS - len(valid_ts))
-        if len(valid_ts) >= RATE_LIMIT_MAX_CLIPS:
+        remaining = max(0, RATE_LIMIT_MAX_LINKS - len(valid_ts))
+        if len(valid_ts) >= RATE_LIMIT_MAX_LINKS:
             oldest = min(valid_ts)
             reset_in = max(0.0, (oldest + RATE_LIMIT_WINDOW_SECONDS) - now)
             return False, 0, reset_in
@@ -103,15 +105,23 @@ def check_rate_limit(client_id: str) -> Tuple[bool, int, float]:
         return True, remaining, reset_in
 
 
-def record_clip_export(client_id: str):
-    """Record a newly generated clip timestamp for rate limiting."""
+# Alias for backward compatibility
+check_rate_limit = check_link_rate_limit
+
+
+def record_link_paste(client_id: str):
+    """Record a YouTube link paste/analysis timestamp for rate limiting."""
     now = time.time()
     cutoff = now - RATE_LIMIT_WINDOW_SECONDS
     with RATE_LIMIT_LOCK:
-        timestamps = EXPORT_RATE_LIMITS.get(client_id, [])
+        timestamps = PASTE_RATE_LIMITS.get(client_id, [])
         valid_ts = [t for t in timestamps if t > cutoff]
         valid_ts.append(now)
-        EXPORT_RATE_LIMITS[client_id] = valid_ts
+        PASTE_RATE_LIMITS[client_id] = valid_ts
+
+
+# Alias for backward compatibility
+record_clip_export = record_link_paste
 
 
 def _prune_expired_tasks_and_caches():
@@ -332,8 +342,19 @@ async def api_preview(url: str):
 
 
 @app.post("/api/analyze")
-async def api_analyze(req: AnalyzeRequest, background_tasks: BackgroundTasks):
-    """Analyze YouTube link, extract engagement map & frame pictures, and pre-warm streams."""
+async def api_analyze(req: AnalyzeRequest, request: Request, background_tasks: BackgroundTasks):
+    """Analyze YouTube link, extract engagement map & frame pictures, with 3-link-pastes per 4h rate limit."""
+    client_ip = get_client_ip(request)
+    allowed, remaining, reset_in = check_link_rate_limit(client_ip)
+    if not allowed:
+        hrs = int(reset_in // 3600)
+        mins = int((reset_in % 3600) // 60)
+        time_msg = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit reached: Free tier allows pasting up to {RATE_LIMIT_MAX_LINKS} YouTube links per 4 hours. Next link unlocks in {time_msg}. (You can still generate and download unlimited shorts from your analyzed videos!)",
+        )
+
     try:
         data = await asyncio.to_thread(
             analyze_youtube_video,
@@ -353,10 +374,15 @@ async def api_analyze(req: AnalyzeRequest, background_tasks: BackgroundTasks):
         TRANSCRIPT_CACHE[vid] = transcript
         HEATMAP_CACHE[vid] = data.get("heatmap") or []
 
+        # Successfully analyzed valid YouTube link -> count 1 link paste
+        record_link_paste(client_ip)
+
         # Pre-warm HD stream URLs in background while user picks a moment!
         background_tasks.add_task(prewarm_video_streams, req.url, vid)
 
-        return {"success": True, "data": data}
+        return {"success": True, "data": data, "remaining_links": max(0, remaining - 1)}
+    except HTTPException:
+        raise
     except Exception as e:
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
         raise HTTPException(status_code=400, detail=clean_err)
@@ -425,9 +451,9 @@ def _run_generate_task(task_id: str, req: GenerateRequest):
 
 @app.get("/api/rate-limit")
 async def api_rate_limit(request: Request):
-    """Return rate limit quota for client (3 clips per 4 hours)."""
+    """Return link paste rate limit quota for client (3 YouTube links per 4 hours)."""
     client_ip = get_client_ip(request)
-    allowed, remaining, reset_in = check_rate_limit(client_ip)
+    allowed, remaining, reset_in = check_link_rate_limit(client_ip)
     hrs = int(reset_in // 3600)
     mins = int((reset_in % 3600) // 60)
     if hrs > 0:
@@ -442,7 +468,8 @@ async def api_rate_limit(request: Request):
     return {
         "success": True,
         "allowed": allowed,
-        "max_clips": RATE_LIMIT_MAX_CLIPS,
+        "max_links": RATE_LIMIT_MAX_LINKS,
+        "max_clips": RATE_LIMIT_MAX_LINKS,  # Compat
         "remaining": remaining,
         "window_hours": 4,
         "reset_in_seconds": round(reset_in, 1),
@@ -451,23 +478,9 @@ async def api_rate_limit(request: Request):
 
 
 @app.post("/api/generate")
-async def api_generate(req: GenerateRequest, request: Request, background_tasks: BackgroundTasks):
-    """Launch fast asynchronous Short creation with 3-clips-per-4h rate limit."""
+async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
+    """Launch fast asynchronous Short creation (Unlimited exports from analyzed videos!)."""
     _prune_expired_tasks_and_caches()
-
-    client_ip = get_client_ip(request)
-    allowed, remaining, reset_in = check_rate_limit(client_ip)
-    if not allowed:
-        hrs = int(reset_in // 3600)
-        mins = int((reset_in % 3600) // 60)
-        time_msg = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit reached: Free tier allows {RATE_LIMIT_MAX_CLIPS} clips per 4 hours. Next clip unlocks in {time_msg}.",
-        )
-
-    # Record export timestamp for rate limiting
-    record_clip_export(client_ip)
 
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {
@@ -482,7 +495,7 @@ async def api_generate(req: GenerateRequest, request: Request, background_tasks:
         "error": None,
     }
     background_tasks.add_task(_run_generate_task, task_id, req)
-    return {"success": True, "task_id": task_id, "remaining_clips": max(0, remaining - 1)}
+    return {"success": True, "task_id": task_id}
 
 
 @app.post("/api/pro/inspect")
@@ -731,22 +744,9 @@ async def api_auto_viral_scan(req: AutoViralScanRequest):
 
 
 @app.post("/api/auto-viral/generate")
-async def api_auto_viral_generate(req: AutoViralGenerateRequest, request: Request, background_tasks: BackgroundTasks):
-    """Launch asynchronous Auto Viral Short render with 3s hook + auto-framing with 3-clips-per-4h rate limit."""
+async def api_auto_viral_generate(req: AutoViralGenerateRequest, background_tasks: BackgroundTasks):
+    """Launch asynchronous Auto Viral Short render with 3s hook + auto-framing (Unlimited exports!)."""
     _prune_expired_tasks_and_caches()
-
-    client_ip = get_client_ip(request)
-    allowed, remaining, reset_in = check_rate_limit(client_ip)
-    if not allowed:
-        hrs = int(reset_in // 3600)
-        mins = int((reset_in % 3600) // 60)
-        time_msg = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit reached: Free tier allows {RATE_LIMIT_MAX_CLIPS} clips per 4 hours. Next clip unlocks in {time_msg}.",
-        )
-
-    record_clip_export(client_ip)
 
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {

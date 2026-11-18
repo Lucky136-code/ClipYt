@@ -68,10 +68,11 @@ let manualState = { start: 0, end: 35 };
 let storyboardSheetDims = {}; // { url: { cols, rows } }
 let manualRafPending = false;
 
-// Rate Limit Quota State: 3 clips per 4 hours
+// Rate Limit Quota State: 3 YouTube link pastes per 4 hours (Unlimited short exports!)
 let currentQuota = {
   allowed: true,
   remaining: 3,
+  max_links: 3,
   max_clips: 3,
   reset_human: "now",
   reset_in_seconds: 0,
@@ -96,12 +97,13 @@ function renderRateLimitUI() {
   const txt = document.getElementById("rate-limit-text");
   if (!pill || !txt) return;
 
+  const maxVal = currentQuota.max_links || currentQuota.max_clips || 3;
   if (currentQuota.remaining > 0) {
     pill.classList.remove("depleted");
-    txt.textContent = `⚡ ${currentQuota.remaining} / ${currentQuota.max_clips} Clips Left (4h Quota)`;
+    txt.textContent = `🔗 ${currentQuota.remaining} / ${maxVal} Links Left (4h Quota)`;
   } else {
     pill.classList.add("depleted");
-    txt.textContent = `⏳ 0 / ${currentQuota.max_clips} Clips Left • Next in ${currentQuota.reset_human}`;
+    txt.textContent = `⏳ 0 / ${maxVal} Links Left • Next in ${currentQuota.reset_human}`;
   }
 }
 
@@ -124,11 +126,19 @@ function setupEventListeners() {
 
   analyzeForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (currentQuota && currentQuota.remaining <= 0 && currentQuota.allowed === false) {
+      showError(`Link Limit Reached: You have used your 3 YouTube link pastes for this 4-hour window. Next link unlocks in ${currentQuota.reset_human}. (You can still generate and download unlimited clips from your analyzed videos!)`);
+      return;
+    }
     runFullAnalysis(urlInput.value.trim());
   });
 
   // Auto-preview & analyze immediately when user pastes a YouTube link
-  urlInput.addEventListener("paste", () => {
+  urlInput.addEventListener("paste", (e) => {
+    if (currentQuota && currentQuota.remaining <= 0 && currentQuota.allowed === false) {
+      showError(`Link Limit Reached: You have used your 3 YouTube link pastes for this 4-hour window. Next link unlocks in ${currentQuota.reset_human}. (You can still generate and download unlimited clips from your analyzed videos!)`);
+      return;
+    }
     setTimeout(() => {
       const val = urlInput.value.trim();
       if (looksLikeYouTubeUrl(val)) {
@@ -139,6 +149,10 @@ function setupEventListeners() {
 
   // Paste button
   document.getElementById("paste-btn").addEventListener("click", async () => {
+    if (currentQuota && currentQuota.remaining <= 0 && currentQuota.allowed === false) {
+      showError(`Link Limit Reached: You have used your 3 YouTube link pastes for this 4-hour window. Next link unlocks in ${currentQuota.reset_human}. (You can still generate and download unlimited clips from your analyzed videos!)`);
+      return;
+    }
     try {
       const text = (await navigator.clipboard.readText()).trim();
       if (text) {
@@ -307,6 +321,11 @@ async function runFullAnalysis(url, force = false) {
   if (!url) return;
   if (!force && url === lastAnalyzedUrl && currentAnalysis) return;
 
+  if (currentQuota && currentQuota.remaining <= 0 && currentQuota.allowed === false) {
+    showError(`Link Limit Reached: You have used your 3 YouTube link pastes for this 4-hour window. Next link unlocks in ${currentQuota.reset_human}. (You can still generate and download unlimited clips from your analyzed videos!)`);
+    return;
+  }
+
   hideError();
   setAnalyzeLoading(true);
   lastAnalyzedUrl = url;
@@ -336,9 +355,11 @@ async function runFullAnalysis(url, force = false) {
 
     currentAnalysis = data.data;
     renderFullAnalysis(currentAnalysis);
+    fetchRateLimitStatus();
   } catch (err) {
     document.getElementById("analyzing-indicator").classList.add("hidden");
     showError(err.message || "Something went wrong. Please check the YouTube link.");
+    fetchRateLimitStatus();
   } finally {
     setAnalyzeLoading(false);
   }
