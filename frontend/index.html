@@ -11,7 +11,6 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
     rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
   <script src="https://www.youtube.com/iframe_api" async></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -365,7 +364,6 @@
 
             <div id="pro-stage" class="pro-stage">
               <img id="pro-frame-img" class="pro-frame-fallback" src="" alt="Stream frame" draggable="false">
-              <video id="pro-hls-video" class="pro-hls-video hidden" playsinline crossorigin="anonymous"></video>
               <div id="pro-yt-player-wrap" class="pro-yt-player-wrap">
                 <div id="pro-yt-player"></div>
               </div>
@@ -391,22 +389,6 @@
               </div>
             </div>
 
-            <!-- Dedicated Live Stream Timeline Scrubber (Never blocked by boxes!) -->
-            <div id="pro-hls-controls" class="pro-hls-controls hidden">
-              <div class="hls-ctrl-buttons">
-                <button type="button" id="hls-play-btn" class="hls-icon-btn" title="Play / Pause">⏸</button>
-                <button type="button" id="hls-back-15" class="hls-step-btn" title="Back 15s">−15s</button>
-                <button type="button" id="hls-fwd-15" class="hls-step-btn" title="Forward 15s">+15s</button>
-              </div>
-              <div class="hls-scrubber-wrap">
-                <input type="range" id="pro-hls-scrubber" class="hls-scrubber" min="0" max="100" step="0.5" value="100">
-              </div>
-              <div class="hls-ctrl-buttons">
-                <button type="button" id="hls-jump-live" class="hls-live-btn" title="Jump to Live Edge">🔴 LIVE</button>
-                <button type="button" id="hls-mute-btn" class="hls-icon-btn" title="Mute / Unmute">🔇</button>
-              </div>
-            </div>
-
             <!-- Step 3: Start / Stop Recording Bar -->
             <div class="pro-recorder-bar">
               <div class="pro-rec-actions">
@@ -421,6 +403,10 @@
               <div class="pro-rec-status-wrap">
                 <span id="pro-rec-timer" class="pro-rec-timer hidden">REC 00:00</span>
                 <span id="pro-rec-ready-pill" class="pro-rec-ready-pill hidden">✓ Clip Ready</span>
+                <label id="pro-rec-rewind-wrap" class="pro-rewind-inline hidden" title="How far behind LIVE this clip ended (matches YouTube's −MM:SS)">
+                  <span>Behind Live:</span>
+                  <input type="text" id="pro-rec-rewind-input" class="pro-rewind-mini-input" value="00:00">
+                </label>
                 <span id="pro-player-clock" class="pro-player-clock">YouTube: 00:00</span>
               </div>
             </div>

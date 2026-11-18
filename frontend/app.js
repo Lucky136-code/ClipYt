@@ -1377,14 +1377,11 @@ async function inspectProStream(url, forceRefresh = false, previewOffsetSec = nu
       if (readyPill) readyPill.classList.add("hidden");
       updateLiveGuideStep(1);
 
-      // Start playing exact Live HLS stream (for LIVE -> 0.00s UTC recording!) or YouTube player (for VOD)
+      // Play directly in YouTube's native player (zero backend proxy load, zero 502s!)
       cancelProRecording();
-      if (src.is_live && src.hls_proxy_url) {
-        loadProHlsPlayer(src.hls_proxy_url, src.video_id);
-      } else {
-        stopProHlsPlayer();
-        loadProYouTubePlayer(src.video_id);
-      }
+      loadProYouTubePlayer(src.video_id);
+      const rewWrap = document.getElementById("pro-rec-rewind-wrap");
+      if (rewWrap) rewWrap.classList.add("hidden");
     }
 
     // Load grabbed 16:9 frame into editor & canvas preview
@@ -2747,6 +2744,16 @@ function stopAndSaveRecordedClip() {
     readyPill.textContent = `✓ Recorded ${formatTime(Math.round(clipDur), false)}${rewindLabel} — Click Export`;
     readyPill.classList.remove("hidden");
   }
+  const rewWrap = document.getElementById("pro-rec-rewind-wrap");
+  const rewInput = document.getElementById("pro-rec-rewind-input");
+  if (rewWrap && rewInput) {
+    if (proState.source.is_live) {
+      rewInput.value = formatTime(proState.recordedClip.rewindAtStop || 0, false);
+      rewWrap.classList.remove("hidden");
+    } else {
+      rewWrap.classList.add("hidden");
+    }
+  }
   updateLiveGuideStep(4);
   if (!proState.hlsMode) syncPreviewFrameToPlayer(false);
 }
@@ -2768,12 +2775,21 @@ function exportRecordedProClip() {
 
   const rec = proState.recordedClip;
   if (rec.isLive) {
+    // Allow user-verified Behind Live (mm:ss) override if edited!
+    const rewInput = document.getElementById("pro-rec-rewind-input");
+    let baseRewind = rec.rewindAtStop || 0;
+    if (rewInput) {
+      const parsed = parseTime(rewInput.value);
+      if (!isNaN(parsed) && parsed >= 0) {
+        baseRewind = Math.round(parsed);
+      }
+    }
     const waitSinceStop = Math.max(0, Math.round((Date.now() - rec.stoppedAtMs) / 1000));
     submitProGenerate({
       duration: rec.duration,
-      rewind: rec.rewindAtStop + waitSinceStop,
-      startUtc: rec.startUtc,
-      endUtc: rec.endUtc,
+      rewind: baseRewind + waitSinceStop,
+      startUtc: null,
+      endUtc: null,
     });
   } else {
     proState.vodStart = rec.startTime;

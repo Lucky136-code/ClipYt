@@ -23,8 +23,6 @@ from backend.video_processor import (
 from backend.pro_studio import (
     inspect_pro_source,
     process_pro_split_pipeline,
-    get_proxied_hls_playlist,
-    fetch_proxied_hls_segment,
 )
 from backend.live_radar import poll_live_chat_radar
 
@@ -306,36 +304,6 @@ async def api_pro_inspect(req: ProInspectRequest):
     except Exception as e:
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
         raise HTTPException(status_code=400, detail=clean_err)
-
-
-@app.get("/api/pro/hls/{video_id}/playlist.m3u8")
-async def api_pro_hls_playlist(video_id: str):
-    """Serve live YouTube HLS playlist with rewritten same-origin segment URLs for exact 0.00s hls.js playback."""
-    try:
-        m3u8_text = await asyncio.to_thread(get_proxied_hls_playlist, video_id)
-        return Response(
-            content=m3u8_text,
-            media_type="application/vnd.apple.mpegurl",
-            headers={"Cache-Control": "no-cache, no-store"},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e)[:200])
-
-
-@app.get("/api/pro/hls/{video_id}/seg/{seg_key}.ts")
-async def api_pro_hls_segment(video_id: str, seg_key: str):
-    """Stream an exact live `.ts` segment to browser hls.js player (cached 1hr in browser for instant scrubbing)."""
-    try:
-        data = await asyncio.to_thread(fetch_proxied_hls_segment, video_id, seg_key)
-        return Response(
-            content=data,
-            media_type="video/mp2t",
-            headers={"Cache-Control": "public, max-age=3600"},
-        )
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Segment expired")
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e)[:160])
 
 
 @app.get("/api/pro/radar/{video_id}")

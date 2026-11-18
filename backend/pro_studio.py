@@ -29,9 +29,6 @@ from backend.whisper_captions import transcribe_clip_hinglish, get_whisper_statu
 PRO_STREAM_CACHE: Dict[str, Dict[str, Any]] = {}
 PRO_CACHE_TTL_SEC = 900
 
-# In-memory Live HLS Proxy cache per video_id (serves exact live DVR segments to browser hls.js)
-HLS_PROXY_CACHE: Dict[str, Dict[str, Any]] = {}
-
 
 def _build_pro_live_strategies() -> List[Tuple[str, Dict[str, Any], bool]]:
     """yt-dlp strategies tailored for both YouTube Live HLS streams (96=1080p m3u8) and VODs."""
@@ -269,103 +266,6 @@ def _parse_hls_segments(
         return segments, total_dur, first_pdt
     except Exception:
         return [], 0.0, None
-
-
-def get_proxied_hls_playlist(video_id: str) -> str:
-    """
-    Fetch YouTube's live HLS playlist for `video_id`, cache its segment URLs in memory,
-    and return a rewritten playlist pointing segment URLs to `/api/pro/hls/{video_id}/seg/{key}.ts`.
-    Gives browser hls.js the EXACT same DVR segments & #EXT-X-PROGRAM-DATE-TIME that export uses!
-    """
-    now = time.time()
-    entry = HLS_PROXY_CACHE.get(video_id)
-    if not entry or not entry.get("preview_m3u8"):
-        cached_info = (PRO_STREAM_CACHE.get(video_id) or {}).get("info")
-        if not cached_info:
-            cached_info = _extract_pro_info(f"https://www.youtube.com/watch?v={video_id}", video_id)
-            PRO_STREAM_CACHE[video_id] = {"info": cached_info, "ts": now}
-        preview_url, headers = _pick_preview_hls_url(cached_info)
-        if not preview_url:
-            raise RuntimeError("No live HLS preview stream available.")
-        entry = {
-            "preview_m3u8": preview_url,
-            "headers": headers,
-            "seg_map": {},
-            "cached_playlist": "",
-            "last_fetch": 0.0,
-        }
-        HLS_PROXY_CACHE[video_id] = entry
-
-    # Refresh from YouTube at most once every 3.5 seconds
-    if entry["cached_playlist"] and (now - entry["last_fetch"]) < 3.5:
-        return entry["cached_playlist"]
-
-    req_headers = {}
-    if entry["headers"].get("User-Agent"):
-        req_headers["User-Agent"] = entry["headers"]["User-Agent"]
-
-    resp = requests.get(entry["preview_m3u8"], headers=req_headers, timeout=8)
-    if resp.status_code != 200:
-        # Refresh expired YouTube stream info once and retry
-        info = _extract_pro_info(f"https://www.youtube.com/watch?v={video_id}", video_id)
-        PRO_STREAM_CACHE[video_id] = {"info": info, "ts": now}
-        preview_url, headers = _pick_preview_hls_url(info)
-        entry["preview_m3u8"] = preview_url
-        entry["headers"] = headers
-        resp = requests.get(preview_url, headers={"User-Agent": headers.get("User-Agent", "")}, timeout=8)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Upstream HLS returned HTTP {resp.status_code}")
-
-    base_url = resp.url or entry["preview_m3u8"]
-    out_lines: List[str] = []
-    seg_map = entry["seg_map"]
-    seq_fallback = 0
-
-    for raw_ln in resp.text.splitlines():
-        ln = raw_ln.strip()
-        if not ln:
-            continue
-        if ln.startswith("#"):
-            out_lines.append(ln)
-        else:
-            abs_url = urljoin(base_url, ln)
-            sq_m = re.search(r"/sq/(\d+)/", abs_url)
-            seg_key = sq_m.group(1) if sq_m else f"s{seq_fallback}"
-            seq_fallback += 1
-            seg_map[seg_key] = abs_url
-            out_lines.append(f"/api/pro/hls/{video_id}/seg/{seg_key}.ts")
-
-    # Trim seg_map if huge (> 4500 entries)
-    if len(seg_map) > 4500:
-        keys_to_drop = list(seg_map.keys())[:-3500]
-        for k in keys_to_drop:
-            seg_map.pop(k, None)
-
-    rewritten = "\n".join(out_lines) + "\n"
-    entry["cached_playlist"] = rewritten
-    entry["last_fetch"] = now
-    return rewritten
-
-
-def fetch_proxied_hls_segment(video_id: str, seg_key: str) -> bytes:
-    """Fetch a single cached live `.ts` segment from YouTube for browser hls.js playback."""
-    entry = HLS_PROXY_CACHE.get(video_id)
-    if not entry or seg_key not in entry.get("seg_map", {}):
-        # Refresh playlist once in case segment is newly available
-        get_proxied_hls_playlist(video_id)
-        entry = HLS_PROXY_CACHE.get(video_id)
-    if not entry or seg_key not in entry.get("seg_map", {}):
-        raise FileNotFoundError(f"Segment {seg_key} not found")
-
-    seg_url = entry["seg_map"][seg_key]
-    req_headers = {}
-    if entry.get("headers", {}).get("User-Agent"):
-        req_headers["User-Agent"] = entry["headers"]["User-Agent"]
-
-    r = requests.get(seg_url, headers=req_headers, timeout=15)
-    if r.status_code != 200 or not r.content:
-        raise RuntimeError(f"Upstream segment HTTP {r.status_code}")
-    return r.content
 
 
 def _download_dvr_ts_slice(
@@ -702,7 +602,6 @@ def inspect_pro_source(
         "author": author,
         "is_live": is_live,
         "live_status": info.get("live_status") or ("is_live" if is_live else "not_live"),
-        "hls_proxy_url": f"/api/pro/hls/{video_id}/playlist.m3u8" if is_live else None,
         "duration": round(duration, 2),
         "live_elapsed_sec": round(live_elapsed_sec, 1),
         "dvr_window_sec": round(dvr_window_sec, 1),
