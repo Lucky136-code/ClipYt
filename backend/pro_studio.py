@@ -20,7 +20,7 @@ from backend.video_processor import (
     detect_best_encoder,
     download_clip_segment,
 )
-from backend.whisper_captions import transcribe_clip_hinglish
+from backend.whisper_captions import transcribe_clip_hinglish, get_whisper_status
 
 # Cache inspected Pro sources for 15 minutes
 PRO_STREAM_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -519,19 +519,38 @@ def _extract_exact_wav(
     duration: float,
     wav_path: Path,
 ) -> Optional[Path]:
-    """Extract a fast 16kHz mono WAV of the EXACT clip window for 0.000s-drift Whisper AI captions."""
-    cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-ss", f"{max(0.0, pad_start):.3f}",
+    """Extract a speech-enhanced 16kHz mono WAV of the EXACT clip window for 0.000s-drift Whisper AI captions."""
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+    if pad_start > 0.01:
+        cmd.extend(["-ss", f"{pad_start:.3f}"])
+    cmd.extend([
+        "-i", str(input_path),
+        "-t", f"{duration:.3f}",
+        "-vn", "-ac", "1", "-ar", "16000",
+        "-af", "aresample=async=1:first_pts=0,highpass=f=80,dynaudnorm=f=150:g=15",
+        "-c:a", "pcm_s16le",
+        str(wav_path),
+    ])
+    try:
+        res = subprocess.run(cmd, capture_output=True, timeout=25)
+        if res.returncode == 0 and wav_path.exists() and wav_path.stat().st_size > 1000:
+            return wav_path
+    except Exception:
+        pass
+    # Fallback without dynamic normalization if filter failed on an unusual codec
+    cmd_plain = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+    if pad_start > 0.01:
+        cmd_plain.extend(["-ss", f"{pad_start:.3f}"])
+    cmd_plain.extend([
         "-i", str(input_path),
         "-t", f"{duration:.3f}",
         "-vn", "-ac", "1", "-ar", "16000",
         "-c:a", "pcm_s16le",
         str(wav_path),
-    ]
+    ])
     try:
-        res = subprocess.run(cmd, capture_output=True, timeout=20)
-        if res.returncode == 0 and wav_path.exists() and wav_path.stat().st_size > 1000:
+        res2 = subprocess.run(cmd_plain, capture_output=True, timeout=25)
+        if res2.returncode == 0 and wav_path.exists() and wav_path.stat().st_size > 1000:
             return wav_path
     except Exception:
         pass
@@ -573,7 +592,8 @@ def render_pro_split_short(
     str_cw, str_ch, str_cx, str_cy = _norm_box_to_pixels(stream_box, src_w, src_h)
 
     filters = [
-        "[0:v]split=2[vcam_in][vstr_in]",
+        # Reset PTS to exact 0.000s so burned ASS captions ALWAYS match 0:00:00..duration even on HLS/copyts!
+        "[0:v]setpts=PTS-STARTPTS,split=2[vcam_in][vstr_in]",
         (
             f"[vcam_in]crop={cam_cw}:{cam_ch}:{cam_cx}:{cam_cy},"
             f"scale={out_w}:{cam_h}:force_original_aspect_ratio=increase:flags=lanczos,"
@@ -707,6 +727,7 @@ def process_pro_split_pipeline(
 
         generated_ass: Optional[Path] = None
         caption_engine_used = "none"
+        caption_note = ""
 
         if burn_subtitles:
             if progress_cb:
@@ -727,6 +748,15 @@ def process_pro_split_pipeline(
                 )
                 if generated_ass:
                     caption_engine_used = "ai_whisper_hinglish"
+                    caption_note = f"AI Hinglish ({len(words)} words)"
+            else:
+                ws = get_whisper_status()
+                if not extracted_wav:
+                    caption_note = "No audio track found in clip"
+                elif not ws.get("installed"):
+                    caption_note = "AI captions need requirements.txt uploaded to server"
+                else:
+                    caption_note = ws.get("last_error") or "No speech detected in clip"
 
             # Graceful fallback to YouTube transcript if VOD & Whisper returned nothing
             if not generated_ass and not is_live:
@@ -744,6 +774,7 @@ def process_pro_split_pipeline(
                 )
                 if generated_ass:
                     caption_engine_used = "youtube_hinglish"
+                    caption_note = "YouTube Hinglish Captions"
 
         if progress_cb:
             enc_name = detect_best_encoder()["name"]
@@ -778,6 +809,7 @@ def process_pro_split_pipeline(
             "resolution": resolution,
             "has_subtitles": bool(generated_ass),
             "caption_engine": caption_engine_used,
+            "caption_note": caption_note,
             "climax_hook": False,
             "is_pro": True,
             "encoder": detect_best_encoder()["name"],

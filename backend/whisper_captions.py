@@ -8,6 +8,31 @@ from backend.config import TEMP_DIR
 
 _MODEL_LOCK = threading.Lock()
 _WHISPER_MODEL = None
+_WHISPER_MODEL_NAME = None
+_LAST_WHISPER_ERROR = ""
+
+
+def get_whisper_status() -> Dict[str, Any]:
+    """Return safe diagnostic info about the AI Whisper caption engine."""
+    installed = False
+    version = None
+    try:
+        import faster_whisper
+        installed = True
+        version = getattr(faster_whisper, "__version__", "installed")
+    except Exception as e:
+        return {
+            "installed": False,
+            "version": None,
+            "model_loaded": None,
+            "last_error": str(e)[:200],
+        }
+    return {
+        "installed": installed,
+        "version": version,
+        "model_loaded": _WHISPER_MODEL_NAME,
+        "last_error": _LAST_WHISPER_ERROR[:240] if _LAST_WHISPER_ERROR else "",
+    }
 
 # Hinglish-primed prompt steers Whisper toward natural Roman Hindi + English gaming/creator speech
 HINGLISH_PROMPT = (
@@ -170,10 +195,12 @@ def devanagari_to_hinglish(text: str) -> str:
 
 def _get_whisper_model():
     """
-    Lazily load and cache faster-whisper (`small`) for high-accuracy English + Hindi/Hinglish.
-    Uses CUDA float16 on local NVIDIA GPUs, and fast int8 CPU on cloud (HF Spaces).
+    Lazily load and cache faster-whisper for English + Hindi/Hinglish speech recognition.
+    - Locally on NVIDIA GPU: `small` float16 (blazing fast + ultra accurate)
+    - On Hugging Face CPU Spaces: `base` int8 (~145MB, multilingual English+Hindi, 3.5x faster on CPU)
+    Falls back cleanly across model sizes and cache directories.
     """
-    global _WHISPER_MODEL
+    global _WHISPER_MODEL, _WHISPER_MODEL_NAME, _LAST_WHISPER_ERROR
     if _WHISPER_MODEL is not None:
         return _WHISPER_MODEL
 
@@ -181,69 +208,71 @@ def _get_whisper_model():
         if _WHISPER_MODEL is not None:
             return _WHISPER_MODEL
 
-        from faster_whisper import WhisperModel
+        try:
+            from faster_whisper import WhisperModel
+        except Exception as e:
+            _LAST_WHISPER_ERROR = f"faster-whisper not installed ({e})"
+            raise RuntimeError(_LAST_WHISPER_ERROR) from e
 
-        model_size = os.environ.get("CLIPYT_WHISPER_MODEL", "small")
+        is_hf_space = bool(os.environ.get("SPACE_ID"))
+        default_size = "base" if is_hf_space else "small"
+        requested_size = os.environ.get("CLIPYT_WHISPER_MODEL", default_size)
+        candidate_sizes = [requested_size] + ([s for s in ("base", "tiny") if s != requested_size])
+
         whisper_cache = TEMP_DIR / "whisper_cache"
         whisper_cache.mkdir(parents=True, exist_ok=True)
+        # Ensure huggingface_hub writes lock/download files into writable /tmp on cloud containers
+        os.environ.setdefault("HF_HUB_CACHE", str(whisper_cache))
+
         use_cuda = False
         # Never touch CUDA outside @spaces.GPU on Hugging Face ZeroGPU
-        if not os.environ.get("SPACE_ID"):
+        if not is_hf_space:
             try:
                 import ctranslate2
                 use_cuda = ctranslate2.get_cuda_device_count() > 0
             except Exception:
                 use_cuda = False
 
-        if use_cuda:
+        last_err = ""
+        for model_size in candidate_sizes:
+            if use_cuda:
+                try:
+                    _WHISPER_MODEL = WhisperModel(
+                        model_size,
+                        device="cuda",
+                        compute_type="float16",
+                        download_root=str(whisper_cache),
+                    )
+                    _WHISPER_MODEL_NAME = f"{model_size}-cuda-fp16"
+                    _LAST_WHISPER_ERROR = ""
+                    return _WHISPER_MODEL
+                except Exception as e:
+                    last_err = f"cuda:{e}"
+
             try:
                 _WHISPER_MODEL = WhisperModel(
                     model_size,
-                    device="cuda",
-                    compute_type="float16",
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=min(4, os.cpu_count() or 2),
                     download_root=str(whisper_cache),
                 )
+                _WHISPER_MODEL_NAME = f"{model_size}-cpu-int8"
+                _LAST_WHISPER_ERROR = ""
                 return _WHISPER_MODEL
-            except Exception:
-                pass
+            except Exception as e:
+                last_err = f"cpu:{e}"
+                continue
 
-        _WHISPER_MODEL = WhisperModel(
-            model_size,
-            device="cpu",
-            compute_type="int8",
-            cpu_threads=min(4, os.cpu_count() or 2),
-            download_root=str(whisper_cache),
-        )
-        return _WHISPER_MODEL
+        _LAST_WHISPER_ERROR = f"Whisper model load failed: {last_err[:200]}"
+        raise RuntimeError(_LAST_WHISPER_ERROR)
 
 
-def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]:
-    """
-    Transcribe a cut clip's audio directly using faster-whisper with:
-      - Acoustic word-level timestamps (0.000s sync accuracy!)
-      - Silero VAD silence filtering (captions vanish immediately when speaker stops!)
-      - Automatic English + Hindi detection converted to clean Hinglish Roman script!
-    Returns list of [{"word": str, "start": float, "end": float}, ...].
-    """
-    try:
-        model = _get_whisper_model()
-        segments, _info = model.transcribe(
-            str(media_path),
-            beam_size=2,
-            best_of=1,
-            word_timestamps=True,
-            vad_filter=True,
-            vad_parameters={
-                "min_silence_duration_ms": 300,
-                "speech_pad_ms": 100,
-            },
-            initial_prompt=HINGLISH_PROMPT,
-            condition_on_previous_text=False,
-        )
-
-        words_out: List[Dict[str, Any]] = []
-        for seg in segments:
-            seg_words = getattr(seg, "words", None) or []
+def _extract_words_from_segments(segments) -> List[Dict[str, Any]]:
+    words_out: List[Dict[str, Any]] = []
+    for seg in segments:
+        seg_words = getattr(seg, "words", None) or []
+        if seg_words:
             for w in seg_words:
                 raw_txt = (getattr(w, "word", "") or "").strip()
                 if not raw_txt:
@@ -256,7 +285,6 @@ def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]
                 ws = max(0.0, float(getattr(w, "start", 0.0)))
                 we = max(ws + 0.10, float(getattr(w, "end", ws + 0.18)))
 
-                # Split if Whisper grouped multiple space-separated words into one token
                 parts = hinglish.split()
                 if len(parts) == 1:
                     words_out.append({
@@ -276,7 +304,78 @@ def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]
                             "end": round(t_c + d, 3),
                         })
                         t_c += d
+        else:
+            # Segment-level fallback if word timestamps weren't produced for a segment
+            seg_txt = devanagari_to_hinglish((getattr(seg, "text", "") or "").strip())
+            seg_txt = seg_txt.replace("{", "(").replace("}", ")")
+            parts = seg_txt.split()
+            if parts:
+                s0 = max(0.0, float(getattr(seg, "start", 0.0)))
+                s1 = max(s0 + 0.25, float(getattr(seg, "end", s0 + 0.5)))
+                span = s1 - s0
+                tot_c = max(1, sum(len(p) for p in parts))
+                t_c = s0
+                for p in parts:
+                    d = span * (len(p) / tot_c)
+                    words_out.append({"word": p, "start": round(t_c, 3), "end": round(t_c + d, 3)})
+                    t_c += d
+    return words_out
 
-        return words_out if words_out else None
-    except Exception:
+
+def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]:
+    """
+    Transcribe a cut clip's audio directly using faster-whisper with:
+      - Acoustic word-level timestamps (0.000s sync accuracy!)
+      - 2-pass robustness: Pass 1 gentle Silero VAD -> Pass 2 no-VAD retry for noisy gaming streams!
+      - Automatic English + Hindi detection converted to clean Hinglish Roman script!
+    Returns list of [{"word": str, "start": float, "end": float}, ...].
+    """
+    global _LAST_WHISPER_ERROR
+    try:
+        model = _get_whisper_model()
+
+        # Pass 1: Gentle Silero VAD (captions vanish cleanly during real silence)
+        words_out: List[Dict[str, Any]] = []
+        try:
+            segments, _info = model.transcribe(
+                str(media_path),
+                beam_size=2,
+                best_of=1,
+                word_timestamps=True,
+                vad_filter=True,
+                vad_parameters={
+                    "threshold": 0.30,
+                    "min_silence_duration_ms": 450,
+                    "speech_pad_ms": 200,
+                },
+                initial_prompt=HINGLISH_PROMPT,
+                condition_on_previous_text=False,
+            )
+            words_out = _extract_words_from_segments(segments)
+        except Exception as vad_err:
+            _LAST_WHISPER_ERROR = f"VAD pass fallback: {str(vad_err)[:140]}"
+            words_out = []
+
+        # Pass 2: No-VAD retry if stream has loud game SFX/music or ONNX VAD errored
+        if not words_out:
+            segments2, _info2 = model.transcribe(
+                str(media_path),
+                beam_size=2,
+                best_of=1,
+                word_timestamps=True,
+                vad_filter=False,
+                no_speech_threshold=0.78,
+                initial_prompt=HINGLISH_PROMPT,
+                condition_on_previous_text=False,
+            )
+            words_out = _extract_words_from_segments(segments2)
+
+        if words_out:
+            _LAST_WHISPER_ERROR = ""
+            return words_out
+
+        _LAST_WHISPER_ERROR = "No speech detected in this clip audio."
+        return None
+    except Exception as e:
+        _LAST_WHISPER_ERROR = str(e)[:220]
         return None

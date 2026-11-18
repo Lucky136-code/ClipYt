@@ -154,6 +154,7 @@ async def api_diag(url: str = "https://www.youtube.com/watch?v=B2YhlGTGXpM"):
                 report[name] = {"error": re.sub(r"\x1b\[[0-9;]*m", "", str(e))[:220], "warnings": warns[:4]}
         return report
 
+    from backend.whisper_captions import get_whisper_status
     clients = await asyncio.to_thread(_probe)
     return {
         "yt_dlp_version": yt_dlp.version.__version__,
@@ -161,6 +162,7 @@ async def api_diag(url: str = "https://www.youtube.com/watch?v=B2YhlGTGXpM"):
         "node_path": shutil.which("node"),
         "ffmpeg_path": shutil.which("ffmpeg"),
         "cookie_entries": cookie_lines,
+        "whisper": get_whisper_status(),
         "clients": clients,
     }
 

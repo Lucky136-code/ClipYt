@@ -900,7 +900,9 @@ function showResultModal(result) {
 
   const hookBadge = result.climax_hook ? " • Climax Hook" : "";
   const proBadge = result.is_pro ? " • Pro Split-Screen" : "";
-  const capBadge = result.caption_engine === "ai_whisper_hinglish" ? " • AI Hinglish" : "";
+  const capBadge = result.has_subtitles
+    ? (result.caption_engine === "ai_whisper_hinglish" ? " • AI Hinglish Captions" : " • Captions")
+    : (result.caption_note ? ` • Captions skipped: ${result.caption_note}` : "");
   const sizeVal = result.file_size_mb ?? result.size_mb ?? 0;
   document.getElementById("result-meta").textContent =
     `${result.aspect_ratio} • ${result.duration}s • ${sizeVal} MB${proBadge}${capBadge}${hookBadge}`;
