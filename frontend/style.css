@@ -2946,6 +2946,17 @@ input:checked + .slider:before {
   cursor: not-allowed;
 }
 
+.btn-verify-master.btn-verify-pulse {
+  animation: pulseVerifyBtn 1.4s infinite ease-in-out;
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.7) !important;
+}
+
+@keyframes pulseVerifyBtn {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.025); }
+  100% { transform: scale(1); }
+}
+
 .unlock-gate-error {
   font-size: 0.82rem;
   font-weight: 700;
