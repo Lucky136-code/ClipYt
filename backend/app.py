@@ -869,7 +869,7 @@ async def serve_blurred_background():
 async def serve_background():
     bg_file = BASE_DIR / "background.png"
     if bg_file.exists():
-        return FileResponse(bg_file, media_type="image/png")
+        return FileResponse(bg_file, media_type="image/png", headers={"Cache-Control": "no-cache, must-revalidate"})
     raise HTTPException(status_code=404, detail="Background not found")
 
 
@@ -880,7 +880,7 @@ async def serve_bihari():
     for f in [FRONTEND_DIR / "mobilebackground.png", BASE_DIR / "mobilebackground.png", FRONTEND_DIR / "bihari.png", BASE_DIR / "bihari.png", FRONTEND_DIR / "bihari.jpg", BASE_DIR / "bihari.jpg"]:
         if f.exists():
             media = "image/png" if f.suffix == ".png" else "image/jpeg"
-            return FileResponse(f, media_type=media)
+            return FileResponse(f, media_type=media, headers={"Cache-Control": "no-cache, must-revalidate"})
     raise HTTPException(status_code=404, detail="File not found")
 
 
