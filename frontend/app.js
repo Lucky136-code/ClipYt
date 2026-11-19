@@ -1773,7 +1773,8 @@ function updateLockMomentUI() {
     if (proState.isLockedMoment) {
       const mins = Math.floor(lag / 60);
       const secs = lag % 60;
-      const timeStr = mins > 0 ? `${mins}m ${secs:02d}s ago` : `${secs}s ago`;
+      const sStr = secs < 10 ? `0${secs}` : `${secs}`;
+      const timeStr = mins > 0 ? `${mins}m ${sStr}s ago` : `${sStr}s ago`;
       badge.innerHTML = `<span style="color:#38bdf8;font-weight:700;">🔒 LOCKED:</span> ${lag > 5 ? timeStr : "Live Edge"} (${dur}s clip)`;
     } else if (lag > 5) {
       const mins = Math.floor(lag / 60);
