@@ -343,14 +343,7 @@ body::before {
   line-height: 1.2;
 }
 
-.creators-ticker-footer {
-  text-align: center;
-  margin-top: 1.25rem;
-  padding-bottom: 0.5rem;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-soft);
-}
+
 
 @keyframes creatorsMarquee {
   0% {
@@ -445,6 +438,59 @@ body::before {
   max-width: 780px;
   margin: 0 auto;
   padding: 1.35rem;
+}
+
+/* Feature & Trust Badges directly below URL input box */
+.hero-feature-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.35rem;
+  flex-wrap: wrap;
+  margin-top: 1.15rem;
+  user-select: none;
+}
+
+.feature-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+
+.feat-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #34d399;
+  font-size: 0.72rem;
+  font-weight: 800;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
+}
+
+.feature-sep {
+  color: rgba(16, 185, 129, 0.45);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .hero-feature-tags {
+    gap: 0.55rem 0.85rem;
+    margin-top: 0.95rem;
+  }
+  
+  .feature-tag {
+    font-size: 0.78rem;
+  }
 }
 
 .url-form {
