@@ -1259,7 +1259,6 @@ def render_pro_split_short(
             "-pix_fmt", "yuv420p",
             "-r", "30",
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-            "-shortest",
             "-movflags", "+faststart",
             str(output_path.resolve()),
         ]
@@ -1359,6 +1358,14 @@ def process_pro_split_pipeline(
                 end_time=clip_end,
                 output_path=raw_clip,
                 progress_cb=progress_cb,
+            )
+
+        raw_w, raw_h, raw_dur = _probe_video_meta(downloaded_raw)
+        if (raw_dur or 0.0) < min(3.5, clip_duration * 0.4) and clip_duration >= 5.0:
+            raise RuntimeError(
+                "This stream ended very recently and YouTube is still archiving it. "
+                "Historical replay segments are not yet released by YouTube. "
+                "Please choose an archived VOD or a currently live stream."
             )
 
         out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
@@ -1520,6 +1527,12 @@ def process_pro_split_pipeline(
         elapsed = round(time.time() - t0, 1)
         size_mb = round(out_path.stat().st_size / (1024 * 1024), 2)
         _, _, final_dur = _probe_video_meta(out_path)
+
+        if not out_path.exists() or size_mb <= 0.05 or (final_dur or 0.0) < 1.0:
+            raise RuntimeError(
+                "Render produced an empty or corrupted video (0 MB). "
+                "The stream segment was unavailable from YouTube. Please try another timestamp or video."
+            )
 
         return {
             "success": True,

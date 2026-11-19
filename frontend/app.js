@@ -902,6 +902,16 @@ function pollTaskProgress(taskId) {
       if (task.status === "completed" && task.result) {
         clearInterval(timer);
         fetchRateLimitStatus();
+        const sz = Number(task.result.size_mb || task.result.file_size_mb || 0);
+        const d = Number(task.result.duration || 0);
+        if (sz <= 0.05 || d <= 0.5) {
+          hideProgressModal();
+          const failMsg = "Short creation produced an empty video (0 MB). If this stream ended very recently, YouTube is still archiving it. Please try another video or timestamp.";
+          showError(failMsg);
+          showProError(failMsg);
+          if (typeof showVodError === "function") showVodError(failMsg);
+          return;
+        }
         showResultModal(task.result);
       } else if (task.status === "failed") {
         clearInterval(timer);

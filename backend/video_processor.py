@@ -142,6 +142,13 @@ def _build_stream_strategies() -> list:
 
     strategies.extend([
         (
+            "Default HD Stream",
+            {
+                "format": hd_fmt,
+            },
+            False,
+        ),
+        (
             "Fast Android HD Stream",
             {
                 "extractor_args": {"youtube": {"player_client": ["android", "mweb"]}},
@@ -354,7 +361,7 @@ def download_clip_segment(
             _download_with_guard(ydl_opts, cached["info"], is_info_dict=True, timeout_sec=seg_timeout)
             candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
             for cand in candidates:
-                if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
+                if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 20_000:
                     exact_pad = _measure_exact_leading_pad(cand, start_time, pad_start)
                     return cand, exact_pad
         except Exception:
@@ -387,7 +394,7 @@ def download_clip_segment(
 
             candidates = list(output_path.parent.glob(f"{attempt_path.stem}.*"))
             for cand in candidates:
-                if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
+                if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 20_000:
                     exact_pad = _measure_exact_leading_pad(cand, start_time, pad_start)
                     return cand, exact_pad
         except Exception as e:
