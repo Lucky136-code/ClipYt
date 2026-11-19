@@ -3287,37 +3287,54 @@ input:checked + .slider:before {
   opacity: 0.45;
 }
 
-/* Quick Corner Presets Floating Bar on Video */
+/* Quick Corner Presets Toolbar (Docked cleanly below the big video) */
 .pro-stage-presets-bar {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  z-index: 20;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border-radius: 9999px;
-  background: rgba(15, 12, 41, 0.75);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  box-shadow: 0 2px 8px rgba(109, 64, 198, 0.05);
+}
+
+.preset-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #475569;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.preset-buttons-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .stage-mini-pill {
-  border: none;
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-  font-size: 0.72rem;
+  border: 1px solid rgba(139, 92, 246, 0.24);
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.76rem;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
+  padding: 5px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s, transform 0.12s;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.stage-mini-pill:hover {
-  background: rgba(168, 85, 247, 0.7);
-  transform: scale(1.05);
+.stage-mini-pill:hover,
+.stage-mini-pill:active {
+  background: rgba(124, 58, 237, 0.1);
+  border-color: #7c3aed;
+  color: #7c3aed;
+  transform: translateY(-1px);
 }
 
 /* DVR Timeline Controls Bar Directly Below Big Video */
@@ -3364,6 +3381,7 @@ input:checked + .slider:before {
   border-radius: 9999px;
   accent-color: #ef4444;
   cursor: pointer;
+  touch-action: none;
 }
 
 .pro-playback-buttons-row {
@@ -3477,7 +3495,6 @@ input:checked + .slider:before {
   box-shadow: 0 12px 30px rgba(220, 38, 38, 0.48);
 }
 
-
 .rec-dot-pulse {
   width: 12px;
   height: 12px;
@@ -3493,5 +3510,319 @@ input:checked + .slider:before {
   0% { transform: scale(0.95); opacity: 0.8; }
   50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 14px rgba(239, 68, 68, 1); }
   100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+/* ==========================================================================
+   MOBILE & TABLET RESPONSIVE PERFECTION FOR LIVE STUDIO (SYSTEMATIC & UNCLUSTERED)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  /* Clean Hero & Badges on Mobile */
+  .pro-hero {
+    margin-bottom: 1rem;
+  }
+
+  .pro-hero-badge {
+    font-size: 0.68rem;
+    padding: 4px 10px;
+    letter-spacing: 0.3px;
+    text-align: center;
+  }
+
+  .pro-hero-desc {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    margin-bottom: 0.85rem;
+  }
+
+  .live-key-active-pill {
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    gap: 6px;
+  }
+
+  /* Main Stage Container Padding */
+  .pro-big-player-card {
+    padding: 0.75rem 0.6rem;
+    border-radius: 16px;
+    margin-bottom: 1.25rem;
+  }
+
+  /* Stream Title & Overlay Toggle Header on Mobile */
+  .pro-player-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "badge toggle"
+      "title title";
+    align-items: center;
+    gap: 0.45rem 0.5rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .pro-header-info {
+    display: contents;
+  }
+
+  #pro-live-badge {
+    grid-area: badge;
+    justify-self: start;
+    font-size: 0.72rem;
+    padding: 3px 9px;
+  }
+
+  .pro-overlay-toggle-wrap {
+    grid-area: toggle;
+    justify-self: end;
+  }
+
+  #btn-toggle-overlay-mode {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+
+  .pro-title-wrap {
+    grid-area: title;
+    width: 100%;
+    margin-top: 0.15rem;
+  }
+
+  .pro-stream-title {
+    font-size: 0.92rem;
+    max-width: 100%;
+    line-height: 1.3;
+  }
+
+  .pro-stream-author {
+    font-size: 0.75rem;
+  }
+
+  /* Stage & Floating Presets */
+  .pro-big-stage {
+    border-radius: 10px;
+  }
+
+  /* Preset Toolbar: Clean 5-Button Mobile Grid */
+  .pro-stage-presets-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 0.55rem 0.65rem;
+    margin-top: 0.55rem;
+    border-radius: 10px;
+  }
+
+  .preset-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+
+  .preset-buttons-group {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    width: 100%;
+  }
+
+  .stage-mini-pill {
+    padding: 7px 2px;
+    font-size: 0.68rem;
+    text-align: center;
+    justify-content: center;
+    border-radius: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Dual Crop Boxes on Mobile */
+  .crop-box-label {
+    font-size: 0.64rem;
+    padding: 2px 6px;
+    top: 4px;
+    left: 4px;
+  }
+
+  .crop-handle {
+    width: 20px;
+    height: 20px;
+    border-width: 3px;
+  }
+
+  .crop-handle::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+  }
+
+  /* DVR Timeline Bar on Mobile */
+  .pro-timeline-control-bar {
+    margin-top: 0.65rem;
+    padding: 0.75rem 0.65rem;
+    border-radius: 12px;
+  }
+
+  .pro-scrub-track-row {
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .time-readout {
+    font-size: 0.78rem;
+    min-width: 44px;
+  }
+
+  .time-readout-live {
+    font-size: 0.74rem;
+  }
+
+  .pro-scrubber-slider {
+    height: 10px;
+  }
+
+  /* Playback Controls Grid */
+  .pro-playback-buttons-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+
+  .playback-btn-group {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    width: 100%;
+  }
+
+  .btn-jump {
+    padding: 8px 2px;
+    font-size: 0.72rem;
+    text-align: center;
+    justify-content: center;
+    white-space: nowrap;
+    border-radius: 7px;
+  }
+
+  .recording-window-preview {
+    width: 100%;
+    text-align: center;
+    padding: 6px 8px;
+    background: rgba(124, 58, 237, 0.08);
+    border: 1px solid rgba(124, 58, 237, 0.16);
+    border-radius: 8px;
+    font-size: 0.76rem;
+  }
+
+  /* Settings Panel Systematic Stack */
+  .pro-recording-panel {
+    margin-top: 0.75rem;
+    padding: 0.85rem 0.75rem;
+    border-radius: 14px;
+    gap: 0.85rem;
+  }
+
+  .pro-settings-flex {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .pro-mini-setting {
+    width: 100%;
+    gap: 0.3rem;
+  }
+
+  .setting-caption {
+    font-size: 0.72rem;
+  }
+
+  /* Perfect Symmetric Grid for Each Picker on Mobile */
+  #pro-pos-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+
+  #pro-ratio-picker {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    width: 100%;
+  }
+
+  #pro-duration-picker {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    width: 100%;
+  }
+
+  .pro-mini-setting .choice-pill {
+    padding: 8px 4px;
+    font-size: 0.78rem;
+    text-align: center;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  .compact-selects,
+  #pro-sub-style {
+    width: 100%;
+    height: 42px;
+    font-size: 0.85rem;
+    padding: 0 10px;
+    border-radius: 8px;
+  }
+
+  .pro-master-record-btn {
+    padding: 0.95rem 1rem;
+    font-size: 1.05rem;
+    border-radius: 12px;
+  }
+}
+
+/* Compact Smartphones (iPhone SE, Galaxy A, screens <= 420px) */
+@media (max-width: 420px) {
+  .pro-big-player-card {
+    padding: 0.6rem 0.45rem;
+    border-radius: 14px;
+  }
+
+  .stage-mini-pill {
+    font-size: 0.63rem;
+    padding: 6px 1px;
+  }
+
+  .btn-jump {
+    font-size: 0.67rem;
+    padding: 7px 1px;
+  }
+
+  .pro-mini-setting .choice-pill {
+    font-size: 0.73rem;
+    padding: 7px 2px;
+  }
+
+  .crop-handle {
+    width: 22px;
+    height: 22px;
+  }
+
+  .crop-handle::after {
+    inset: -14px;
+  }
+
+  .crop-box-label {
+    font-size: 0.6rem;
+    padding: 2px 5px;
+  }
 }
 
