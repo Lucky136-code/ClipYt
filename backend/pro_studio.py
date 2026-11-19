@@ -33,9 +33,12 @@ PRO_CACHE_TTL_SEC = 900
 def _build_pro_live_strategies() -> List[Tuple[str, Dict[str, Any], bool]]:
     """yt-dlp strategies tailored for both YouTube Live HLS streams (96=1080p m3u8) and VODs."""
     live_fmt = (
+        "bestvideo[height=1080]+bestaudio/"
+        "bestvideo[height<=1080]+bestaudio/"
+        "best[height=1080][protocol^=m3u8]/"
         "best[height<=1080][protocol^=m3u8]/"
         "bestvideo[height<=1080][protocol^=m3u8]+bestaudio[protocol^=m3u8]/"
-        "best[height<=1080]/bv*+ba/b"
+        "bv*+ba/b"
     )
     strategies: List[Tuple[str, Dict[str, Any], bool]] = []
     if YTDLP_BASE_OPTS.get("cookiefile"):
@@ -132,20 +135,8 @@ def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[s
         headers = dict(info.get("http_headers") or {})
         return info["url"], None, headers
 
-    # Pick best <=1080p muxed or video stream from formats list
+    # Pick best <=1080p muxed or video stream from formats list, strongly prioritizing 1080p
     fmts = info.get("formats") or []
-    muxed = [
-        f for f in fmts
-        if f.get("url")
-        and f.get("vcodec") not in (None, "none")
-        and f.get("acodec") not in (None, "none")
-        and (f.get("height") or 0) <= 1080
-    ]
-    if muxed:
-        muxed.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
-        best = muxed[-1]
-        return best["url"], None, dict(best.get("http_headers") or {})
-
     vids = [
         f for f in fmts
         if f.get("url")
@@ -158,19 +149,39 @@ def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[s
         and f.get("acodec") not in (None, "none")
         and f.get("vcodec") in (None, "none")
     ]
+    muxed = [
+        f for f in fmts
+        if f.get("url")
+        and f.get("vcodec") not in (None, "none")
+        and f.get("acodec") not in (None, "none")
+        and (f.get("height") or 0) <= 1080
+    ]
+
+    best_v = None
     if vids:
-        vids.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+        vids.sort(key=lambda f: (1 if (f.get("height") or 0) == 1080 else 0, f.get("height") or 0, f.get("tbr") or 0))
         best_v = vids[-1]
+
+    best_m = None
+    if muxed:
+        muxed.sort(key=lambda f: (1 if (f.get("height") or 0) == 1080 else 0, f.get("height") or 0, f.get("tbr") or 0))
+        best_m = muxed[-1]
+
+    # If separate video stream achieves 1080p or >= muxed height, use video+audio to ensure true 1080p
+    if best_v and (not best_m or (best_v.get("height") or 0) >= (best_m.get("height") or 0)):
         best_a = sorted(auds, key=lambda f: f.get("abr") or f.get("tbr") or 0)[-1] if auds else None
         return best_v["url"], (best_a["url"] if best_a else None), dict(best_v.get("http_headers") or {})
+
+    if best_m:
+        return best_m["url"], None, dict(best_m.get("http_headers") or {})
 
     return None, None, headers
 
 
 def _pick_preview_hls_url(info: Dict[str, Any]) -> Tuple[Optional[str], Dict[str, str]]:
     """
-    Pick a crisp, lightweight muxed live HLS playlist (preferring 720p itag 95 or 480p itag 94)
-    for instant, smooth browser playback & scrubbing via hls.js.
+    Pick a crisp muxed live HLS playlist (preferring 1080p HD, then 720p)
+    for instant, smooth browser playback & scrubbing.
     """
     fmts = info.get("formats") or []
     muxed_hls = [
@@ -181,8 +192,8 @@ def _pick_preview_hls_url(info: Dict[str, Any]) -> Tuple[Optional[str], Dict[str
         and f.get("acodec") not in (None, "none")
     ]
     if muxed_hls:
-        # Prefer 720p (smooth + crisp), fallback to 480p, then highest <=1080p
-        for target_h in (720, 480, 360, 1080):
+        # Strongly prefer 1080p HD first, then fallback to 720p, 480p, 360p
+        for target_h in (1080, 720, 480, 360):
             for f in muxed_hls:
                 if int(f.get("height") or 0) == target_h:
                     return f["url"], dict(f.get("http_headers") or info.get("http_headers") or {})

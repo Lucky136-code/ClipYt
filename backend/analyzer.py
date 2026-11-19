@@ -217,10 +217,18 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
     use_hours = duration >= 3600
     title = info.get("title", "YouTube Video")
     author = info.get("uploader", info.get("channel", "Unknown"))
-    thumbnail = info.get("thumbnail", "")
+    v_id = info.get("id", video_id or "video")
     description = (info.get("description") or "").strip()
     view_count = info.get("view_count", 0)
-    v_id = info.get("id", video_id or "video")
+    thumbnail = info.get("thumbnail", "")
+    thumbs = info.get("thumbnails") or []
+    if thumbs:
+        valid_thumbs = [t for t in thumbs if t.get("url")]
+        if valid_thumbs:
+            valid_thumbs.sort(key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+            thumbnail = valid_thumbs[-1]["url"]
+    if not thumbnail:
+        thumbnail = f"https://i.ytimg.com/vi/{v_id}/maxresdefault.jpg"
 
     caption_info = {
         "language": info.get("language"),

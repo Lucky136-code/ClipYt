@@ -325,7 +325,7 @@ async def api_preview(url: str):
     clean_url = f"https://www.youtube.com/watch?v={vid}"
     title = "YouTube Video"
     author = ""
-    thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+    thumbnail = f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"
     try:
         resp = await asyncio.to_thread(
             requests.get,

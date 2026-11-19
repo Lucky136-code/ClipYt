@@ -89,10 +89,14 @@ def _build_stream_strategies() -> list:
     Note: Some clients (web_embedded, android_vr) drop all formats if cookies are passed.
     """
     hd_fmt = (
-        "bestvideo[height<=1080][fps<=30][vcodec^=avc1]+bestaudio[ext=m4a]/"
+        "bestvideo[height=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
+        "bestvideo[height=1080]+bestaudio/"
         "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
+        "bestvideo[height<=1080]+bestaudio/"
+        "best[height=1080][protocol^=m3u8]/"
         "best[height<=1080][protocol^=m3u8]/"
-        "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bv*+ba/b"
+        "bestvideo+bestaudio/"
+        "bv*+ba/b"
     )
     strategies = []
     if YTDLP_BASE_OPTS.get("cookiefile"):
@@ -101,7 +105,13 @@ def _build_stream_strategies() -> list:
                 "Authenticated Safari HLS 1080p",
                 {
                     "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
-                    "format": "best[height<=1080][protocol^=m3u8]/best[height<=1080]/bv*+ba/b",
+                    "format": (
+                        "bestvideo[height=1080]+bestaudio/"
+                        "best[height=1080][protocol^=m3u8]/"
+                        "bestvideo[height<=1080]+bestaudio/"
+                        "best[height<=1080][protocol^=m3u8]/"
+                        "bv*+ba/b"
+                    ),
                 },
                 True,
             ),
@@ -151,7 +161,13 @@ def _build_stream_strategies() -> list:
             "Safari HLS 1080p",
             {
                 "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
-                "format": "best[height<=1080][protocol^=m3u8]/best[height<=1080]/bv*+ba/b",
+                "format": (
+                    "bestvideo[height=1080]+bestaudio/"
+                    "best[height=1080][protocol^=m3u8]/"
+                    "bestvideo[height<=1080]+bestaudio/"
+                    "best[height<=1080][protocol^=m3u8]/"
+                    "bv*+ba/b"
+                ),
             },
             False,
         ),

@@ -359,7 +359,13 @@ async function fetchInstantPreview(url) {
     if (!res.ok) return;
     const info = await parseApiResponse(res);
 
-    document.getElementById("meta-thumb").src = info.thumbnail;
+    const thumbEl = document.getElementById("meta-thumb");
+    thumbEl.onerror = function () {
+      if (this.src && this.src.includes("maxresdefault.jpg")) {
+        this.src = this.src.replace("maxresdefault.jpg", "hqdefault.jpg");
+      }
+    };
+    thumbEl.src = info.thumbnail;
     document.getElementById("meta-title").textContent = info.title;
     document.getElementById("meta-author").textContent = info.author || "";
     document.getElementById("meta-views").textContent = "";
@@ -383,8 +389,14 @@ function renderFullAnalysis(data) {
   previewSec.classList.remove("hidden");
   resultsSec.classList.remove("hidden");
 
-  // Video Thumbnail + Title + Caption as it is from YouTube
-  document.getElementById("meta-thumb").src = data.thumbnail;
+  // Video Thumbnail (1080p MaxRes with fallback) + Title + Caption as it is from YouTube
+  const fullThumbEl = document.getElementById("meta-thumb");
+  fullThumbEl.onerror = function () {
+    if (this.src && this.src.includes("maxresdefault.jpg")) {
+      this.src = this.src.replace("maxresdefault.jpg", "hqdefault.jpg");
+    }
+  };
+  fullThumbEl.src = data.thumbnail;
   document.getElementById("meta-title").textContent = data.title;
   document.getElementById("meta-author").textContent = data.author;
 
@@ -1593,16 +1605,50 @@ function loadLiveStreamInPlayer(videoId) {
   const embedWrap = document.getElementById("pro-yt-embed-wrap");
   if (!embedWrap) return;
 
-  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
       ytLivePlayer = new YT.Player("pro-live-iframe", {
+        playerVars: {
+          autoplay: 1,
+          playsinline: 1,
+          vq: "hd1080",
+          suggestedQuality: "hd1080",
+          modestbranding: 1,
+          rel: 0,
+        },
         events: {
           onReady: (e) => {
             ytPlayerReady = true;
+            try {
+              if (typeof e.target.setPlaybackQuality === "function") {
+                e.target.setPlaybackQuality("hd1080");
+              }
+              if (typeof e.target.suggestedQuality !== "undefined") {
+                e.target.suggestedQuality = "hd1080";
+              }
+            } catch (err) {}
             try { e.target.playVideo(); } catch (err) {}
             startPlayerTracking();
+          },
+          onPlaybackQualityChange: (e) => {
+            if (e.data && e.data !== "hd1080") {
+              try {
+                if (typeof e.target.setPlaybackQuality === "function") {
+                  e.target.setPlaybackQuality("hd1080");
+                }
+              } catch (err) {}
+            }
+          },
+          onStateChange: (e) => {
+            if (e.data === 1) {
+              try {
+                if (typeof e.target.setPlaybackQuality === "function") {
+                  e.target.setPlaybackQuality("hd1080");
+                }
+              } catch (err) {}
+            }
           },
         },
       });
@@ -2238,15 +2284,49 @@ function loadVodStreamInPlayer(videoId) {
   const embedWrap = document.getElementById("vod-yt-embed-wrap");
   if (!embedWrap) return;
 
-  embedWrap.innerHTML = `<iframe id="vod-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  embedWrap.innerHTML = `<iframe id="vod-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
       ytVodPlayer = new YT.Player("vod-live-iframe", {
+        playerVars: {
+          autoplay: 1,
+          playsinline: 1,
+          vq: "hd1080",
+          suggestedQuality: "hd1080",
+          modestbranding: 1,
+          rel: 0,
+        },
         events: {
           onReady: (e) => {
+            try {
+              if (typeof e.target.setPlaybackQuality === "function") {
+                e.target.setPlaybackQuality("hd1080");
+              }
+              if (typeof e.target.suggestedQuality !== "undefined") {
+                e.target.suggestedQuality = "hd1080";
+              }
+            } catch (err) {}
             try { e.target.playVideo(); } catch (err) {}
             startVodPlayerTracking();
+          },
+          onPlaybackQualityChange: (e) => {
+            if (e.data && e.data !== "hd1080") {
+              try {
+                if (typeof e.target.setPlaybackQuality === "function") {
+                  e.target.setPlaybackQuality("hd1080");
+                }
+              } catch (err) {}
+            }
+          },
+          onStateChange: (e) => {
+            if (e.data === 1) {
+              try {
+                if (typeof e.target.setPlaybackQuality === "function") {
+                  e.target.setPlaybackQuality("hd1080");
+                }
+              } catch (err) {}
+            }
           },
         },
       });
