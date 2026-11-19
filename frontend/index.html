@@ -8,11 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120d">
+  <link rel="stylesheet" href="/static/style.css?v=20261120e">
 </head>
 
 <body>
@@ -24,32 +24,23 @@
     <div class="studio-bar-wrap">
       <div class="studio-pill-bar">
         <button type="button" id="studio-btn-standard" class="studio-pill active">
-          <span>Standard Studio</span>
+          <span>⚡ Auto Clipper</span>
         </button>
         <button type="button" id="studio-btn-pro" class="studio-pill">
           <span class="live-dot" style="margin-right:2px;"></span>
-          <span>Live Studio</span>
+          <span>Live Clipper</span>
           <span id="pro-badge-pill" class="pro-lock-tag">🔒 6h KEY</span>
         </button>
         <button type="button" id="studio-btn-vod" class="studio-pill">
-          <span>🎬 Ended Stream VOD</span>
+          <span>🎬 Pro Clipper</span>
         </button>
       </div>
     </div>
 
-    <!-- ==================== STANDARD WORKSPACE ==================== -->
+    <!-- ==================== AUTO CLIPPER WORKSPACE ==================== -->
     <div id="standard-workspace">
       <!-- Simple Hero: Paste Your YouTube Link -->
       <section class="hero-section">
-        <!-- User Quota / Rate Limit Badge -->
-        <div class="quota-badge-wrap">
-          <div id="rate-limit-pill" class="rate-limit-pill"
-            title="Unlimited Link Pastes & Unlimited Clips!">
-            <span class="quota-dot"></span>
-            <span id="rate-limit-text">⚡ Unlimited Links & Clips</span>
-          </div>
-        </div>
-
         <h1 class="hero-title">Paste your YouTube link</h1>
 
         <div class="glass-card input-card">
@@ -289,13 +280,13 @@
       </section>
     </div><!-- /#standard-workspace -->
 
-    <!-- ==================== LIVE YOUTUBE STUDIO ==================== -->
+    <!-- ==================== LIVE CLIPPER ==================== -->
     <section id="pro-studio-section" class="hidden">
-      <!-- Live Studio Hero Banner -->
+      <!-- Live Clipper Hero Banner -->
       <section class="hero-section pro-hero">
         <div class="pro-hero-badge">
           <span class="live-dot"></span>
-          <span>LIVE YOUTUBE STUDIO • 9:16 DUAL BOX • 6-HR KEY PROTECTED</span>
+          <span>LIVE CLIPPER • 9:16 DUAL BOX • 6-HR KEY PROTECTED</span>
         </div>
         <div class="pro-key-status-row">
           <div id="live-key-active-badge" class="live-key-active-pill hidden">
@@ -305,7 +296,7 @@
               Key</button>
           </div>
         </div>
-        <h1 class="hero-title">Live YouTube Studio</h1>
+        <h1 class="hero-title">Live Clipper</h1>
         <p class="section-sub pro-hero-desc">
           Paste any live YouTube stream, position the Streamer & Display boxes, pick your layout ratio, and start
           recording 9:16 vertical Shorts at any past timestamp!
@@ -488,14 +479,14 @@
       </div>
     </section>
 
-    <!-- ==================== VOD / ENDED STREAM STUDIO WORKSPACE ==================== -->
+    <!-- ==================== PRO CLIPPER WORKSPACE ==================== -->
     <section id="vod-studio-section" class="hidden">
-      <!-- VOD Studio Hero Banner -->
+      <!-- Pro Clipper Hero Banner -->
       <section class="hero-section vod-hero">
         <div class="pro-hero-badge vod-hero-badge">
-          <span>🎬 ENDED STREAM & REPLAY STUDIO • 9:16 DUAL BOX</span>
+          <span>🎬 PRO CLIPPER • 9:16 DUAL BOX</span>
         </div>
-        <h1 class="hero-title">Ended Stream & VOD Studio</h1>
+        <h1 class="hero-title">Pro Clipper</h1>
         <p class="section-sub pro-hero-desc">
           Paste any completed YouTube stream, gaming broadcast, or replay. Position the Streamer & Display boxes, pick your moment, and create 9:16 vertical Shorts!
         </p>
