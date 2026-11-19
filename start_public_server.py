@@ -81,6 +81,7 @@ def update_vercel_json_destination(tunnel_url: str) -> bool:
 
             # Auto git commit & push to deploy on Vercel
             print("[INFO] Pushing updated routing to GitHub for Vercel auto-deploy...")
+            subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=str(BASE_DIR), capture_output=True)
             subprocess.run(["git", "add", "vercel.json"], cwd=str(BASE_DIR), check=True)
             subprocess.run(
                 ["git", "commit", "-m", f"chore(deploy): point API to laptop tunnel {tunnel_url}"],
@@ -153,6 +154,17 @@ def main():
         sys.exit(1)
 
     print(f"[OK] Public Tunnel established: {tunnel_url}")
+
+    # Continuously drain tunnel output so the Windows pipe buffer never fills up and hangs
+    def _drain_tunnel_pipe(pipe):
+        try:
+            for _ in pipe:
+                pass
+        except Exception:
+            pass
+
+    import threading
+    threading.Thread(target=_drain_tunnel_pipe, args=(tunnel_proc.stdout,), daemon=True).start()
 
     # 3. Connect Vercel to your laptop tunnel
     print("[3/3] Connecting https://clipyt.vercel.app to your laptop...")
