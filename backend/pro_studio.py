@@ -1311,6 +1311,7 @@ def render_pro_split_short(
             "-map", "0:a:0?",
             *enc_args,
             "-pix_fmt", "yuv420p",
+            "-profile:v", "high", "-level", "4.1",
             "-r", "30",
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-movflags", "+faststart",
@@ -1468,6 +1469,7 @@ def process_pro_split_pipeline(
                 "-i", str(intermediate_split.resolve()),
                 "-t", f"{hook_dur_eff:.3f}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k",
+                "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
                 str(hook_clip.resolve())
             ], check=True, timeout=30)
@@ -1484,6 +1486,7 @@ def process_pro_split_pipeline(
                 "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
                 "-map", "[v]", "-map", "[a]",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k",
+                "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
                 "-movflags", "+faststart",
                 str(combo_clip.resolve())
@@ -1558,6 +1561,7 @@ def process_pro_split_pipeline(
                     "-i", str(combo_clip.resolve()),
                     "-vf", f"ass={generated_ass.name}",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k",
+                    "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
                     "-c:a", "copy",
                     "-movflags", "+faststart",
                     str(out_path.resolve())

@@ -797,9 +797,11 @@ class FastDownloadFileResponse(FileResponse):
     chunk_size = 512 * 1024  # 512 KB chunks for fast I/O throughput
 
 
+@app.get("/api/stream/{filename}")
 @app.get("/api/download/{filename}")
-async def api_download(filename: str):
-    """Serve the newly created Short video for instant playback & download."""
+async def api_download(filename: str, inline: bool = False):
+    """Serve the newly created Short video for instant playback & download.
+    Supports RFC 7233 byte-range streaming for Apple iOS/Safari and Fast I/O downloads."""
     safe_name = Path(filename).name
     filepath = TEMP_DIR / safe_name
     if not filepath.exists() or not filepath.is_file():
@@ -809,15 +811,14 @@ async def api_download(filename: str):
             media_type="text/plain",
             headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
-    file_size = filepath.stat().st_size
+    disp = f'inline; filename="{safe_name}"' if inline else f'attachment; filename="{safe_name}"'
     return FastDownloadFileResponse(
         path=filepath,
         filename=safe_name,
         media_type="video/mp4",
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_name}"',
+            "Content-Disposition": disp,
             "Accept-Ranges": "bytes",
-            "Content-Length": str(file_size),
             "Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
             "Access-Control-Allow-Origin": "*",
         },

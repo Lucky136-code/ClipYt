@@ -676,6 +676,8 @@ def render_short(
             "-map", audio_map,
             *enc_args,
             "-pix_fmt", "yuv420p",
+            "-profile:v", "high",
+            "-level", "4.1",
             "-c:a", "aac",
             "-b:a", "160k",
             "-movflags", "+faststart",

@@ -267,7 +267,7 @@ function looksLikeYouTubeUrl(url) {
 
 function extractYtVideoId(url) {
   if (!url) return null;
-  const m = url.match(/(?:live\/|v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  const m = url.match(/(?:live\/|v=|youtu\.be\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
   return m ? m[1] : null;
 }
 
@@ -883,12 +883,17 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
   }
 }
 
+let activePollingTaskId = null;
+
 function pollTaskProgress(taskId) {
-  const timer = setInterval(async () => {
+  activePollingTaskId = taskId;
+  async function tick() {
+    if (activePollingTaskId !== taskId) return;
     try {
       const res = await fetchWithTimeout(`/api/task/${taskId}`, {}, 8000);
       if (!res.ok) {
         clearInterval(timer);
+        activePollingTaskId = null;
         hideProgressModal();
         const msg = "Lost connection while creating Short.";
         showError(msg);
@@ -901,6 +906,7 @@ function pollTaskProgress(taskId) {
 
       if (task.status === "completed" && task.result) {
         clearInterval(timer);
+        activePollingTaskId = null;
         fetchRateLimitStatus();
         const sz = Number(task.result.size_mb || task.result.file_size_mb || 0);
         const d = Number(task.result.duration || 0);
@@ -915,6 +921,7 @@ function pollTaskProgress(taskId) {
         showResultModal(task.result);
       } else if (task.status === "failed") {
         clearInterval(timer);
+        activePollingTaskId = null;
         fetchRateLimitStatus();
         hideProgressModal();
         const errText = task.error || task.message || "Short creation failed.";
@@ -925,7 +932,16 @@ function pollTaskProgress(taskId) {
     } catch (e) {
       console.error(e);
     }
-  }, 1500);
+  }
+
+  const timer = setInterval(tick, 1500);
+
+  // Resume immediately if user switches back to Safari on iOS
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && activePollingTaskId === taskId) {
+      tick();
+    }
+  }, { passive: true });
 }
 
 // -------------------------------------------------------------
@@ -971,22 +987,60 @@ function showResultModal(result) {
       videoEl.removeAttribute("src");
       videoEl.load();
     };
-    videoEl.src = result.download_url;
+    // Stream inline for RFC 7233 byte-range playback (avoids iOS Safari attachment cancellation)
+    const streamUrl = result.download_url.includes("?")
+      ? `${result.download_url}&inline=true`
+      : `${result.download_url}?inline=true`;
+    videoEl.src = streamUrl;
   }
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
   const dlBtn = document.getElementById("result-download-btn");
   if (dlBtn) {
     dlBtn.href = result.download_url;
     dlBtn.setAttribute("download", result.filename);
-    dlBtn.innerHTML = "Download Short (MP4)";
+
+    if (isIOS && typeof navigator.share === "function") {
+      dlBtn.innerHTML = "📲 Save to Photos / Camera Roll";
+    } else {
+      dlBtn.innerHTML = "Download Short (MP4)";
+    }
 
     if (!dlBtn.dataset.boundDownload) {
       dlBtn.dataset.boundDownload = "1";
-      dlBtn.addEventListener("click", () => {
+      dlBtn.addEventListener("click", async (e) => {
         // Pause preview video to allocate 100% bandwidth to file download
         if (videoEl && !videoEl.paused) {
           videoEl.pause();
         }
+
+        if (isIOS && typeof navigator.share === "function") {
+          e.preventDefault();
+          const origHtml = dlBtn.innerHTML;
+          dlBtn.innerHTML = "<span>⏳ Preparing for Photos...</span>";
+          try {
+            const resp = await fetch(result.download_url);
+            const blob = await resp.blob();
+            const file = new File([blob], result.filename || "clip.mp4", { type: "video/mp4" });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: "ClipYT Short",
+              });
+              dlBtn.innerHTML = "<span>✓ Saved / Shared!</span>";
+              setTimeout(() => { dlBtn.innerHTML = origHtml; }, 4000);
+              return;
+            }
+          } catch (err) {
+            console.warn("iOS Web Share API fallback:", err);
+          }
+          // Direct fallback if user dismissed or cancelled share sheet
+          window.location.href = result.download_url;
+          return;
+        }
+
         dlBtn.innerHTML = "<span>✓ Downloading started! Check downloads</span>";
         setTimeout(() => {
           dlBtn.innerHTML = "Download Short (MP4)";
@@ -1661,7 +1715,7 @@ function loadLiveStreamInPlayer(videoId) {
   proState.liveLagSec = 0;
   proState.currentPlaySec = 0;
 
-  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
@@ -2459,7 +2513,7 @@ function loadVodStreamInPlayer(videoId) {
   const embedWrap = document.getElementById("vod-yt-embed-wrap");
   if (!embedWrap) return;
 
-  embedWrap.innerHTML = `<iframe id="vod-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  embedWrap.innerHTML = `<iframe id="vod-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
