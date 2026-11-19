@@ -793,6 +793,10 @@ async def api_get_task(task_id: str):
     return task
 
 
+class FastDownloadFileResponse(FileResponse):
+    chunk_size = 512 * 1024  # 512 KB chunks for fast I/O throughput
+
+
 @app.get("/api/download/{filename}")
 async def api_download(filename: str):
     """Serve the newly created Short video for instant playback & download."""
@@ -800,13 +804,16 @@ async def api_download(filename: str):
     filepath = TEMP_DIR / safe_name
     if not filepath.exists() or not filepath.is_file():
         raise HTTPException(status_code=404, detail="Video expired or not found")
-    return FileResponse(
+    file_size = filepath.stat().st_size
+    return FastDownloadFileResponse(
         path=filepath,
         filename=safe_name,
         media_type="video/mp4",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_name}"',
             "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
             "Access-Control-Allow-Origin": "*",
         },
     )

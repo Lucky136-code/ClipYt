@@ -964,40 +964,30 @@ function updateProgressModal(msg, pct) {
 
 function showResultModal(result) {
   const videoEl = document.getElementById("result-video");
-  videoEl.src = result.download_url;
-  videoEl.load();
+  if (videoEl) {
+    videoEl.preload = "metadata";
+    videoEl.src = result.download_url;
+  }
 
   const dlBtn = document.getElementById("result-download-btn");
-  dlBtn.href = result.download_url;
-  dlBtn.setAttribute("download", result.filename);
+  if (dlBtn) {
+    dlBtn.href = result.download_url;
+    dlBtn.setAttribute("download", result.filename);
+    dlBtn.innerHTML = "Download Short (MP4)";
 
-  // Reliable mobile WebView + browser direct download handler
-  if (dlBtn && !dlBtn.dataset.boundDownload) {
-    dlBtn.dataset.boundDownload = "1";
-    dlBtn.addEventListener("click", async (e) => {
-      const url = dlBtn.getAttribute("href");
-      const filename = dlBtn.getAttribute("download") || "ClipYT_Short.mp4";
-      if (!url || url === "#") return;
-      try {
-        const res = await fetch(url);
-        if (res.ok) {
-          const blob = await res.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = blobUrl;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(blobUrl);
-          }, 1500);
-          e.preventDefault();
+    if (!dlBtn.dataset.boundDownload) {
+      dlBtn.dataset.boundDownload = "1";
+      dlBtn.addEventListener("click", () => {
+        // Pause preview video to allocate 100% bandwidth to file download
+        if (videoEl && !videoEl.paused) {
+          videoEl.pause();
         }
-      } catch (err) {
-        // Fallback to normal anchor click behavior
-      }
-    });
+        dlBtn.innerHTML = "<span>✓ Downloading started! Check downloads</span>";
+        setTimeout(() => {
+          dlBtn.innerHTML = "Download Short (MP4)";
+        }, 5000);
+      });
+    }
   }
 
   const hookBadge = result.climax_hook ? " • Climax Hook" : "";

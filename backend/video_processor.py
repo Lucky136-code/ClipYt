@@ -39,7 +39,7 @@ def detect_best_encoder() -> Dict[str, Any]:
         _BEST_ENCODER = {
             "name": "libx264",
             "hw_in": [],
-            "enc_args": ["-c:v", "libx264", "-preset", "superfast", "-crf", "19"],
+            "enc_args": ["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"],
         }
         return _BEST_ENCODER
 
@@ -47,17 +47,17 @@ def detect_best_encoder() -> Dict[str, Any]:
         (
             "h264_nvenc",
             ["-hwaccel", "cuda"],
-            ["-c:v", "h264_nvenc", "-preset", "p3", "-rc", "vbr", "-cq", "19", "-b:v", "0"],
+            ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "5500k", "-maxrate", "7500k", "-bufsize", "10000k"],
         ),
         (
             "h264_qsv",
             [],
-            ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "20"],
+            ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "23", "-b:v", "5500k", "-maxrate", "7500k"],
         ),
         (
             "h264_amf",
             [],
-            ["-c:v", "h264_amf", "-quality", "speed", "-rc", "cqp", "-qp_i", "19", "-qp_p", "19"],
+            ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "vbr_peak", "-b:v", "5500k", "-maxrate", "7500k"],
         ),
     ]
 
@@ -77,7 +77,7 @@ def detect_best_encoder() -> Dict[str, Any]:
     _BEST_ENCODER = {
         "name": "libx264",
         "hw_in": [],
-        "enc_args": ["-c:v", "libx264", "-preset", "superfast", "-crf", "19"],
+        "enc_args": ["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"],
     }
     return _BEST_ENCODER
 
@@ -687,7 +687,7 @@ def render_short(
     if result.returncode != 0 and encoder["name"] != "libx264":
         result = _run_ffmpeg(
             use_hw_in=False,
-            enc_args=["-c:v", "libx264", "-preset", "superfast", "-crf", "19"],
+            enc_args=["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"],
         )
 
     if ass_file and ass_file.exists():

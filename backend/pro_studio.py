@@ -1273,7 +1273,7 @@ def render_pro_split_short(
     res = _run_encode(enc["enc_args"])
     if res.returncode != 0 and enc["name"] != "libx264":
         # Safe CPU fallback if hardware encoder rejected a specific stream profile
-        res = _run_encode(["-c:v", "libx264", "-preset", "superfast", "-crf", "19"])
+        res = _run_encode(["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"])
 
     if res.returncode != 0 or not output_path.exists():
         raise RuntimeError(f"Split-screen render failed: {(res.stderr or 'unknown error').strip()[:260]}")
@@ -1407,7 +1407,7 @@ def process_pro_split_pipeline(
                 "-ss", f"{hook_start:.3f}",
                 "-i", str(intermediate_split.resolve()),
                 "-t", f"{hook_dur_eff:.3f}",
-                "-c:v", "libx264", "-preset", "superfast", "-crf", "18",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
                 str(hook_clip.resolve())
             ], check=True, timeout=30)
@@ -1423,7 +1423,7 @@ def process_pro_split_pipeline(
                 "-i", str(intermediate_split.resolve()),
                 "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
                 "-map", "[v]", "-map", "[a]",
-                "-c:v", "libx264", "-preset", "superfast", "-crf", "18",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
                 "-movflags", "+faststart",
                 str(combo_clip.resolve())
@@ -1497,7 +1497,7 @@ def process_pro_split_pipeline(
                     "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
                     "-i", str(combo_clip.resolve()),
                     "-vf", f"ass={generated_ass.name}",
-                    "-c:v", "libx264", "-preset", "superfast", "-crf", "19",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k",
                     "-c:a", "copy",
                     "-movflags", "+faststart",
                     str(out_path.resolve())
