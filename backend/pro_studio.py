@@ -306,25 +306,33 @@ def _download_dvr_by_sequence(
 
     last_sq = int(m_sq.group(1))
     chunk_dur = float(last_dur) if (last_dur and last_dur > 0.1) else 2.0
-    live_edge_sec = (last_sq + 1) * chunk_dur
 
+    # YouTube embedded iframe HTML5 player buffers ~3 chunks (15s) + browser decode/network queue (~1s).
+    # What the user sees playing on their screen is ~16.0s behind YouTube CDN's latest server edge.
+    LIVE_PLAYER_LATENCY_SEC = 16.0
+
+    server_head_sec = (last_sq + 1) * chunk_dur
+    screen_head_sec = max(0.0, server_head_sec - LIVE_PLAYER_LATENCY_SEC)
     req_dur = max(3.0, min(120.0, float(duration_sec)))
-    if rewind_sec is not None and float(rewind_sec) >= 3.0:
-        # User rewound into the stream's past: record forward starting from that moment
-        target_start_sec = max(0.0, live_edge_sec - float(rewind_sec))
-    elif start_time is not None and float(start_time) > 10.0 and float(start_time) < (live_edge_sec - 4.0):
-        # Historical timestamp passed explicitly in broadcast coordinates
-        target_start_sec = float(start_time)
-    else:
-        # At current live edge: record trailing req_dur
-        target_start_sec = max(0.0, live_edge_sec - req_dur)
 
-    target_sq = max(0, int(target_start_sec / chunk_dur))
-    chunks_needed = max(2, math.ceil(req_dur / chunk_dur) + 1)
-    if (target_sq + chunks_needed) > (last_sq + 1):
-        target_sq = max(0, last_sq - chunks_needed + 1)
+    # In Live Studio, rewind_sec represents how many seconds behind the live screen edge the user wants.
+    if rewind_sec is not None and float(rewind_sec) >= 6.0:
+        # User scrubbed back into the past on the live timeline:
+        target_start_sec = max(0.0, screen_head_sec - float(rewind_sec))
+        target_end_sec = target_start_sec + req_dur
+    else:
+        # User is at current live edge: record the exact req_dur window that JUST ended on screen!
+        target_end_sec = screen_head_sec
+        target_start_sec = max(0.0, target_end_sec - req_dur)
+
+    target_sq = max(0, int(math.floor(target_start_sec / chunk_dur)))
+    end_sq = min(last_sq, int(math.ceil(target_end_sec / chunk_dur)))
+    if end_sq <= target_sq:
+        end_sq = min(last_sq, target_sq + max(2, math.ceil(req_dur / chunk_dur)))
+
     chunk_start_sec = target_sq * chunk_dur
     sub_offset = max(0.0, round(target_start_sec - chunk_start_sec, 3))
+    chunks_needed = end_sq - target_sq + 1
 
     urls = [re.sub(r'/sq/\d+/', f'/sq/{sq}/', last_url) for sq in range(target_sq, target_sq + chunks_needed)]
 
@@ -389,20 +397,19 @@ def _download_dvr_ts_slice(
     else:
         eff_rewind = max(0.0, float(rewind_sec))
         req_dur = max(3.0, min(120.0, float(duration_sec)))
-        if eff_rewind >= 3.0:
+        LIVE_PLAYER_LATENCY_SEC = 16.0
+        screen_dur = max(0.0, total_dur - LIVE_PLAYER_LATENCY_SEC)
+        if eff_rewind >= 6.0:
             # User rewound into the stream's past:
-            # The playhead on screen is at `total_dur - eff_rewind`.
-            # We record FORWARD from that exact moment for `req_dur`!
-            win_start = max(0.0, total_dur - eff_rewind)
+            win_start = max(0.0, screen_dur - eff_rewind)
             win_end = min(total_dur, win_start + req_dur)
-            # If the requested clip extends past the current live edge, pull back win_start
             if (win_end - win_start < req_dur) and win_end >= (total_dur - 0.5):
                 win_start = max(0.0, total_dur - req_dur)
                 win_end = total_dur
         else:
-            # User is at the live edge: record the trailing `req_dur` that just happened!
-            win_start = max(0.0, total_dur - req_dur)
-            win_end = total_dur
+            # User is at the live edge: record trailing req_dur that just played on screen!
+            win_end = max(req_dur, screen_dur)
+            win_start = max(0.0, win_end - req_dur)
 
     selected: List[Tuple[float, str]] = []
     slice_start_t: Optional[float] = None
@@ -911,11 +918,9 @@ def download_live_dvr_segment(
         raise RuntimeError("Could not find a live HLS stream URL for this broadcast.")
 
     if progress_cb:
-        if start_time is not None and start_time >= 0:
-            progress_cb(f"Grabbing exact {int(duration_sec)}s recorded slice from {format_timestamp(start_time)}...", 24)
-        elif start_utc_ts is not None and end_utc_ts is not None:
+        if start_utc_ts is not None and end_utc_ts is not None:
             progress_cb(f"Grabbing exact {int(duration_sec)}s recorded slice in 1080p HD...", 24)
-        elif rewind_sec >= 5:
+        elif rewind_sec >= 6.0:
             mins = int(rewind_sec // 60)
             secs = int(rewind_sec % 60)
             ago_txt = f"{mins}m {secs:02d}s ago" if mins > 0 else f"{secs}s ago"
