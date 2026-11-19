@@ -58,6 +58,13 @@ def ensure_fresh_cookiefile() -> str:
 
 if _ENV_COOKIES:
     YTDLP_BASE_OPTS["cookiefile"] = ensure_fresh_cookiefile()
+else:
+    _LOCAL_COOKIE_FILE = DATA_DIR / "cookies.txt"
+    _ROOT_COOKIE_FILE = BASE_DIR / "cookies.txt"
+    if _LOCAL_COOKIE_FILE.exists() and _LOCAL_COOKIE_FILE.stat().st_size > 100:
+        YTDLP_BASE_OPTS["cookiefile"] = str(_LOCAL_COOKIE_FILE)
+    elif _ROOT_COOKIE_FILE.exists() and _ROOT_COOKIE_FILE.stat().st_size > 100:
+        YTDLP_BASE_OPTS["cookiefile"] = str(_ROOT_COOKIE_FILE)
 
 ASPECT_RATIOS = {
     "9:16": {"width": 1080, "height": 1920, "label": "9:16 Vertical (Shorts / Reels / TikTok)"},
