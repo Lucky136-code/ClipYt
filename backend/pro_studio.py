@@ -976,6 +976,7 @@ def download_live_dvr_segment(
 
             cmd.extend([
                 "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
                 "-movflags", "+faststart",
                 str(output_path),
             ])
@@ -1021,6 +1022,7 @@ def download_live_dvr_segment(
 
             cmd.extend([
                 "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
                 "-movflags", "+faststart",
                 str(output_path),
             ])
@@ -1243,6 +1245,14 @@ def render_pro_split_short(
         cam_cw, cam_ch, cam_cx, cam_cy = _norm_box_to_pixels(cam_box, src_w, src_h)
         str_cw, str_ch, str_cx, str_cy = _norm_box_to_pixels(stream_box, src_w, src_h)
 
+        # Check aspect ratio of stream box vs display slot:
+        # If user drew a widescreen box (e.g. 16:9 gameplay) that is wider than vertical display slot,
+        # use ambient blur so 100% of what is inside the user's box is preserved without zoom cropping!
+        bw = max(64, (out_w // 4) // 2 * 2)
+        bh = max(64, (stream_h // 4) // 2 * 2)
+        box_aspect = str_cw / max(1.0, float(str_ch))
+        slot_aspect = out_w / max(1.0, float(stream_h))
+
         filters = [
             # Reset PTS to exact 0.000s so burned ASS captions ALWAYS match 0:00:00..duration even on HLS/copyts!
             "[0:v]setpts=PTS-STARTPTS,split=2[vcam_in][vstr_in]",
@@ -1251,13 +1261,30 @@ def render_pro_split_short(
                 f"scale={out_w}:{cam_h}:force_original_aspect_ratio=increase:flags=lanczos,"
                 f"crop={out_w}:{cam_h},setsar=1[vcam]"
             ),
-            (
+        ]
+
+        if box_aspect > slot_aspect * 1.15:
+            # Widescreen Display box in vertical slot: Center foreground + blurred ambient background!
+            filters.extend([
+                f"[vstr_in]crop={str_cw}:{str_ch}:{str_cx}:{str_cy},split=2[vstr_bg_in][vstr_fg_in]",
+                (
+                    f"[vstr_bg_in]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
+                    f"boxblur=10:3,eq=brightness=-0.15,scale={out_w}:{stream_h}:flags=bilinear[vstr_bg]"
+                ),
+                (
+                    f"[vstr_fg_in]scale={out_w}:{stream_h}:force_original_aspect_ratio=decrease,setsar=1[vstr_fg]"
+                ),
+                "[vstr_bg][vstr_fg]overlay=(W-w)/2:(H-h)/2[vstr]",
+            ])
+        else:
+            # Box aspect ratio matches slot: clean lanczos fill
+            filters.append(
                 f"[vstr_in]crop={str_cw}:{str_ch}:{str_cx}:{str_cy},"
                 f"scale={out_w}:{stream_h}:force_original_aspect_ratio=increase:flags=lanczos,"
                 f"crop={out_w}:{stream_h},setsar=1[vstr]"
-            ),
-            f"color=c=#120d24:s={out_w}x{divider_h}:r=30:d={actual_dur + 1.0:.2f}[div]",
-        ]
+            )
+
+        filters.append(f"color=c=#120d24:s={out_w}x{divider_h}:r=30:d={actual_dur + 1.0:.2f}[div]")
 
         if cam_position == "bottom":
             filters.append("[vstr][div][vcam]vstack=inputs=3[vstacked]")

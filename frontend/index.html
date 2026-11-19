@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261119d">
+  <link rel="stylesheet" href="/static/style.css?v=20261120a">
 </head>
 
 <body>
@@ -416,11 +416,14 @@
             <!-- Playback Jump Buttons & Live Status -->
             <div class="pro-playback-buttons-row">
               <div class="playback-btn-group">
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-300)" title="Go back 5 minutes">⏪ -5m</button>
                 <button type="button" class="btn-jump" onclick="jumpLivePlayback(-60)" title="Go back 1 minute">⏪ -1m</button>
-                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-30)" title="Go back 30 seconds">⏪ -30s</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-15)" title="Go back 15 seconds">⏪ -15s</button>
                 <button type="button" id="btn-play-pause" class="btn-jump btn-play-pause" onclick="toggleLivePlayback()">⏯️ Play / Pause</button>
-                <button type="button" class="btn-jump" onclick="jumpLivePlayback(30)" title="Forward 30 seconds">⏩ +30s</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(15)" title="Forward 15 seconds">⏩ +15s</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(60)" title="Forward 1 minute">⏩ +1m</button>
                 <button type="button" class="btn-jump btn-live-edge" onclick="jumpToLiveEdge()" title="Jump to current live edge">🔴 Live Edge</button>
+                <button type="button" id="btn-lock-moment" class="btn-jump btn-lock-moment" onclick="toggleLockMoment()" title="Lock the current frame/scene in the box so it never drifts">📌 Lock Current Scene</button>
               </div>
               <div class="recording-window-preview">
                 <span>Short Window: <strong id="pro-window-badge">00:00 ➔ 00:35 (35s)</strong></span>
@@ -886,7 +889,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261119f"></script>
+  <script src="/static/app.js?v=20261120a"></script>
 </body>
 
 </html>

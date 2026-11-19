@@ -1739,19 +1739,66 @@ function handleLiveTimeUpdate(cur, dur) {
   const lag = Math.max(0, Math.round(liveHead - cur));
   proState.liveLagSec = lag;
 
-  if (!proState.isDraggingScrubber) {
+  if (!proState.isDraggingScrubber && !proState.isLockedMoment) {
     syncScrubberUI(cur);
+  }
+}
+
+window.toggleLockMoment = function () {
+  proState.isLockedMoment = !proState.isLockedMoment;
+  if (proState.isLockedMoment) {
+    proState.lockedLagSec = Math.max(0, proState.liveLagSec || 0);
+    proState.lockedPlaySec = proState.currentPlaySec || 0;
+  }
+  updateLockMomentUI();
+};
+
+function updateLockMomentUI() {
+  const lockBtn = document.getElementById("btn-lock-moment");
+  const badge = document.getElementById("pro-window-badge");
+  const dur = proState.clipDuration || 35;
+  const lag = proState.isLockedMoment ? (proState.lockedLagSec || 0) : (proState.liveLagSec || 0);
+
+  if (lockBtn) {
+    if (proState.isLockedMoment) {
+      lockBtn.classList.add("active-locked");
+      lockBtn.innerHTML = "🔒 Moment Locked (Click to Unlock)";
+    } else {
+      lockBtn.classList.remove("active-locked");
+      lockBtn.innerHTML = "📌 Lock This Moment";
+    }
+  }
+
+  if (badge) {
+    if (proState.isLockedMoment) {
+      const mins = Math.floor(lag / 60);
+      const secs = lag % 60;
+      const timeStr = mins > 0 ? `${mins}m ${secs:02d}s ago` : `${secs}s ago`;
+      badge.innerHTML = `<span style="color:#38bdf8;font-weight:700;">🔒 LOCKED:</span> ${lag > 5 ? timeStr : "Live Edge"} (${dur}s clip)`;
+    } else if (lag > 5) {
+      const mins = Math.floor(lag / 60);
+      const secs = lag % 60;
+      badge.textContent = `Rewound -${mins > 0 ? mins + "m " : ""}${secs}s (${dur}s clip)`;
+    } else {
+      badge.textContent = `Live Edge (${dur}s clip)`;
+    }
   }
 }
 
 window.jumpLivePlayback = function (deltaSec) {
   // deltaSec: negative to rewind (e.g. -60), positive to jump forward
-  const currentLag = proState.liveLagSec || 0;
+  const currentLag = proState.isLockedMoment ? (proState.lockedLagSec || 0) : (proState.liveLagSec || 0);
   const newLag = Math.max(0, currentLag - deltaSec);
   proState.liveLagSec = newLag;
+  if (proState.isLockedMoment) proState.lockedLagSec = newLag;
+
   const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
   const targetTime = Math.max(0, liveHead - newLag);
   proState.currentPlaySec = targetTime;
+  if (proState.isLockedMoment) proState.lockedPlaySec = targetTime;
+
+  syncScrubberUI(targetTime);
+  updateLockMomentUI();
 
   if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
     try {
@@ -1763,13 +1810,19 @@ window.jumpLivePlayback = function (deltaSec) {
   const iframe = document.getElementById("pro-live-iframe");
   if (iframe && iframe.contentWindow) {
     iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [targetTime, true] }), "*");
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
   }
 };
 
 window.jumpToLiveEdge = function () {
   proState.liveLagSec = 0;
+  proState.isLockedMoment = false;
+  proState.lockedLagSec = 0;
   const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
   proState.currentPlaySec = liveHead;
+  updateLockMomentUI();
+  syncScrubberUI(liveHead);
+
   if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
     try {
       ytLivePlayer.seekTo(liveHead + 10, true);
@@ -2095,36 +2148,39 @@ async function submitLiveClipExport() {
   const dur = proState.clipDuration || 35;
 
   let rewindSec = 0;
-  let cur = null;
-  if (ytLivePlayer && typeof ytLivePlayer.getCurrentTime === "function") {
-    try {
-      const t = ytLivePlayer.getCurrentTime();
-      if (typeof t === "number" && !isNaN(t) && t >= 0) cur = t;
-    } catch (e) {}
-  }
-  if (cur === null) cur = proState.currentPlaySec;
-
-  const liveHead = Math.max(proState.highestLiveSec || 0, cur || 0);
-  if (cur !== null && liveHead > 0) {
-    rewindSec = Math.max(0, Math.round(liveHead - cur));
+  if (proState.isLockedMoment && typeof proState.lockedLagSec === "number" && proState.lockedLagSec > 0) {
+    rewindSec = proState.lockedLagSec;
   } else {
-    rewindSec = proState.liveLagSec || 0;
-  }
-
-  // Also check if user dragged our scrubber slider
-  const slider = document.getElementById("pro-scrubber-slider");
-  if (slider && slider.max) {
-    const sMax = parseFloat(slider.max) || 7200;
-    const sVal = parseFloat(slider.value) || sMax;
-    const sLag = Math.max(0, Math.round(sMax - sVal));
-    if (sLag > 5 && (rewindSec < 5 || proState.isDraggingScrubber)) {
-      rewindSec = sLag;
+    let cur = null;
+    if (ytLivePlayer && typeof ytLivePlayer.getCurrentTime === "function") {
+      try {
+        const t = ytLivePlayer.getCurrentTime();
+        if (typeof t === "number" && !isNaN(t) && t >= 0) cur = t;
+      } catch (e) {}
     }
-  }
+    if (cur === null) cur = proState.currentPlaySec;
 
-  // Threshold: within 5s of live edge is treated as pure live edge
-  if (rewindSec <= 5) {
-    rewindSec = 0;
+    const liveHead = Math.max(proState.highestLiveSec || 0, cur || 0);
+    if (cur !== null && liveHead > 0) {
+      rewindSec = Math.max(0, Math.round(liveHead - cur));
+    } else {
+      rewindSec = proState.liveLagSec || 0;
+    }
+
+    // Also check if user dragged our scrubber slider
+    const slider = document.getElementById("pro-scrubber-slider");
+    if (slider && slider.max) {
+      const sMax = parseFloat(slider.max) || 7200;
+      const sVal = parseFloat(slider.value) || sMax;
+      const sLag = Math.max(0, Math.round(sMax - sVal));
+      if (sLag > 5 && (rewindSec < 5 || proState.isDraggingScrubber)) {
+        rewindSec = sLag;
+      }
+    }
+
+    if (rewindSec <= 5) {
+      rewindSec = 0;
+    }
   }
 
   const startSec = cur || 0;
