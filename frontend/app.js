@@ -1715,15 +1715,42 @@ window.addEventListener("message", (e) => {
         if (typeof info.currentTime === "number" && !isNaN(info.currentTime)) {
           handleLiveTimeUpdate(info.currentTime, info.duration);
         }
-        // Auto-resume if YouTube pauses on its own without user interaction
+        // Auto-resume if YouTube pauses on its own without user interaction (e.g. background tab)
         if (info.playerState === 2 && !proState.userExplicitPaused) {
-          const iframe = document.getElementById("pro-live-iframe");
-          if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
-          }
+          ensureLivePlaybackActive();
         }
       }
     } catch (err) {}
+  }
+});
+
+function ensureLivePlaybackActive() {
+  if (proState.userExplicitPaused) return;
+  if (ytLivePlayer && typeof ytLivePlayer.playVideo === "function") {
+    try { ytLivePlayer.playVideo(); } catch (e) {}
+  }
+  const iframe = document.getElementById("pro-live-iframe");
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
+  }
+}
+
+// Keep live stream playing even when tab goes to background or user switches windows
+document.addEventListener("visibilitychange", () => {
+  if (proState.mode === "pro" && proState.source && !proState.userExplicitPaused) {
+    ensureLivePlaybackActive();
+  }
+});
+
+window.addEventListener("focus", () => {
+  if (proState.mode === "pro" && proState.source && !proState.userExplicitPaused) {
+    ensureLivePlaybackActive();
+  }
+});
+
+window.addEventListener("pageshow", () => {
+  if (proState.mode === "pro" && proState.source && !proState.userExplicitPaused) {
+    ensureLivePlaybackActive();
   }
 });
 
@@ -1838,19 +1865,35 @@ window.jumpToLiveEdge = function () {
   proState.isLockedMoment = false;
   proState.lockedLagSec = 0;
   proState.userExplicitPaused = false;
-  const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
+
+  let liveDur = 0;
+  if (ytLivePlayer && typeof ytLivePlayer.getDuration === "function") {
+    try {
+      const d = ytLivePlayer.getDuration();
+      if (typeof d === "number" && !isNaN(d) && d > 0) liveDur = d;
+    } catch (e) {}
+  }
+  const liveHead = Math.max(liveDur, proState.highestLiveSec || 0, proState.currentPlaySec || 0);
+  proState.highestLiveSec = liveHead;
   proState.currentPlaySec = liveHead;
   updateLockMomentUI();
   syncScrubberUI(liveHead);
 
-  if (ytLivePlayer && typeof ytLivePlayer.playVideo === "function") {
+  if (ytLivePlayer) {
     try {
-      ytLivePlayer.playVideo();
-      return;
+      if (liveDur > 0 && typeof ytLivePlayer.seekTo === "function") {
+        ytLivePlayer.seekTo(liveDur, true);
+      }
+      if (typeof ytLivePlayer.playVideo === "function") {
+        ytLivePlayer.playVideo();
+      }
     } catch (e) {}
   }
   const iframe = document.getElementById("pro-live-iframe");
   if (iframe && iframe.contentWindow) {
+    if (liveDur > 0) {
+      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [liveDur, true] }), "*");
+    }
     iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
   }
 };

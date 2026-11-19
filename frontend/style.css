@@ -4108,13 +4108,46 @@ input:checked+.slider:before {
   transform: translateY(-1px);
 }
 
-/* DVR Timeline Controls Bar Directly Below Big Video */
+/* Live Compact Toolbar Directly Below Big Video */
 .pro-timeline-control-bar {
-  margin-top: 0.85rem;
-  padding: 0.85rem 1rem;
-  border-radius: 12px;
-  background: rgba(12, 18, 30, 0.85);
-  border: 1px solid rgba(37, 99, 235, 0.22);
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 14px;
+  background: rgba(10, 14, 22, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pro-live-compact-bar {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 14px;
+  background: rgba(10, 14, 22, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pro-live-buttons-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.pro-live-buttons-row .btn-jump {
+  flex: 1;
+  max-width: 220px;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
 }
 
 .pro-scrub-track-row {
@@ -4555,35 +4588,24 @@ input:checked+.slider:before {
   }
 
   /* DVR Timeline Bar on Mobile */
-  .pro-timeline-control-bar {
-    margin-top: 0.65rem;
-    padding: 0.75rem 0.65rem;
+  .pro-timeline-control-bar,
+  .pro-live-compact-bar {
+    margin-top: 0.5rem;
+    padding: 0.45rem 0.55rem;
     border-radius: 12px;
   }
 
-  .pro-scrub-track-row {
-    gap: 0.5rem;
-    margin-bottom: 0.6rem;
+  .pro-live-buttons-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
   }
 
-  .time-readout {
-    font-size: 0.78rem;
-    min-width: 44px;
-  }
-
-  .time-readout-live {
-    font-size: 0.74rem;
-  }
-
-  .pro-scrubber-slider {
-    height: 10px;
-  }
-
-  /* Playback Controls Grid */
-  .pro-playback-buttons-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.65rem;
+  .pro-live-buttons-row .btn-jump {
+    flex: 1;
+    max-width: none;
+    padding: 0.65rem 0.5rem;
+    font-size: 0.82rem;
   }
 
   .playback-btn-group {

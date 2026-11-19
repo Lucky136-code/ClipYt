@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120_cleanlive1">
+  <link rel="stylesheet" href="/static/style.css?v=20261120_golive1">
 </head>
 
 <body>
@@ -370,13 +370,6 @@
                 <span id="pro-source-author" class="pro-stream-author">Channel</span>
               </div>
             </div>
-            <!-- Mode Switch: Move Boxes vs Direct Video Interaction -->
-            <div class="pro-overlay-toggle-wrap">
-              <button type="button" id="btn-toggle-overlay-mode" class="choice-pill active"
-                title="Toggle box movement or video controls">
-                <span>Move Boxes</span>
-              </button>
-            </div>
           </div>
 
           <!-- THE BIG 16:9 WIDESCREEN STAGE: Live Stream Video + Draggable Overlay Boxes -->
@@ -410,32 +403,20 @@
             </div>
           </div>
 
-          <!-- Live Playback Status & Controls (Real-Time Live Edge Only) -->
-          <div class="pro-timeline-control-bar pro-live-edge-bar">
+          <!-- Live Playback Controls Toolbar (Play/Pause + Go Live Only) -->
+          <div class="pro-timeline-control-bar pro-live-compact-bar">
             <!-- Hidden inputs for JS backward-compatibility -->
             <input type="range" id="pro-scrubber-slider" min="0" max="300" step="1" value="300" style="display:none;">
             <span id="pro-tl-current" class="time-readout" style="display:none;">00:00</span>
+            <span id="pro-tl-max" class="time-readout-live" style="display:none;">REAL-TIME</span>
+            <span id="pro-window-badge" style="display:none;">Live Edge (35s clip)</span>
 
-            <!-- Real-Time Live Edge Indicator -->
-            <div class="pro-scrub-track-row live-only-track">
-              <div class="live-realtime-badge">
-                <span class="live-dot-pulse"></span>
-                <span class="live-status-text">LIVE STREAM (Real-Time Edge)</span>
-              </div>
-              <span id="pro-tl-max" class="time-readout-live">REAL-TIME</span>
-            </div>
-
-            <!-- Playback Controls: Real-time Edge Only, No Rewind -->
-            <div class="pro-playback-buttons-row">
-              <div class="playback-btn-group">
-                <button type="button" id="btn-play-pause" class="btn-jump btn-play-pause"
-                  onclick="toggleLivePlayback()">Play / Pause</button>
-                <button type="button" class="btn-jump btn-live-edge active-live" onclick="jumpToLiveEdge()"
-                  title="Locked to real-time live edge">Live Edge</button>
-              </div>
-              <div class="recording-window-preview">
-                <span>Short Window: <strong id="pro-window-badge">Live Edge (35s clip)</strong></span>
-              </div>
+            <!-- Only Play/Pause & Go Live Buttons -->
+            <div class="pro-live-buttons-row">
+              <button type="button" id="btn-play-pause" class="btn-jump btn-play-pause"
+                onclick="toggleLivePlayback()">⏯️ Play / Pause</button>
+              <button type="button" class="btn-jump btn-live-edge active-live" onclick="jumpToLiveEdge()"
+                title="Jump directly to live broadcast">🔴 Go Live</button>
             </div>
           </div>
 
