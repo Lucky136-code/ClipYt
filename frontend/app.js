@@ -1519,14 +1519,33 @@ function setupProStudio() {
   const renewBtn = document.getElementById("btn-renew-key");
   if (renewBtn) renewBtn.addEventListener("click", openLiveKeyModal);
 
-  // Streamer Position Controls (Top vs Bottom)
+  // Streamer Position Controls (Top vs Bottom vs None)
   document.querySelectorAll("#pro-pos-picker .choice-pill").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#pro-pos-picker .choice-pill").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      proState.cam_position = btn.dataset.pos || "top";
+      const pos = btn.dataset.pos || "top";
+      proState.cam_position = pos;
+      updateLiveCamPositionUI(pos);
     });
   });
+
+  function updateLiveCamPositionUI(pos) {
+    const isNoCam = (pos === "none");
+    const camBox = document.getElementById("box-cam");
+    if (camBox) camBox.style.display = isNoCam ? "none" : "";
+
+    const ratioGroup = document.getElementById("pro-ratio-picker")?.closest(".pro-mini-setting");
+    if (ratioGroup) {
+      ratioGroup.style.opacity = isNoCam ? "0.3" : "1";
+      ratioGroup.style.pointerEvents = isNoCam ? "none" : "";
+    }
+
+    const recBtnText = document.querySelector("#pro-create-btn .record-btn-text");
+    if (recBtnText) {
+      recBtnText.textContent = isNoCam ? "⚡ Cut Display-Only Short" : "⚡ Cut Live Moment & Render Short";
+    }
+  }
 
   // Split Ratio with Respect to Display Controls
   document.querySelectorAll("#pro-ratio-picker .choice-pill").forEach((btn) => {
@@ -1902,6 +1921,9 @@ function syncBoxesToDOM() {
     const b = proState.boxes[key];
     const el = document.getElementById(key === "cam" ? "box-cam" : "box-stream");
     if (!el) continue;
+    if (key === "cam") {
+      el.style.display = (proState.cam_position === "none") ? "none" : "";
+    }
     const px = b.x * rect.width;
     const py = b.y * rect.height;
     const pw = b.w * rect.width;
@@ -2037,6 +2059,7 @@ async function submitLiveClipExport() {
     (proState.source?.video_id ? `https://www.youtube.com/watch?v=${proState.source.video_id}` : "") ||
     proState.source?.url || "";
 
+  const isNoCam = (proState.cam_position === "none");
   const payload = {
     url: streamUrl,
     video_id: proState.source.video_id,
@@ -2054,12 +2077,13 @@ async function submitLiveClipExport() {
     resolution: "1080p",
     burn_subtitles: true,
     subtitle_style: document.getElementById("pro-sub-style")?.value || "viral_pop",
-    subtitle_position: "seam",
+    subtitle_position: isNoCam ? "bottom" : "seam",
     access_key: proState.accessKey,
   };
 
+  const modeLabel = isNoCam ? "Display-Only" : "Dual-Box";
   const timeDesc = rewindSec > 0 ? `${rewindSec}s ago` : "Live Edge";
-  showProgressModal(`Recording & rendering ${dur}s Short (${timeDesc})...`);
+  showProgressModal(`Recording & rendering ${dur}s ${modeLabel} Short (${timeDesc})...`);
 
   try {
     const res = await fetchWithTimeout("/api/pro/generate", {
@@ -2599,6 +2623,9 @@ function syncVodBoxesToDOM() {
     const b = vodState.boxes[key];
     const el = document.getElementById(key === "cam" ? "box-vod-cam" : "box-vod-stream");
     if (!el) continue;
+    if (key === "cam") {
+      el.style.display = (vodState.cam_position === "none") ? "none" : "";
+    }
     const px = b.x * rect.width;
     const py = b.y * rect.height;
     const pw = b.w * rect.width;
@@ -2724,6 +2751,7 @@ async function submitVodClipExport() {
     (vodState.source?.video_id ? `https://www.youtube.com/watch?v=${vodState.source.video_id}` : "") ||
     vodState.source?.url || "";
 
+  const isNoCam = (vodState.cam_position === "none");
   const payload = {
     url: streamUrl,
     video_id: vodState.source.video_id,
@@ -2741,11 +2769,12 @@ async function submitVodClipExport() {
     resolution: "1080p",
     burn_subtitles: true,
     subtitle_style: document.getElementById("vod-sub-style")?.value || "viral_pop",
-    subtitle_position: "seam",
+    subtitle_position: isNoCam ? "bottom" : "seam",
     access_key: proState.accessKey,
   };
 
-  showProgressModal(`Rendering ${dur}s Dual-Box VOD Short (${formatTime(startSec)} ➔ ${formatTime(endSec)})...`);
+  const modeLabel = isNoCam ? "Display-Only" : "Dual-Box";
+  showProgressModal(`Rendering ${dur}s ${modeLabel} VOD Short (${formatTime(startSec)} ➔ ${formatTime(endSec)})...`);
 
   try {
     const res = await fetchWithTimeout("/api/pro/generate", {
@@ -2768,14 +2797,42 @@ function setupVodStudio() {
   const vodBtn = document.getElementById("studio-btn-vod");
   if (!vodBtn) return;
 
-  // Streamer Position Controls (Top vs Bottom)
+  // Streamer Position Controls (Top vs Bottom vs None)
   document.querySelectorAll("#vod-pos-picker .choice-pill").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#vod-pos-picker .choice-pill").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      vodState.cam_position = btn.dataset.pos || "top";
+      const pos = btn.dataset.pos || "top";
+      vodState.cam_position = pos;
+      updateVodCamPositionUI(pos);
     });
   });
+
+  function updateVodCamPositionUI(pos) {
+    const isNoCam = (pos === "none");
+    const camBox = document.getElementById("box-vod-cam");
+    if (camBox) camBox.style.display = isNoCam ? "none" : "";
+
+    const btnSelectCam = document.getElementById("btn-select-box-cam");
+    if (btnSelectCam) {
+      btnSelectCam.style.opacity = isNoCam ? "0.4" : "1";
+      btnSelectCam.style.pointerEvents = isNoCam ? "none" : "";
+    }
+    if (isNoCam) {
+      if (typeof selectVodActiveBox === "function") selectVodActiveBox("stream");
+    }
+
+    const ratioGroup = document.getElementById("vod-ratio-picker")?.closest(".pro-mini-setting");
+    if (ratioGroup) {
+      ratioGroup.style.opacity = isNoCam ? "0.3" : "1";
+      ratioGroup.style.pointerEvents = isNoCam ? "none" : "";
+    }
+
+    const recBtnText = document.querySelector("#vod-create-btn .record-btn-text");
+    if (recBtnText) {
+      recBtnText.textContent = isNoCam ? "⚡ Generate Display-Only Short" : "⚡ Generate Dual-Box Short";
+    }
+  }
 
   // Split Ratio with Respect to Display Controls
   document.querySelectorAll("#vod-ratio-picker .choice-pill").forEach((btn) => {

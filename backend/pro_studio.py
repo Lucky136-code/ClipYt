@@ -1211,36 +1211,58 @@ def render_pro_split_short(
         actual_dur = max(1.0, probed_dur - pad_start)
 
     out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
-    ratio = max(0.25, min(0.65, float(cam_ratio)))
-    divider_h = 4
-    cam_h = _even(int(round(out_h * ratio)), 160)
-    stream_h = _even(out_h - cam_h - divider_h, 160)
-    # Re-balance cam_h if rounding left 2px slack
-    cam_h = out_h - stream_h - divider_h
 
-    cam_cw, cam_ch, cam_cx, cam_cy = _norm_box_to_pixels(cam_box, src_w, src_h)
-    str_cw, str_ch, str_cx, str_cy = _norm_box_to_pixels(stream_box, src_w, src_h)
-
-    filters = [
-        # Reset PTS to exact 0.000s so burned ASS captions ALWAYS match 0:00:00..duration even on HLS/copyts!
-        "[0:v]setpts=PTS-STARTPTS,split=2[vcam_in][vstr_in]",
-        (
-            f"[vcam_in]crop={cam_cw}:{cam_ch}:{cam_cx}:{cam_cy},"
-            f"scale={out_w}:{cam_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={out_w}:{cam_h},setsar=1[vcam]"
-        ),
-        (
-            f"[vstr_in]crop={str_cw}:{str_ch}:{str_cx}:{str_cy},"
-            f"scale={out_w}:{stream_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={out_w}:{stream_h},setsar=1[vstr]"
-        ),
-        f"color=c=#120d24:s={out_w}x{divider_h}:r=30:d={actual_dur + 1.0:.2f}[div]",
-    ]
-
-    if cam_position == "bottom":
-        filters.append("[vstr][div][vcam]vstack=inputs=3[vstacked]")
+    if cam_position in ("none", "disabled", "off"):
+        # Display Only Mode: Streamer facecam is disabled — record only the display/gameplay box!
+        str_cw, str_ch, str_cx, str_cy = _norm_box_to_pixels(stream_box, src_w, src_h)
+        bw = max(64, (out_w // 4) // 2 * 2)
+        bh = max(64, (out_h // 4) // 2 * 2)
+        filters = [
+            "[0:v]setpts=PTS-STARTPTS[v_pts]",
+            f"[v_pts]crop={str_cw}:{str_ch}:{str_cx}:{str_cy}[vcropped]",
+            "[vcropped]split=2[bg_in][fg_in]",
+            (
+                f"[bg_in]scale={bw}:{bh}:force_original_aspect_ratio=increase,"
+                f"crop={bw}:{bh},boxblur=10:3,eq=brightness=-0.15,"
+                f"scale={out_w}:{out_h}:flags=bilinear[bg]"
+            ),
+            (
+                f"[fg_in]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                f"setsar=1[fg]"
+            ),
+            "[bg][fg]overlay=(W-w)/2:(H-h)/2[vstacked]",
+        ]
     else:
-        filters.append("[vcam][div][vstr]vstack=inputs=3[vstacked]")
+        ratio = max(0.25, min(0.65, float(cam_ratio)))
+        divider_h = 4
+        cam_h = _even(int(round(out_h * ratio)), 160)
+        stream_h = _even(out_h - cam_h - divider_h, 160)
+        # Re-balance cam_h if rounding left 2px slack
+        cam_h = out_h - stream_h - divider_h
+
+        cam_cw, cam_ch, cam_cx, cam_cy = _norm_box_to_pixels(cam_box, src_w, src_h)
+        str_cw, str_ch, str_cx, str_cy = _norm_box_to_pixels(stream_box, src_w, src_h)
+
+        filters = [
+            # Reset PTS to exact 0.000s so burned ASS captions ALWAYS match 0:00:00..duration even on HLS/copyts!
+            "[0:v]setpts=PTS-STARTPTS,split=2[vcam_in][vstr_in]",
+            (
+                f"[vcam_in]crop={cam_cw}:{cam_ch}:{cam_cx}:{cam_cy},"
+                f"scale={out_w}:{cam_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={out_w}:{cam_h},setsar=1[vcam]"
+            ),
+            (
+                f"[vstr_in]crop={str_cw}:{str_ch}:{str_cx}:{str_cy},"
+                f"scale={out_w}:{stream_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={out_w}:{stream_h},setsar=1[vstr]"
+            ),
+            f"color=c=#120d24:s={out_w}x{divider_h}:r=30:d={actual_dur + 1.0:.2f}[div]",
+        ]
+
+        if cam_position == "bottom":
+            filters.append("[vstr][div][vcam]vstack=inputs=3[vstacked]")
+        else:
+            filters.append("[vcam][div][vstr]vstack=inputs=3[vstacked]")
 
     if ass_file and ass_file.exists():
         # Run with cwd=TEMP_DIR so filename has no Windows drive-letter colon issues
@@ -1374,7 +1396,13 @@ def process_pro_split_pipeline(
             )
 
         out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
-        seam_y_ratio = float(cam_ratio) if cam_position == "top" else (1.0 - float(cam_ratio))
+        is_no_cam = cam_position in ("none", "disabled", "off")
+        mode_label = "Display-Only" if is_no_cam else "Split-Screen"
+        if is_no_cam:
+            seam_y_ratio = 0.72
+            subtitle_position = "bottom"
+        else:
+            seam_y_ratio = float(cam_ratio) if cam_position == "top" else (1.0 - float(cam_ratio))
 
         # Check if we should generate a 3-second hook prepended to the front
         hook_dur_eff = min(float(hook_duration), max(2.0, clip_duration / 2.0)) if climax_hook else 0.0
@@ -1383,7 +1411,7 @@ def process_pro_split_pipeline(
             if progress_cb:
                 enc_name = detect_best_encoder()["name"]
                 gpu_tag = "GPU" if enc_name != "libx264" else "HD"
-                progress_cb(f"Rendering {resolution} Split-Screen main cut ({gpu_tag})...", 42)
+                progress_cb(f"Rendering {resolution} {mode_label} main cut ({gpu_tag})...", 42)
 
             intermediate_split = TEMP_DIR / f"pro_split_raw_{video_id}_{job_id}.mp4"
             render_pro_split_short(
@@ -1514,7 +1542,7 @@ def process_pro_split_pipeline(
             if progress_cb:
                 enc_name = detect_best_encoder()["name"]
                 gpu_tag = "GPU" if enc_name != "libx264" else "HD"
-                progress_cb(f"Rendering {resolution} Split-Screen Pro Short ({gpu_tag})...", 78)
+                progress_cb(f"Rendering {resolution} {mode_label} Pro Short ({gpu_tag})...", 78)
 
             render_pro_split_short(
                 input_path=downloaded_raw,
