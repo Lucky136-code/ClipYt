@@ -25,7 +25,9 @@
   --radius-lg: 24px;
   --radius-md: 14px;
   --radius-sm: 10px;
+  --font-display: 'Outfit', 'Plus Jakarta Sans', sans-serif;
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Newsreader', Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
 
@@ -425,13 +427,54 @@ body::before {
   margin-bottom: 2.25rem;
 }
 
-.hero-title {
-  font-size: 2.75rem;
+.hero-kicker {
+  display: inline-block;
+  font-size: 0.74rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
-  margin-bottom: 1.5rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #60a5fa;
+  margin-bottom: 0.75rem;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  background: rgba(37, 99, 235, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  box-shadow: 0 0 16px rgba(37, 99, 235, 0.25);
+  user-select: none;
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-size: 2.9rem;
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: -0.035em;
+  margin-bottom: 1.65rem;
   color: #f8fafc;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 4px 28px rgba(0, 0, 0, 0.7);
+}
+
+.hero-title strong {
+  font-weight: 900;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ffffff 40%, #93c5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-italic-glow {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 600;
+  color: #60a5fa;
+  text-shadow: 0 0 20px rgba(59, 130, 246, 0.45);
+}
+
+@media (max-width: 640px) {
+  .hero-title {
+    font-size: 1.95rem;
+    line-height: 1.24;
+  }
 }
 
 .input-card {
@@ -475,6 +518,18 @@ body::before {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   box-shadow: 0 -4px 18px rgba(37, 99, 235, 0.5);
   color: #ffffff;
+}
+
+.demo-clips-tab strong {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.demo-clips-tab em {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  color: #dbeafe;
 }
 
 .demo-tab-icon {
@@ -655,10 +710,21 @@ body::before {
   align-items: center;
   gap: 7px;
   font-size: 0.88rem;
-  font-weight: 600;
+  font-weight: 500;
   color: #cbd5e1;
   letter-spacing: -0.01em;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+
+.feature-tag strong {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.feature-tag em {
+  font-style: italic;
+  font-weight: 400;
+  color: #94a3b8;
 }
 
 .feat-check {
@@ -950,38 +1016,56 @@ body::before {
 }
 
 .yt-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1.35;
-  margin-bottom: 0.45rem;
-  color: var(--text-main);
+  font-family: var(--font-display);
+  font-size: 1.38rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin-bottom: 0.5rem;
+  color: #ffffff;
 }
 
 .yt-channel-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  margin-bottom: 0.75rem;
+  font-size: 0.86rem;
+  color: #94a3b8;
+  margin-bottom: 0.85rem;
 }
 
 .yt-author {
-  color: var(--accent);
-  font-weight: 700;
+  color: #60a5fa;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.yt-views {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
 }
 
 .yt-caption {
-  font-size: 0.86rem;
-  color: var(--text-soft);
+  font-size: 0.9rem;
+  color: #f1f5f9;
+  font-weight: 500;
   white-space: pre-line;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(139, 92, 246, 0.16);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 0.9rem;
-  max-height: 82px;
+  background: rgba(10, 15, 26, 0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1.5px solid rgba(59, 130, 246, 0.35);
+  border-radius: var(--radius-md);
+  padding: 0.95rem 1.15rem;
+  max-height: 86px;
   overflow: hidden;
-  line-height: 1.45;
+  line-height: 1.55;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.6),
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 16px rgba(37, 99, 235, 0.12);
+  transition: all 0.2s ease;
 }
 
 .yt-caption.expanded {
@@ -991,14 +1075,19 @@ body::before {
 .btn-link {
   background: none;
   border: none;
-  color: var(--accent);
-  font-size: 0.82rem;
+  color: #60a5fa;
+  font-size: 0.86rem;
   font-weight: 700;
-  margin-top: 0.45rem;
+  margin-top: 0.55rem;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
 }
 
 .btn-link:hover {
+  color: #93c5fd;
   text-decoration: underline;
 }
 
