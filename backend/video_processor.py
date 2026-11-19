@@ -270,7 +270,7 @@ def _measure_exact_leading_pad(
     return round(fallback_pad, 3)
 
 
-def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False, timeout_sec: int = 15):
+def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False, timeout_sec: int = 35):
     """
     Run yt-dlp download in a guarded thread pool with a strict timeout.
     If YouTube stalls or gets stuck in the middle, it aborts fast and tries the next strategy!
@@ -325,13 +325,16 @@ def download_clip_segment(
         "buffersize": 8 * 1024 * 1024,
     }
 
+    clip_dur = max(5.0, end_time - start_time)
+    seg_timeout = max(35, int(clip_dur * 1.5) + 20)
+
     # Attempt 0: Instant pre-warmed cached metadata (skips webpage + JS solve!)
     cached = STREAM_INFO_CACHE.get(video_id)
     if cached and (time.time() - cached["ts"] < STREAM_CACHE_TTL_SEC):
         ydl_opts = _make_ydl_opts(cached["strat_opts"], cached.get("allow_cookies", True))
         ydl_opts.update(dl_common)
         try:
-            _download_with_guard(ydl_opts, cached["info"], is_info_dict=True, timeout_sec=14)
+            _download_with_guard(ydl_opts, cached["info"], is_info_dict=True, timeout_sec=seg_timeout)
             candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
             for cand in candidates:
                 if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 1024:
@@ -354,7 +357,7 @@ def download_clip_segment(
         ydl_opts["outtmpl"] = str(attempt_path.with_suffix(".%(ext)s"))
 
         try:
-            info = _download_with_guard(ydl_opts, url, is_info_dict=False, timeout_sec=14)
+            info = _download_with_guard(ydl_opts, url, is_info_dict=False, timeout_sec=seg_timeout)
             # Cache for subsequent clips from the same video
             if info:
                 STREAM_INFO_CACHE[video_id] = {

@@ -31,6 +31,9 @@
           <span>Live Studio</span>
           <span id="pro-badge-pill" class="pro-lock-tag">🔒 6h KEY</span>
         </button>
+        <button type="button" id="studio-btn-vod" class="studio-pill">
+          <span>🎬 Ended Stream VOD</span>
+        </button>
       </div>
     </div>
 
@@ -475,6 +478,190 @@
             <button type="button" id="pro-create-btn" class="btn-create-short pro-master-record-btn">
               <span class="rec-dot-pulse"></span>
               <span class="record-btn-text">🔴 Start Recording Short</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== VOD / ENDED STREAM STUDIO WORKSPACE ==================== -->
+    <section id="vod-studio-section" class="hidden">
+      <!-- VOD Studio Hero Banner -->
+      <section class="hero-section vod-hero">
+        <div class="pro-hero-badge vod-hero-badge">
+          <span>🎬 ENDED STREAM & REPLAY STUDIO • 9:16 DUAL BOX</span>
+        </div>
+        <h1 class="hero-title">Ended Stream & VOD Studio</h1>
+        <p class="section-sub pro-hero-desc">
+          Paste any completed YouTube stream, gaming broadcast, or replay. Position the Streamer & Display boxes, pick your moment, and create 9:16 vertical Shorts!
+        </p>
+
+        <!-- VOD Link Input Card -->
+        <div class="glass-card input-card">
+          <form id="vod-inspect-form" class="url-form">
+            <div class="url-row">
+              <div class="url-input-wrap">
+                <input type="text" id="vod-youtube-url" placeholder="Paste ended live stream or VOD link here..." required
+                  autocomplete="off">
+                <button type="button" id="vod-paste-btn" class="btn-paste">Paste</button>
+              </div>
+              <button type="submit" id="vod-load-btn" class="btn-red">
+                <span class="btn-text">Load VOD</span>
+                <div class="spinner hidden"></div>
+              </button>
+            </div>
+            <p class="url-note" style="margin-top:0.6rem;">
+              <strong>Streamer + Display VOD:</strong> Dual-box split-screen works for completed streams, esports broadcasts, and gaming replays!
+            </p>
+          </form>
+        </div>
+      </section>
+
+      <!-- VOD Studio Error Banner -->
+      <div id="vod-error-banner" class="error-banner hidden">
+        <span id="vod-error-message"></span>
+        <button type="button" class="banner-close" onclick="this.parentElement.classList.add('hidden')">×</button>
+      </div>
+
+      <!-- VOD Studio Workspace (Shown after stream loads) -->
+      <div id="vod-editor-wrap" class="hidden">
+        <!-- Big Unified Stage Card -->
+        <div class="glass-card pro-big-player-card">
+          <!-- Top Stream Info Header -->
+          <div class="pro-player-header">
+            <div class="pro-header-info">
+              <span id="vod-status-badge" class="pro-status-live is-vod">🎬 ENDED STREAM</span>
+              <div class="pro-title-wrap">
+                <h2 id="vod-source-title" class="pro-stream-title">Stream Title</h2>
+                <span id="vod-source-author" class="pro-stream-author">Channel</span>
+              </div>
+            </div>
+            <!-- Mode Switch: Move Boxes vs Direct Video Interaction -->
+            <div class="pro-overlay-toggle-wrap">
+              <button type="button" id="btn-toggle-vod-overlay-mode" class="choice-pill active" title="Toggle box movement or video controls">
+                <span>🎯 Move Boxes</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- THE BIG 16:9 WIDESCREEN STAGE: VOD Video + Draggable Overlay Boxes -->
+          <div id="vod-big-stage" class="pro-big-stage">
+            <!-- Big Playing YouTube Stream Video -->
+            <div id="vod-yt-embed-wrap" class="pro-yt-embed-wrap">
+              <iframe id="vod-live-iframe" class="pro-live-iframe" src="" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+            </div>
+
+            <!-- Interactive Dual Boxes Overlay directly on top of video -->
+            <div id="vod-boxes-overlay" class="pro-boxes-overlay">
+              <!-- Display Box (Cyan - Main Gameplay/Screen) -->
+              <div id="box-vod-stream" class="crop-box crop-box-stream" data-box="stream">
+                <div class="crop-drag-body"></div>
+                <div class="crop-box-label label-stream">Display (Screen)</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+              <!-- Streamer Box (Purple - Facecam) -->
+              <div id="box-vod-cam" class="crop-box crop-box-cam" data-box="cam">
+                <div class="crop-drag-body"></div>
+                <div class="crop-box-label label-cam">Streamer (Facecam)</div>
+                <div class="crop-handle handle-nw" data-handle="nw"></div>
+                <div class="crop-handle handle-ne" data-handle="ne"></div>
+                <div class="crop-handle handle-sw" data-handle="sw"></div>
+                <div class="crop-handle handle-se" data-handle="se"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Corner Presets Toolbar -->
+          <div class="pro-stage-presets-bar">
+            <span class="preset-label">🎯 Streamer Presets:</span>
+            <div class="preset-buttons-group">
+              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('tl')">Top-Left</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('tr')">Top-Right</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('bl')">Bottom-Left</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('br')">Bottom-Right</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('reset')">Reset</button>
+            </div>
+          </div>
+
+          <!-- Scrubbing & Playback Controller -->
+          <div class="pro-timeline-control-bar">
+            <!-- Scrubber Track & Current Position -->
+            <div class="pro-scrub-track-row">
+              <span id="vod-tl-current" class="time-readout">00:00:00</span>
+              <div class="pro-scrubber-wrap">
+                <input type="range" id="vod-scrubber-slider" min="0" max="300" step="1" value="0" class="pro-scrubber-slider">
+              </div>
+              <span id="vod-tl-max" class="time-readout-live" style="color:var(--accent);">00:00:00</span>
+            </div>
+
+            <!-- Playback Jump Buttons & Status -->
+            <div class="pro-playback-buttons-row">
+              <div class="playback-btn-group">
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-60)" title="Go back 1 minute">⏪ -1m</button>
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-10)" title="Go back 10 seconds">⏪ -10s</button>
+                <button type="button" id="btn-vod-play-pause" class="btn-jump btn-play-pause" onclick="toggleVodPlayback()">⏯️ Play / Pause</button>
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(10)" title="Forward 10 seconds">⏩ +10s</button>
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(60)" title="Forward 1 minute">⏩ +1m</button>
+              </div>
+              <div class="recording-window-preview">
+                <span>Short Window: <strong id="vod-window-badge">00:00:00 ➔ 00:00:35 (35s)</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Layout & Recording Settings + Generate Button -->
+          <div class="pro-recording-panel">
+            <div class="pro-settings-flex">
+              <!-- Streamer Position -->
+              <div class="pro-mini-setting">
+                <label class="setting-caption">Streamer Position</label>
+                <div class="pill-group" id="vod-pos-picker">
+                  <button type="button" class="choice-pill active" data-pos="top">🔝 Top</button>
+                  <button type="button" class="choice-pill" data-pos="bottom">⬇️ Bottom</button>
+                </div>
+              </div>
+
+              <!-- Display vs Streamer Ratio -->
+              <div class="pro-mini-setting">
+                <label class="setting-caption">Ratio (Display / Streamer)</label>
+                <div class="pill-group" id="vod-ratio-picker">
+                  <button type="button" class="choice-pill active" data-ratio="0.40">60% / 40%</button>
+                  <button type="button" class="choice-pill" data-ratio="0.50">50% / 50%</button>
+                  <button type="button" class="choice-pill" data-ratio="0.30">70% / 30%</button>
+                </div>
+              </div>
+
+              <!-- Short Duration -->
+              <div class="pro-mini-setting">
+                <label class="setting-caption">Short Length</label>
+                <div class="pill-group" id="vod-duration-picker">
+                  <button type="button" class="choice-pill" data-dur="20">20s</button>
+                  <button type="button" class="choice-pill active" data-dur="35">35s</button>
+                  <button type="button" class="choice-pill" data-dur="50">50s</button>
+                  <button type="button" class="choice-pill" data-dur="60">60s</button>
+                </div>
+              </div>
+
+              <!-- Captions & Style -->
+              <div class="pro-mini-setting">
+                <label class="setting-caption">AI Hinglish Captions</label>
+                <div class="compact-selects">
+                  <select id="vod-sub-style" class="simple-select">
+                    <option value="viral_pop" selected>White Bold</option>
+                    <option value="neon_yellow">Yellow Bold</option>
+                    <option value="clean_modern">Dark Box</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Big Start Generating VOD Short Button -->
+            <button type="button" id="vod-create-btn" class="btn-create-short pro-master-record-btn" style="background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%); box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);">
+              <span class="rec-dot-pulse" style="background:#a855f7; box-shadow:0 0 10px rgba(168,85,247,0.8);"></span>
+              <span class="record-btn-text">⚡ Generate Dual-Box Short</span>
             </button>
           </div>
         </div>

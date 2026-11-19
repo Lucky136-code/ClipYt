@@ -107,6 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupLiquidGlassEffect();
   setupSiteUnlockGate();
   setupProStudio();
+  setupVodStudio();
   fetchRateLimitStatus();
 });
 
@@ -897,6 +898,7 @@ function pollTaskProgress(taskId) {
         const errText = task.error || task.message || "Short creation failed.";
         showError(errText);
         showProError(errText);
+        if (typeof showVodError === "function") showVodError(errText);
       }
     } catch (e) {
       console.error(e);
@@ -1397,8 +1399,10 @@ async function submitLiveAccessKey() {
 function switchStudioMode(targetMode) {
   const stdBtn = document.getElementById("studio-btn-standard");
   const proBtn = document.getElementById("studio-btn-pro");
+  const vodBtn = document.getElementById("studio-btn-vod");
   const stdWrap = document.getElementById("standard-workspace");
   const proWrap = document.getElementById("pro-studio-section");
+  const vodWrap = document.getElementById("vod-studio-section");
 
   if (targetMode === "pro" && !isLiveStudioUnlocked()) {
     openLiveKeyModal();
@@ -1406,14 +1410,18 @@ function switchStudioMode(targetMode) {
   }
 
   proState.mode = targetMode;
-  const isPro = targetMode === "pro";
-  if (stdBtn) stdBtn.classList.toggle("active", !isPro);
-  if (proBtn) proBtn.classList.toggle("active", isPro);
-  if (stdWrap) stdWrap.classList.toggle("hidden", isPro);
-  if (proWrap) proWrap.classList.toggle("hidden", !isPro);
+  if (stdBtn) stdBtn.classList.toggle("active", targetMode === "standard");
+  if (proBtn) proBtn.classList.toggle("active", targetMode === "pro");
+  if (vodBtn) vodBtn.classList.toggle("active", targetMode === "vod");
 
-  if (isPro && proState.source) {
+  if (stdWrap) stdWrap.classList.toggle("hidden", targetMode !== "standard");
+  if (proWrap) proWrap.classList.toggle("hidden", targetMode !== "pro");
+  if (vodWrap) vodWrap.classList.toggle("hidden", targetMode !== "vod");
+
+  if (targetMode === "pro" && proState.source) {
     requestAnimationFrame(syncBoxesToDOM);
+  } else if (targetMode === "vod" && vodState.source) {
+    requestAnimationFrame(syncVodBoxesToDOM);
   }
 }
 
@@ -1443,10 +1451,14 @@ function setupProStudio() {
 
   // Top mode switcher
   const stdBtn = document.getElementById("studio-btn-standard");
+  const vodBtn = document.getElementById("studio-btn-vod");
   if (stdBtn) {
     stdBtn.addEventListener("click", () => switchStudioMode("standard"));
   }
   proBtn.addEventListener("click", () => switchStudioMode("pro"));
+  if (vodBtn) {
+    vodBtn.addEventListener("click", () => switchStudioMode("vod"));
+  }
 
   // Key Modal controls
   const keyCloseBtn = document.getElementById("live-key-close-x");
@@ -2197,4 +2209,511 @@ async function generateAutoViralShort(peak, btnEl) {
     btnEl.disabled = false;
     btnEl.innerHTML = origHtml;
   }
+}
+
+// =============================================================
+// ENDED STREAM & VOD DUAL-BOX STUDIO
+// =============================================================
+
+const vodState = {
+  mode: "vod",
+  source: null,
+  totalSec: 300,
+  currentPlaySec: 0,
+  clipDuration: 35,
+  isDraggingScrubber: false,
+  cam_position: "top",
+  cam_ratio: 0.40,
+  boxes: {
+    cam: { x: 0.69, y: 0.58, w: 0.28, h: 0.36 },    // Streamer (Facecam)
+    stream: { x: 0.02, y: 0.03, w: 0.96, h: 0.94 }, // Display (Screen)
+  },
+  trackerId: null,
+};
+
+let ytVodPlayer = null;
+
+function loadVodStreamInPlayer(videoId) {
+  const embedWrap = document.getElementById("vod-yt-embed-wrap");
+  if (!embedWrap) return;
+
+  embedWrap.innerHTML = `<iframe id="vod-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+
+  try {
+    if (window.YT && window.YT.Player) {
+      ytVodPlayer = new YT.Player("vod-live-iframe", {
+        events: {
+          onReady: (e) => {
+            try { e.target.playVideo(); } catch (err) {}
+            startVodPlayerTracking();
+          },
+        },
+      });
+    }
+  } catch (err) {
+    console.warn("YT VOD Player init note:", err);
+  }
+
+  startVodPlayerTracking();
+}
+
+function startVodPlayerTracking() {
+  if (vodState.trackerId) clearInterval(vodState.trackerId);
+  vodState.trackerId = setInterval(() => {
+    if (vodState.isDraggingScrubber) return;
+
+    let cur = null;
+    let dur = null;
+    if (ytVodPlayer) {
+      try {
+        if (typeof ytVodPlayer.getCurrentTime === "function") cur = ytVodPlayer.getCurrentTime();
+        if (typeof ytVodPlayer.getDuration === "function") dur = ytVodPlayer.getDuration();
+      } catch (e) {}
+    }
+
+    if (typeof dur === "number" && !isNaN(dur) && dur > 10) {
+      vodState.totalSec = Math.floor(dur);
+    }
+
+    if (typeof cur === "number" && !isNaN(cur) && cur >= 0) {
+      vodState.currentPlaySec = cur;
+      syncVodScrubberUI(cur);
+    }
+  }, 400);
+}
+
+window.jumpVodPlayback = function (deltaSec) {
+  const current = vodState.currentPlaySec || 0;
+  const target = Math.max(0, current + deltaSec);
+  seekVodPlayback(target);
+};
+
+window.toggleVodPlayback = function () {
+  if (ytVodPlayer && typeof ytVodPlayer.getPlayerState === "function") {
+    try {
+      const state = ytVodPlayer.getPlayerState();
+      if (state === 1) {
+        ytVodPlayer.pauseVideo();
+      } else {
+        ytVodPlayer.playVideo();
+      }
+      return;
+    } catch (e) {}
+  }
+  const iframe = document.getElementById("vod-live-iframe");
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "pauseVideo" }), "*");
+  }
+};
+
+function seekVodPlayback(sec) {
+  vodState.currentPlaySec = sec;
+  syncVodScrubberUI(sec);
+
+  if (ytVodPlayer && typeof ytVodPlayer.seekTo === "function") {
+    try {
+      ytVodPlayer.seekTo(sec, true);
+      ytVodPlayer.playVideo();
+      return;
+    } catch (e) {}
+  }
+
+  const iframe = document.getElementById("vod-live-iframe");
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [sec, true] }), "*");
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
+  }
+}
+
+function syncVodScrubberUI(currentSec) {
+  const total = Math.max(10, vodState.totalSec || 300);
+  const useH = total >= 3600;
+  const clamped = Math.max(0, Math.min(total, currentSec));
+  vodState.currentPlaySec = clamped;
+
+  const slider = document.getElementById("vod-scrubber-slider");
+  if (slider && !vodState.isDraggingScrubber) {
+    slider.max = total;
+    slider.value = clamped;
+  }
+
+  const curEl = document.getElementById("vod-tl-current");
+  if (curEl) curEl.textContent = formatTime(clamped, useH);
+
+  const maxEl = document.getElementById("vod-tl-max");
+  if (maxEl) {
+    maxEl.textContent = formatTime(total, useH);
+  }
+
+  const dur = vodState.clipDuration || 35;
+  const endSec = Math.min(total, clamped + dur);
+  const badge = document.getElementById("vod-window-badge");
+  if (badge) {
+    badge.textContent = `${formatTime(clamped, useH)} ➔ ${formatTime(endSec, useH)} (${dur}s)`;
+  }
+}
+
+function setVodLoadSpinner(loading) {
+  const btn = document.getElementById("vod-load-btn");
+  if (!btn) return;
+  const txt = btn.querySelector(".btn-text");
+  const sp = btn.querySelector(".spinner");
+  btn.disabled = loading;
+  if (txt) txt.textContent = loading ? "Loading..." : "Load VOD";
+  if (sp) sp.classList.toggle("hidden", !loading);
+}
+
+function showVodError(msg) {
+  const errEl = document.getElementById("vod-error-message");
+  const banner = document.getElementById("vod-error-banner");
+  if (errEl) errEl.textContent = msg;
+  if (banner) banner.classList.remove("hidden");
+}
+
+function hideVodError() {
+  const banner = document.getElementById("vod-error-banner");
+  if (banner) banner.classList.add("hidden");
+}
+
+async function inspectVodStream(url) {
+  if (!looksLikeYouTubeUrl(url)) {
+    showVodError("Please paste a valid YouTube Ended Stream or Video link.");
+    return;
+  }
+
+  const vidId = extractYtVideoId(url);
+  if (vidId) {
+    loadVodStreamInPlayer(vidId);
+  }
+
+  hideVodError();
+  setVodLoadSpinner(true);
+
+  try {
+    const res = await fetchWithTimeout("/api/pro/inspect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        force_refresh: false,
+        access_key: proState.accessKey,
+      }),
+    }, 25000);
+    const json = await parseApiResponse(res);
+    if (!res.ok || !json.success) {
+      throw new Error(json.detail || "Could not load stream / VOD.");
+    }
+
+    const src = json.data;
+    vodState.source = src;
+
+    const total = Math.max(10, Math.floor(src.duration || 60));
+    vodState.totalSec = total;
+    vodState.currentPlaySec = 0;
+
+    const titleEl = document.getElementById("vod-source-title");
+    if (titleEl) titleEl.textContent = src.title || "Ended Stream VOD";
+    const authorEl = document.getElementById("vod-source-author");
+    if (authorEl) authorEl.textContent = src.author || "";
+
+    const slider = document.getElementById("vod-scrubber-slider");
+    if (slider) {
+      slider.max = total;
+      slider.value = 0;
+    }
+
+    const maxEl = document.getElementById("vod-tl-max");
+    if (maxEl) {
+      const useH = total >= 3600;
+      maxEl.textContent = formatTime(total, useH);
+    }
+
+    document.getElementById("vod-editor-wrap").classList.remove("hidden");
+    requestAnimationFrame(syncVodBoxesToDOM);
+    syncVodScrubberUI(0);
+  } catch (err) {
+    showVodError(err.message || "Failed to load ended stream VOD.");
+  } finally {
+    setVodLoadSpinner(false);
+  }
+}
+
+window.applyVodCamPreset = function (preset) {
+  if (preset === "tl") {
+    vodState.boxes.cam = { x: 0.03, y: 0.04, w: 0.28, h: 0.35 };
+  } else if (preset === "tr") {
+    vodState.boxes.cam = { x: 0.69, y: 0.04, w: 0.28, h: 0.35 };
+  } else if (preset === "bl") {
+    vodState.boxes.cam = { x: 0.03, y: 0.61, w: 0.28, h: 0.35 };
+  } else if (preset === "br") {
+    vodState.boxes.cam = { x: 0.69, y: 0.61, w: 0.28, h: 0.35 };
+  } else {
+    vodState.boxes.cam = { x: 0.68, y: 0.58, w: 0.28, h: 0.36 };
+    vodState.boxes.stream = { x: 0.02, y: 0.03, w: 0.96, h: 0.94 };
+  }
+  syncVodBoxesToDOM();
+};
+
+function syncVodBoxesToDOM() {
+  const stage = document.getElementById("vod-big-stage");
+  if (!stage) return;
+  const rect = stage.getBoundingClientRect();
+  if (rect.width < 10 || rect.height < 10) return;
+
+  for (const key of ["cam", "stream"]) {
+    const b = vodState.boxes[key];
+    const el = document.getElementById(key === "cam" ? "box-vod-cam" : "box-vod-stream");
+    if (!el) continue;
+    const px = b.x * rect.width;
+    const py = b.y * rect.height;
+    const pw = b.w * rect.width;
+    const ph = b.h * rect.height;
+    el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
+    el.style.width = `${pw.toFixed(1)}px`;
+    el.style.height = `${ph.toFixed(1)}px`;
+  }
+}
+
+function setupVodDualBoxInteractions() {
+  const stage = document.getElementById("vod-big-stage");
+  if (!stage) return;
+
+  let dragCtx = null;
+
+  stage.addEventListener("pointerdown", (e) => {
+    const handleEl = e.target.closest(".crop-handle");
+    const boxEl = e.target.closest(".crop-box");
+    if (!boxEl) return;
+
+    e.preventDefault();
+    const key = boxEl.getAttribute("data-box");
+    const handle = handleEl ? handleEl.getAttribute("data-handle") : "move";
+    const stageRect = stage.getBoundingClientRect();
+
+    boxEl.classList.add("is-dragging");
+    const captureEl = e.target;
+    try {
+      captureEl.setPointerCapture(e.pointerId);
+    } catch (err) {}
+
+    dragCtx = {
+      key,
+      handle,
+      boxEl,
+      captureEl,
+      pointerId: e.pointerId,
+      stageRect,
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: { ...vodState.boxes[key] },
+    };
+  });
+
+  window.addEventListener("pointermove", (e) => {
+    if (!dragCtx || e.pointerId !== dragCtx.pointerId) return;
+    e.preventDefault();
+
+    const dx = (e.clientX - dragCtx.startX) / dragCtx.stageRect.width;
+    const dy = (e.clientY - dragCtx.startY) / dragCtx.stageRect.height;
+    const o = dragCtx.orig;
+    const minW = 0.12;
+    const minH = 0.14;
+    let { x, y, w, h } = o;
+
+    if (dragCtx.handle === "move") {
+      x = Math.max(0, Math.min(1 - w, o.x + dx));
+      y = Math.max(0, Math.min(1 - h, o.y + dy));
+    } else {
+      if (dragCtx.handle.includes("e")) w = Math.max(minW, Math.min(1 - o.x, o.w + dx));
+      if (dragCtx.handle.includes("s")) h = Math.max(minH, Math.min(1 - o.y, o.h + dy));
+      if (dragCtx.handle.includes("w")) {
+        const maxLeft = o.x + o.w - minW;
+        const newX = Math.max(0, Math.min(maxLeft, o.x + dx));
+        w = o.w + (o.x - newX);
+        x = newX;
+      }
+      if (dragCtx.handle.includes("n")) {
+        const maxTop = o.y + o.h - minH;
+        const newY = Math.max(0, Math.min(maxTop, o.y + dy));
+        h = o.h + (o.y - newY);
+        y = newY;
+      }
+    }
+
+    vodState.boxes[dragCtx.key] = { x, y, w, h };
+    syncVodBoxesToDOM();
+  });
+
+  const endDrag = (e) => {
+    if (!dragCtx || e.pointerId !== dragCtx.pointerId) return;
+    dragCtx.boxEl.classList.remove("is-dragging");
+    try {
+      dragCtx.captureEl.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    dragCtx = null;
+  };
+
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+}
+
+async function submitVodClipExport() {
+  if (!vodState.source) {
+    showVodError("Please paste and load an ended live stream or VOD link first.");
+    return;
+  }
+
+  hideVodError();
+  const dur = vodState.clipDuration || 35;
+  const slider = document.getElementById("vod-scrubber-slider");
+  let startSec = slider ? parseFloat(slider.value) : (vodState.currentPlaySec || 0);
+  if (isNaN(startSec) || startSec < 0) startSec = 0;
+  const endSec = startSec + dur;
+
+  const streamUrl = document.getElementById("vod-youtube-url")?.value?.trim() ||
+    (vodState.source?.video_id ? `https://www.youtube.com/watch?v=${vodState.source.video_id}` : "") ||
+    vodState.source?.url || "";
+
+  const payload = {
+    url: streamUrl,
+    video_id: vodState.source.video_id,
+    is_live: false,
+    duration_sec: dur,
+    rewind_sec: 0,
+    start_utc_ts: null,
+    end_utc_ts: null,
+    start_time: startSec,
+    end_time: endSec,
+    cam_box: vodState.boxes?.cam || { x: 0.69, y: 0.58, w: 0.28, h: 0.36 },
+    stream_box: vodState.boxes?.stream || { x: 0.02, y: 0.03, w: 0.96, h: 0.94 },
+    cam_ratio: vodState.cam_ratio || 0.40,
+    cam_position: vodState.cam_position || "top",
+    resolution: "1080p",
+    burn_subtitles: true,
+    subtitle_style: document.getElementById("vod-sub-style")?.value || "viral_pop",
+    subtitle_position: "seam",
+    access_key: proState.accessKey,
+  };
+
+  showProgressModal(`Rendering ${dur}s Dual-Box VOD Short (${formatTime(startSec)} - ${formatTime(endSec)})...`);
+
+  try {
+    const res = await fetchWithTimeout("/api/pro/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }, 25000);
+    const data = await parseApiResponse(res);
+    if (!res.ok || !data.success) {
+      throw new Error(data.detail || "Could not start VOD short render.");
+    }
+    pollTaskProgress(data.task_id);
+  } catch (err) {
+    hideProgressModal();
+    showVodError(err.message);
+  }
+}
+
+function setupVodStudio() {
+  const vodBtn = document.getElementById("studio-btn-vod");
+  if (!vodBtn) return;
+
+  // Streamer Position Controls (Top vs Bottom)
+  document.querySelectorAll("#vod-pos-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#vod-pos-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      vodState.cam_position = btn.dataset.pos || "top";
+    });
+  });
+
+  // Split Ratio with Respect to Display Controls
+  document.querySelectorAll("#vod-ratio-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#vod-ratio-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      vodState.cam_ratio = parseFloat(btn.dataset.ratio) || 0.40;
+    });
+  });
+
+  // Short Duration Controls (20s, 35s, 50s, 60s)
+  document.querySelectorAll("#vod-duration-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#vod-duration-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      vodState.clipDuration = parseInt(btn.dataset.dur, 10) || 35;
+      syncVodScrubberUI(vodState.currentPlaySec);
+    });
+  });
+
+  // Overlay Mode Toggle: Move Boxes vs Click Video
+  const overlayBtn = document.getElementById("btn-toggle-vod-overlay-mode");
+  if (overlayBtn) {
+    overlayBtn.addEventListener("click", () => {
+      const overlay = document.getElementById("vod-boxes-overlay");
+      if (!overlay) return;
+      const isClickthrough = overlay.classList.toggle("clickthrough-mode");
+      overlayBtn.classList.toggle("active", !isClickthrough);
+      overlayBtn.innerHTML = isClickthrough
+        ? "<span>🎬 Click Video (Boxes Hidden)</span>"
+        : "<span>🎯 Move Boxes</span>";
+    });
+  }
+
+  // Scrubber Slider
+  const scrubber = document.getElementById("vod-scrubber-slider");
+  if (scrubber) {
+    scrubber.addEventListener("input", (e) => {
+      vodState.isDraggingScrubber = true;
+      const sec = parseInt(e.target.value, 10);
+      seekVodPlayback(sec);
+    });
+    scrubber.addEventListener("change", () => {
+      vodState.isDraggingScrubber = false;
+    });
+  }
+
+  // Load VOD form & Paste button
+  const vodUrlInput = document.getElementById("vod-youtube-url");
+  const inspectForm = document.getElementById("vod-inspect-form");
+  if (inspectForm && vodUrlInput) {
+    inspectForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      inspectVodStream(vodUrlInput.value.trim());
+    });
+
+    vodUrlInput.addEventListener("paste", () => {
+      setTimeout(() => {
+        const val = vodUrlInput.value.trim();
+        if (looksLikeYouTubeUrl(val)) inspectVodStream(val);
+      }, 60);
+    });
+  }
+
+  const pasteBtn = document.getElementById("vod-paste-btn");
+  if (pasteBtn && vodUrlInput) {
+    pasteBtn.addEventListener("click", async () => {
+      try {
+        const text = (await navigator.clipboard.readText()).trim();
+        if (text) {
+          vodUrlInput.value = text;
+          if (looksLikeYouTubeUrl(text)) inspectVodStream(text);
+        }
+      } catch (e) {
+        vodUrlInput.focus();
+      }
+    });
+  }
+
+  // Big Generate Button
+  const createBtn = document.getElementById("vod-create-btn");
+  if (createBtn) {
+    createBtn.addEventListener("click", submitVodClipExport);
+  }
+
+  // Dual-Box Drag & Resize Setup
+  setupVodDualBoxInteractions();
+  window.addEventListener("resize", () => {
+    if (proState.mode === "vod" && vodState.source) syncVodBoxesToDOM();
+  });
 }

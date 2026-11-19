@@ -14,7 +14,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://dealt-graphs-tide-wanting.trycloudflare.com/api/:path*"
+      "destination": "https://terrace-applies-breath-turtle.trycloudflare.com/api/:path*"
     }
   ]
 }

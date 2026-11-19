@@ -1468,6 +1468,13 @@ input:checked + .slider:before {
   margin-bottom: 0.75rem;
 }
 
+.vod-hero-badge {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.12);
+}
+
 .live-dot {
   width: 8px;
   height: 8px;
