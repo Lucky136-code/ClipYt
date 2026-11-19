@@ -468,9 +468,9 @@ function renderHeatmapChart(heatmapPoints) {
   const values = points.map((p) => p.intensity);
 
   const gradient = ctx.createLinearGradient(0, 0, 0, 215);
-  gradient.addColorStop(0, "rgba(124, 58, 237, 0.34)");
-  gradient.addColorStop(0.65, "rgba(167, 139, 250, 0.12)");
-  gradient.addColorStop(1, "rgba(196, 181, 253, 0.0)");
+  gradient.addColorStop(0, "rgba(37, 99, 235, 0.35)");
+  gradient.addColorStop(0.65, "rgba(96, 165, 250, 0.12)");
+  gradient.addColorStop(1, "rgba(191, 219, 254, 0.0)");
 
   heatmapChartInstance = new Chart(ctx, {
     type: "line",
@@ -480,7 +480,7 @@ function renderHeatmapChart(heatmapPoints) {
         {
           label: "Engagement",
           data: values,
-          borderColor: "#7c3aed",
+          borderColor: "#3b82f6",
           borderWidth: 2.8,
           backgroundColor: gradient,
           fill: true,
@@ -488,7 +488,7 @@ function renderHeatmapChart(heatmapPoints) {
           pointRadius: 0,
           pointHoverRadius: 6,
           pointHoverBackgroundColor: "#ffffff",
-          pointHoverBorderColor: "#7c3aed",
+          pointHoverBorderColor: "#2563eb",
           pointHoverBorderWidth: 2.5,
         },
       ],
@@ -502,10 +502,10 @@ function renderHeatmapChart(heatmapPoints) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(255, 255, 255, 0.96)",
-          titleColor: "#18102b",
-          bodyColor: "#7c3aed",
-          borderColor: "rgba(124, 58, 237, 0.28)",
+          backgroundColor: "rgba(10, 16, 28, 0.96)",
+          titleColor: "#f8fafc",
+          bodyColor: "#60a5fa",
+          borderColor: "rgba(37, 99, 235, 0.35)",
           borderWidth: 1,
           padding: 10,
           cornerRadius: 10,
@@ -1290,7 +1290,7 @@ function setupSiteUnlockGate() {
             if (verifyBtn) {
               verifyBtn.classList.remove("btn-verify-pulse");
               verifyBtn.innerHTML = "<span>✓ Unlocked! Entering Studio...</span>";
-              verifyBtn.style.background = "#10b981";
+              verifyBtn.style.background = "#2563eb";
             }
 
             // Save permanent unlock

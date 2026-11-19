@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120i">
+  <link rel="stylesheet" href="/static/style.css?v=20261120_blue">
 </head>
 
 <body>
@@ -32,7 +32,7 @@
           <span id="pro-badge-pill" class="pro-lock-tag">🔒 6h KEY</span>
         </button>
         <button type="button" id="studio-btn-vod" class="studio-pill">
-          <span>🎬 Pro Clipper</span>
+          <span>🎬 Manual Clipper</span>
         </button>
       </div>
     </div>
@@ -354,7 +354,8 @@
             </div>
             <!-- Mode Switch: Move Boxes vs Direct Video Interaction -->
             <div class="pro-overlay-toggle-wrap">
-              <button type="button" id="btn-toggle-overlay-mode" class="choice-pill active" title="Toggle box movement or video controls">
+              <button type="button" id="btn-toggle-overlay-mode" class="choice-pill active"
+                title="Toggle box movement or video controls">
                 <span>🎯 Move Boxes</span>
               </button>
             </div>
@@ -364,7 +365,8 @@
           <div id="pro-big-stage" class="pro-big-stage">
             <!-- Big Playing YouTube Live Stream Video -->
             <div id="pro-yt-embed-wrap" class="pro-yt-embed-wrap">
-              <iframe id="pro-live-iframe" class="pro-live-iframe" src="" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+              <iframe id="pro-live-iframe" class="pro-live-iframe" src=""
+                allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
             </div>
 
             <!-- Interactive Dual Boxes Overlay directly on top of video -->
@@ -408,7 +410,8 @@
             <div class="pro-scrub-track-row">
               <span id="pro-tl-current" class="time-readout">00:00</span>
               <div class="pro-scrubber-wrap">
-                <input type="range" id="pro-scrubber-slider" min="0" max="300" step="1" value="0" class="pro-scrubber-slider">
+                <input type="range" id="pro-scrubber-slider" min="0" max="300" step="1" value="0"
+                  class="pro-scrubber-slider">
               </div>
               <span id="pro-tl-max" class="time-readout-live">🔴 LIVE</span>
             </div>
@@ -416,14 +419,22 @@
             <!-- Playback Jump Buttons & Live Status -->
             <div class="pro-playback-buttons-row">
               <div class="playback-btn-group">
-                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-300)" title="Go back 5 minutes">⏪ -5m</button>
-                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-60)" title="Go back 1 minute">⏪ -1m</button>
-                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-15)" title="Go back 15 seconds">⏪ -15s</button>
-                <button type="button" id="btn-play-pause" class="btn-jump btn-play-pause" onclick="toggleLivePlayback()">⏯️ Play / Pause</button>
-                <button type="button" class="btn-jump" onclick="jumpLivePlayback(15)" title="Forward 15 seconds">⏩ +15s</button>
-                <button type="button" class="btn-jump" onclick="jumpLivePlayback(60)" title="Forward 1 minute">⏩ +1m</button>
-                <button type="button" class="btn-jump btn-live-edge" onclick="jumpToLiveEdge()" title="Jump to current live edge">🔴 Live Edge</button>
-                <button type="button" id="btn-lock-moment" class="btn-jump btn-lock-moment" onclick="toggleLockMoment()" title="Lock the current frame/scene in the box so it never drifts">📌 Lock Current Scene</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-300)" title="Go back 5 minutes">⏪
+                  -5m</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-60)" title="Go back 1 minute">⏪
+                  -1m</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(-15)" title="Go back 15 seconds">⏪
+                  -15s</button>
+                <button type="button" id="btn-play-pause" class="btn-jump btn-play-pause"
+                  onclick="toggleLivePlayback()">⏯️ Play / Pause</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(15)" title="Forward 15 seconds">⏩
+                  +15s</button>
+                <button type="button" class="btn-jump" onclick="jumpLivePlayback(60)" title="Forward 1 minute">⏩
+                  +1m</button>
+                <button type="button" class="btn-jump btn-live-edge" onclick="jumpToLiveEdge()"
+                  title="Jump to current live edge">🔴 Live Edge</button>
+                <button type="button" id="btn-lock-moment" class="btn-jump btn-lock-moment" onclick="toggleLockMoment()"
+                  title="Lock the current frame/scene in the box so it never drifts">📌 Lock Current Scene</button>
               </div>
               <div class="recording-window-preview">
                 <span>Short Window: <strong id="pro-window-badge">00:00 ➔ 00:35 (35s)</strong></span>
@@ -439,8 +450,10 @@
                 <label class="setting-caption">Streamer Facecam</label>
                 <div class="pill-group" id="pro-pos-picker">
                   <button type="button" class="choice-pill active" data-pos="top" title="Facecam at top">🔝 Top</button>
-                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">⬇️ Bottom</button>
-                  <button type="button" class="choice-pill" data-pos="none" title="Disable facecam — record only the display">🚫 No Cam (Display Only)</button>
+                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">⬇️
+                    Bottom</button>
+                  <button type="button" class="choice-pill" data-pos="none"
+                    title="Disable facecam — record only the display">🚫 No Cam (Display Only)</button>
                 </div>
               </div>
 
@@ -488,16 +501,17 @@
       </div>
     </section>
 
-    <!-- ==================== PRO CLIPPER WORKSPACE ==================== -->
+    <!-- ==================== Manual CLIPPER WORKSPACE ==================== -->
     <section id="vod-studio-section" class="hidden">
-      <!-- Pro Clipper Hero Banner -->
+      <!-- Manual Clipper Hero Banner -->
       <section class="hero-section vod-hero">
         <div class="pro-hero-badge vod-hero-badge">
-          <span>🎬 PRO CLIPPER • 9:16 DUAL BOX</span>
+          <span>🎬 MANUAL CLIPPER • 9:16 DUAL BOX</span>
         </div>
-        <h1 class="hero-title">Pro Clipper</h1>
+        <h1 class="hero-title">Manual Clipper</h1>
         <p class="section-sub pro-hero-desc">
-          Paste any completed YouTube stream, gaming broadcast, or replay. Position the Streamer & Display boxes, pick your moment, and create 9:16 vertical Shorts!
+          Paste any completed YouTube stream, gaming broadcast, or replay. Position the Streamer & Display boxes, pick
+          your moment, and create 9:16 vertical Shorts!
         </p>
 
         <!-- VOD Link Input Card -->
@@ -505,8 +519,8 @@
           <form id="vod-inspect-form" class="url-form">
             <div class="url-row">
               <div class="url-input-wrap">
-                <input type="text" id="vod-youtube-url" placeholder="Paste ended live stream or VOD link here..." required
-                  autocomplete="off">
+                <input type="text" id="vod-youtube-url" placeholder="Paste ended live stream or VOD link here..."
+                  required autocomplete="off">
                 <button type="button" id="vod-paste-btn" class="btn-paste">Paste</button>
               </div>
               <button type="submit" id="vod-load-btn" class="btn-red">
@@ -515,7 +529,8 @@
               </button>
             </div>
             <p class="url-note" style="margin-top:0.6rem;">
-              <strong>Streamer + Display VOD:</strong> Dual-box split-screen works for completed streams, esports broadcasts, and gaming replays!
+              <strong>Streamer + Display VOD:</strong> Dual-box split-screen works for completed streams, esports
+              broadcasts, and gaming replays!
             </p>
           </form>
         </div>
@@ -542,7 +557,8 @@
             </div>
             <!-- Mode Switch: Move Boxes vs Direct Video Interaction -->
             <div class="pro-overlay-toggle-wrap">
-              <button type="button" id="btn-toggle-vod-overlay-mode" class="choice-pill active" title="Toggle box movement or video controls">
+              <button type="button" id="btn-toggle-vod-overlay-mode" class="choice-pill active"
+                title="Toggle box movement or video controls">
                 <span>🎯 Move Boxes</span>
               </button>
             </div>
@@ -552,7 +568,8 @@
           <div id="vod-big-stage" class="pro-big-stage">
             <!-- Big Playing YouTube Stream Video -->
             <div id="vod-yt-embed-wrap" class="pro-yt-embed-wrap">
-              <iframe id="vod-live-iframe" class="pro-live-iframe" src="" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+              <iframe id="vod-live-iframe" class="pro-live-iframe" src=""
+                allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
             </div>
 
             <!-- Interactive Dual Boxes Overlay directly on top of video -->
@@ -584,11 +601,13 @@
             <div class="vod-box-select-row">
               <span class="preset-label">🎯 Edit Box:</span>
               <div class="pill-group" id="vod-active-box-picker">
-                <button type="button" class="choice-pill active" id="btn-select-box-cam" onclick="selectVodActiveBox('cam')">
+                <button type="button" class="choice-pill active" id="btn-select-box-cam"
+                  onclick="selectVodActiveBox('cam')">
                   <span class="box-dot cam-dot"></span>
                   <span>Streamer (Facecam)</span>
                 </button>
-                <button type="button" class="choice-pill" id="btn-select-box-stream" onclick="selectVodActiveBox('stream')">
+                <button type="button" class="choice-pill" id="btn-select-box-stream"
+                  onclick="selectVodActiveBox('stream')">
                   <span class="box-dot stream-dot"></span>
                   <span>Display (Screen)</span>
                 </button>
@@ -608,7 +627,8 @@
               <span class="preset-label" style="font-size:0.72rem; color:#0284c7;">🔵 Display Presets:</span>
               <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('full')">Full Screen</button>
               <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('left')">Left Game</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('center')">Center Game</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('center')">Center
+                Game</button>
               <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('right')">Right Game</button>
             </div>
           </div>
@@ -619,7 +639,8 @@
             <div class="pro-scrub-track-row">
               <span id="vod-tl-current" class="time-readout">00:00:00</span>
               <div class="pro-scrubber-wrap">
-                <input type="range" id="vod-scrubber-slider" min="0" max="300" step="1" value="0" class="pro-scrubber-slider">
+                <input type="range" id="vod-scrubber-slider" min="0" max="300" step="1" value="0"
+                  class="pro-scrubber-slider">
               </div>
               <span id="vod-tl-max" class="time-readout-live" style="color:var(--accent);">00:00:00</span>
             </div>
@@ -627,11 +648,16 @@
             <!-- Playback Jump Buttons & Status -->
             <div class="pro-playback-buttons-row">
               <div class="playback-btn-group">
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-60)" title="Go back 1 minute">⏪ -1m</button>
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-10)" title="Go back 10 seconds">⏪ -10s</button>
-                <button type="button" id="btn-vod-play-pause" class="btn-jump btn-play-pause" onclick="toggleVodPlayback()">⏯️ Play / Pause</button>
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(10)" title="Forward 10 seconds">⏩ +10s</button>
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(60)" title="Forward 1 minute">⏩ +1m</button>
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-60)" title="Go back 1 minute">⏪
+                  -1m</button>
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-10)" title="Go back 10 seconds">⏪
+                  -10s</button>
+                <button type="button" id="btn-vod-play-pause" class="btn-jump btn-play-pause"
+                  onclick="toggleVodPlayback()">⏯️ Play / Pause</button>
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(10)" title="Forward 10 seconds">⏩
+                  +10s</button>
+                <button type="button" class="btn-jump" onclick="jumpVodPlayback(60)" title="Forward 1 minute">⏩
+                  +1m</button>
               </div>
               <div class="recording-window-preview">
                 <span>Short Window: <strong id="vod-window-badge">00:00:00 ➔ 00:00:35 (35s)</strong></span>
@@ -647,8 +673,10 @@
                 <label class="setting-caption">Streamer Facecam</label>
                 <div class="pill-group" id="vod-pos-picker">
                   <button type="button" class="choice-pill active" data-pos="top" title="Facecam at top">🔝 Top</button>
-                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">⬇️ Bottom</button>
-                  <button type="button" class="choice-pill" data-pos="none" title="Disable facecam — record only the display">🚫 No Cam (Display Only)</button>
+                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">⬇️
+                    Bottom</button>
+                  <button type="button" class="choice-pill" data-pos="none"
+                    title="Disable facecam — record only the display">🚫 No Cam (Display Only)</button>
                 </div>
               </div>
 
@@ -687,8 +715,9 @@
             </div>
 
             <!-- Big Start Generating VOD Short Button -->
-            <button type="button" id="vod-create-btn" class="btn-create-short pro-master-record-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);">
-              <span class="rec-dot-pulse" style="background:#00ff88; box-shadow:0 0 10px rgba(0,255,136,0.8);"></span>
+            <button type="button" id="vod-create-btn" class="btn-create-short pro-master-record-btn"
+              style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);">
+              <span class="rec-dot-pulse" style="background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.8);"></span>
               <span class="record-btn-text">⚡ Generate Dual-Box Short</span>
             </button>
           </div>
@@ -755,7 +784,8 @@
             </div>
           </div>
           <div class="creator-card">
-            <img src="/static/avatars/emma_chamberlain.jpg" alt="Emma Chamberlain" class="creator-avatar" loading="lazy">
+            <img src="/static/avatars/emma_chamberlain.jpg" alt="Emma Chamberlain" class="creator-avatar"
+              loading="lazy">
             <div class="creator-meta">
               <span class="creator-name">Emma Chamberlain</span>
               <span class="creator-subs">12M subscribers</span>
@@ -836,7 +866,8 @@
             </div>
           </div>
           <div class="creator-card">
-            <img src="/static/avatars/emma_chamberlain.jpg" alt="Emma Chamberlain" class="creator-avatar" loading="lazy">
+            <img src="/static/avatars/emma_chamberlain.jpg" alt="Emma Chamberlain" class="creator-avatar"
+              loading="lazy">
             <div class="creator-meta">
               <span class="creator-name">Emma Chamberlain</span>
               <span class="creator-subs">12M subscribers</span>
@@ -912,8 +943,8 @@
               <span>1. Subscribe to @Annieplaysgta6 ↗</span>
             </a>
             <div class="task-handle-wrap">
-              <input type="text" id="yt-handle-input" class="task-input"
-                placeholder="Your YouTube name (optional)" autocomplete="off">
+              <input type="text" id="yt-handle-input" class="task-input" placeholder="Your YouTube name (optional)"
+                autocomplete="off">
             </div>
             <div id="yt-wait-status" class="task-hint-status hidden"></div>
           </div>
@@ -980,8 +1011,9 @@
   <div id="live-key-modal" class="modal-backdrop hidden">
     <div class="glass-card live-key-card" style="max-width: 420px; padding: 1.5rem;">
       <div class="modal-result-head" style="margin-bottom: 1.15rem;">
-        <a href="https://t.me/+PqPmXBG4M8A2MDJl" target="_blank" rel="noopener noreferrer" class="live-key-header-link" title="Open Telegram Channel">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="#10b981" class="tg-svg-icon">
+        <a href="https://t.me/+PqPmXBG4M8A2MDJl" target="_blank" rel="noopener noreferrer" class="live-key-header-link"
+          title="Open Telegram Channel">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="#3b82f6" class="tg-svg-icon">
             <path
               d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z" />
           </svg>
