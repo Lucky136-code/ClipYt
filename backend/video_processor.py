@@ -251,6 +251,9 @@ def cleanup_old_temp_files(max_age_sec: int = 300) -> None:
     now = time.time()
     for f in TEMP_DIR.glob("*"):
         if f.is_file():
+            # Guard: Never delete text, json, or configuration files
+            if f.suffix.lower() in (".txt", ".json", ".yml", ".yaml"):
+                continue
             try:
                 if (now - f.stat().st_mtime) > max_age_sec:
                     f.unlink()
