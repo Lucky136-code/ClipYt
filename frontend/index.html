@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120_live_edge2">
+  <link rel="stylesheet" href="/static/style.css?v=20261120_cleanlive1">
 </head>
 
 <body>
@@ -364,7 +364,7 @@
           <!-- Top Stream Info Header -->
           <div class="pro-player-header">
             <div class="pro-header-info">
-              <span id="pro-live-badge" class="pro-status-live">🔴 LIVE</span>
+              <span id="pro-live-badge" class="pro-status-live"><span class="live-dot-pulse"></span> LIVE</span>
               <div class="pro-title-wrap">
                 <h2 id="pro-source-title" class="pro-stream-title">Stream Title</h2>
                 <span id="pro-source-author" class="pro-stream-author">Channel</span>
@@ -374,7 +374,7 @@
             <div class="pro-overlay-toggle-wrap">
               <button type="button" id="btn-toggle-overlay-mode" class="choice-pill active"
                 title="Toggle box movement or video controls">
-                <span>🎯 Move Boxes</span>
+                <span>Move Boxes</span>
               </button>
             </div>
           </div>
@@ -420,21 +420,21 @@
             <div class="pro-scrub-track-row live-only-track">
               <div class="live-realtime-badge">
                 <span class="live-dot-pulse"></span>
-                <span class="live-status-text">🔴 LIVE STREAM (Real-Time Edge)</span>
+                <span class="live-status-text">LIVE STREAM (Real-Time Edge)</span>
               </div>
-              <span id="pro-tl-max" class="time-readout-live">● LIVE</span>
+              <span id="pro-tl-max" class="time-readout-live">REAL-TIME</span>
             </div>
 
             <!-- Playback Controls: Real-time Edge Only, No Rewind -->
             <div class="pro-playback-buttons-row">
               <div class="playback-btn-group">
                 <button type="button" id="btn-play-pause" class="btn-jump btn-play-pause"
-                  onclick="toggleLivePlayback()">⏯️ Play / Pause</button>
+                  onclick="toggleLivePlayback()">Play / Pause</button>
                 <button type="button" class="btn-jump btn-live-edge active-live" onclick="jumpToLiveEdge()"
-                  title="Locked to real-time live edge">🔴 Live Edge</button>
+                  title="Locked to real-time live edge">Live Edge</button>
               </div>
               <div class="recording-window-preview">
-                <span>Short Window: <strong id="pro-window-badge">🔴 Live Edge (35s clip)</strong></span>
+                <span>Short Window: <strong id="pro-window-badge">Live Edge (35s clip)</strong></span>
               </div>
             </div>
           </div>
@@ -446,11 +446,10 @@
               <div class="pro-mini-setting">
                 <label class="setting-caption">Streamer Facecam</label>
                 <div class="pill-group" id="pro-pos-picker">
-                  <button type="button" class="choice-pill active" data-pos="top" title="Facecam at top">🔝 Top</button>
-                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">⬇️
-                    Bottom</button>
+                  <button type="button" class="choice-pill active" data-pos="top" title="Facecam at top">Top</button>
+                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">Bottom</button>
                   <button type="button" class="choice-pill" data-pos="none"
-                    title="Disable facecam — record only the display">🚫 No Cam (Display Only)</button>
+                    title="Disable facecam — record only the display">Display Only (No Cam)</button>
                 </div>
               </div>
 
@@ -491,7 +490,7 @@
             <!-- Big Start Recording Button -->
             <button type="button" id="pro-create-btn" class="btn-create-short pro-master-record-btn">
               <span class="rec-dot-pulse"></span>
-              <span class="record-btn-text">🔴 Start Recording Short</span>
+              <span class="record-btn-text">Start Recording Short</span>
             </button>
           </div>
         </div>

@@ -1642,8 +1642,8 @@ function setupProStudio() {
       const isClickthrough = overlay.classList.toggle("clickthrough-mode");
       overlayBtn.classList.toggle("active", !isClickthrough);
       overlayBtn.innerHTML = isClickthrough
-        ? "<span>🎬 Click Video (Boxes Hidden)</span>"
-        : "<span>🎯 Move Boxes</span>";
+        ? "<span>Interactive Video</span>"
+        : "<span>Move Boxes</span>";
     });
   }
 
@@ -1824,7 +1824,7 @@ function updateLockMomentUI() {
   const badge = document.getElementById("pro-window-badge");
   const dur = proState.clipDuration || 35;
   if (badge) {
-    badge.textContent = `🔴 Live Edge (${dur}s clip)`;
+    badge.textContent = `Live Edge (${dur}s clip)`;
   }
 }
 
@@ -2964,8 +2964,8 @@ function setupVodStudio() {
       const isClickthrough = overlay.classList.toggle("clickthrough-mode");
       overlayBtn.classList.toggle("active", !isClickthrough);
       overlayBtn.innerHTML = isClickthrough
-        ? "<span>🎬 Click Video (Boxes Hidden)</span>"
-        : "<span>🎯 Move Boxes</span>";
+        ? "<span>Interactive Video</span>"
+        : "<span>Move Boxes</span>";
     });
   }
 
