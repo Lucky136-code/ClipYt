@@ -682,7 +682,7 @@ body::before {
   }
 
   .hero-section {
-    margin-bottom: 2rem;
+    margin-bottom: 2.5rem;
   }
 
   .hero-kicker {
@@ -694,11 +694,11 @@ body::before {
   .hero-title {
     font-size: 1.85rem;
     line-height: 1.24;
-    margin-bottom: 1.85rem;
+    margin-bottom: 2.25rem;
   }
 
   .capsule-input-container {
-    margin-top: 2.25rem;
+    margin-top: 5.5rem;
   }
 
   /* Explore Demo tab: centered floating pill on mobile */
