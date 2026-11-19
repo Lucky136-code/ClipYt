@@ -866,10 +866,20 @@ async def serve_blurred_background():
 
 
 @app.get("/background.png")
+@app.get("/background.jpg")
+@app.get("/background.jpeg")
 async def serve_background():
-    bg_file = BASE_DIR / "background.png"
-    if bg_file.exists():
-        return FileResponse(bg_file, media_type="image/png", headers={"Cache-Control": "no-cache, must-revalidate"})
+    for f in [
+        FRONTEND_DIR / "background.png",
+        BASE_DIR / "background.png",
+        FRONTEND_DIR / "background.jpg",
+        BASE_DIR / "background.jpg",
+        FRONTEND_DIR / "background.jpeg",
+        BASE_DIR / "background.jpeg",
+    ]:
+        if f.exists():
+            media = "image/png" if f.suffix.lower() == ".png" else "image/jpeg"
+            return FileResponse(f, media_type=media, headers={"Cache-Control": "no-cache, must-revalidate"})
     raise HTTPException(status_code=404, detail="Background not found")
 
 
