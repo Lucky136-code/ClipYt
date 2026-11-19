@@ -1044,6 +1044,7 @@ function setupSiteUnlockGate() {
 
   if (isSiteUnlocked()) {
     gateEl.classList.add("hidden");
+    gateEl.style.display = "none";
     document.body.style.overflow = "";
     return;
   }
@@ -1224,6 +1225,15 @@ function setupSiteUnlockGate() {
               stepToken.textContent = `✓ Verified! Welcome to ClipYt AI.`;
             }
 
+            // Stop the spinner and show unlocked button
+            const vSpinner = liveCard?.querySelector(".verifier-spinner");
+            if (vSpinner) vSpinner.style.display = "none";
+            if (verifyBtn) {
+              verifyBtn.classList.remove("btn-verify-pulse");
+              verifyBtn.innerHTML = "<span>✓ Unlocked! Entering Studio...</span>";
+              verifyBtn.style.background = "#10b981";
+            }
+
             // Save permanent unlock
             try {
               localStorage.setItem(
@@ -1237,18 +1247,22 @@ function setupSiteUnlockGate() {
             } catch (e) {}
 
             proState.unlocked = true;
-            refreshProBadgeUI();
+            siteUnlockState.isVerifying = false;
+            try {
+              if (typeof updateLiveKeyUI === "function") updateLiveKeyUI();
+            } catch (e) {}
 
-            // Smooth fade out
+            // Smooth fade out & dismiss modal
             setTimeout(() => {
-              gateEl.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+              gateEl.style.transition = "opacity 0.35s ease, transform 0.35s ease";
               gateEl.style.opacity = "0";
-              gateEl.style.transform = "scale(1.03)";
+              gateEl.style.transform = "scale(1.02)";
               setTimeout(() => {
                 gateEl.classList.add("hidden");
+                gateEl.style.display = "none";
                 document.body.style.overflow = "";
-              }, 400);
-            }, 350);
+              }, 350);
+            }, 300);
           }, 350);
         }, 350);
       }, 400);
