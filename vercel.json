@@ -14,7 +14,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://himself-addition-trembl-strain.trycloudflare.com/api/:path*"
+      "destination": "https://aka-area-woods-parade.trycloudflare.com/api/:path*"
     }
   ]
 }
