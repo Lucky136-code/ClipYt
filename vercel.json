@@ -14,7 +14,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://edinburgh-variety-sauce-average.trycloudflare.com/api/:path*"
+      "destination": "https://patrol-sign-lace-cdna.trycloudflare.com/api/:path*"
     }
   ]
 }
