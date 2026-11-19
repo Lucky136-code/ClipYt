@@ -874,8 +874,9 @@ async def serve_background():
 
 @app.get("/bihari.png")
 @app.get("/bihari.jpg")
+@app.get("/mobilebackground.png")
 async def serve_bihari():
-    for f in [FRONTEND_DIR / "bihari.png", BASE_DIR / "bihari.png", FRONTEND_DIR / "bihari.jpg", BASE_DIR / "bihari.jpg"]:
+    for f in [FRONTEND_DIR / "mobilebackground.png", BASE_DIR / "mobilebackground.png", FRONTEND_DIR / "bihari.png", BASE_DIR / "bihari.png", FRONTEND_DIR / "bihari.jpg", BASE_DIR / "bihari.jpg"]:
         if f.exists():
             media = "image/png" if f.suffix == ".png" else "image/jpeg"
             return FileResponse(f, media_type=media)

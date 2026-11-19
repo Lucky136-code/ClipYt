@@ -21,6 +21,10 @@
       "destination": "/frontend/bihari.jpg"
     },
     {
+      "source": "/mobilebackground.png",
+      "destination": "/frontend/mobilebackground.png"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://book-mapping-pollution-lie.trycloudflare.com/api/:path*"
     }
