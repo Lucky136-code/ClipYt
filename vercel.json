@@ -14,7 +14,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://direct-that-reality-harold.trycloudflare.com/api/:path*"
+      "destination": "https://inkjet-collectible-madrid-place.trycloudflare.com/api/:path*"
     }
   ]
 }
