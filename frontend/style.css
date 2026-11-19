@@ -488,7 +488,7 @@ body::before {
    ========================================================================== */
 .capsule-input-container {
   max-width: 860px;
-  margin: 0 auto;
+  margin: 7rem auto 0;
   position: relative;
 }
 
