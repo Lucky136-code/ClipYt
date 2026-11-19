@@ -150,6 +150,16 @@ function setupEventListeners() {
     }
   });
 
+  // Explore demo clips tab
+  const demoClipsBtn = document.getElementById("demo-clips-btn");
+  if (demoClipsBtn) {
+    demoClipsBtn.addEventListener("click", () => {
+      const demoUrl = "https://www.youtube.com/watch?v=0e3GPea1Tyg";
+      urlInput.value = demoUrl;
+      runFullAnalysis(demoUrl);
+    });
+  }
+
   // Re-analyze if user changes duration or number of clips while a video is loaded
   document.getElementById("clip-duration").addEventListener("change", () => {
     const val = urlInput.value.trim();
