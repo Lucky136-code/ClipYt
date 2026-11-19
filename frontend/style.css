@@ -67,7 +67,10 @@ body::before {
 
 @media (max-width: 768px) {
   body::before {
-    background-image: url('/mobilebackground.png');
+    background-image: url('/static/bihari.png');
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
   }
 }
 

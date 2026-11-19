@@ -872,6 +872,16 @@ async def serve_background():
     raise HTTPException(status_code=404, detail="Background not found")
 
 
+@app.get("/bihari.png")
+@app.get("/bihari.jpg")
+async def serve_bihari():
+    for f in [FRONTEND_DIR / "bihari.png", BASE_DIR / "bihari.png", FRONTEND_DIR / "bihari.jpg", BASE_DIR / "bihari.jpg"]:
+        if f.exists():
+            media = "image/png" if f.suffix == ".png" else "image/jpeg"
+            return FileResponse(f, media_type=media)
+    raise HTTPException(status_code=404, detail="File not found")
+
+
 FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 

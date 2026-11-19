@@ -13,6 +13,14 @@
       "destination": "/frontend/background-blur.jpg"
     },
     {
+      "source": "/bihari.png",
+      "destination": "/frontend/bihari.png"
+    },
+    {
+      "source": "/bihari.jpg",
+      "destination": "/frontend/bihari.jpg"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://book-mapping-pollution-lie.trycloudflare.com/api/:path*"
     }
