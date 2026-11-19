@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120e">
+  <link rel="stylesheet" href="/static/style.css?v=20261120f">
 </head>
 
 <body>
@@ -801,47 +801,31 @@
     </div>
   </div>
 
-  <!-- 🔒 Telegram 6-Hour Access Key Modal for Live Studio -->
+  <!-- 🔒 Telegram Access Key Modal -->
   <div id="live-key-modal" class="modal-backdrop hidden">
-    <div class="glass-card live-key-card">
-      <div class="modal-result-head">
-        <div class="live-key-badge">
-          <span class="live-dot"></span>
-          <span>LIVE STUDIO ACCESS KEY • 6-HOUR PASS</span>
-        </div>
+    <div class="glass-card live-key-card" style="max-width: 420px; padding: 1.5rem;">
+      <div class="modal-result-head" style="margin-bottom: 1.15rem;">
+        <a href="https://t.me/+PqPmXBG4M8A2MDJl" target="_blank" rel="noopener noreferrer" class="live-key-header-link" title="Open Telegram Channel">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="#10b981" class="tg-svg-icon">
+            <path
+              d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z" />
+          </svg>
+          <span class="live-key-header-title">Get the key from telegram ↗</span>
+        </a>
         <button type="button" id="live-key-close-x" class="banner-close" title="Close">×</button>
       </div>
-
-      <h3 class="live-key-title">🔒 Password Protected Live Studio</h3>
-      <p class="live-key-desc">
-        Live clipping runs dedicated GPU acceleration to capture and render real-time live streams into 9:16 Shorts.
-        Each access key is valid for <strong>6 hours</strong> and is posted on our Telegram channel!
-      </p>
-
-      <!-- Telegram Channel Link Button -->
-      <a href="https://t.me/+PqPmXBG4M8A2MDJl" target="_blank" rel="noopener noreferrer" class="btn-telegram-link">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="#ffffff" class="tg-svg-icon">
-          <path
-            d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z" />
-        </svg>
-        <span>👉 Get Key on Telegram Channel ↗</span>
-      </a>
 
       <!-- Key Input Form -->
       <form id="live-key-form" class="live-key-form" onsubmit="return false;">
         <div class="live-key-input-wrap">
-          <input type="text" id="live-access-key-input" placeholder="Enter 6-Hour Access Key" autocomplete="off">
+          <input type="text" id="live-access-key-input" placeholder="Enter key..." autocomplete="off">
         </div>
         <div id="live-key-error" class="unlock-gate-error hidden"></div>
-        <button type="button" id="live-key-submit-btn" class="btn-red" style="width:100%; margin-top:0.75rem;">
-          <span class="btn-text">⚡ Unlock Live Studio (6 Hours)</span>
+        <button type="button" id="live-key-submit-btn" class="btn-red" style="width:100%; margin-top:0.85rem;">
+          <span class="btn-text">Verify</span>
           <div class="spinner hidden"></div>
         </button>
       </form>
-
-      <div class="live-key-footer-note">
-        <span>🕒 Once unlocked, you get full access for 6 hours on this device.</span>
-      </div>
     </div>
   </div>
 
@@ -880,7 +864,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261120c"></script>
+  <script src="/static/app.js?v=20261120d"></script>
 </body>
 
 </html>

@@ -1476,7 +1476,7 @@ async function submitLiveAccessKey() {
     }
   } finally {
     submitBtn.disabled = false;
-    if (btnTxt) btnTxt.textContent = "⚡ Unlock Live Studio (6 Hours)";
+    if (btnTxt) btnTxt.textContent = "Verify";
     if (sp) sp.classList.add("hidden");
   }
 }
