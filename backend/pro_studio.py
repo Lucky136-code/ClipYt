@@ -298,21 +298,20 @@ def _download_dvr_by_sequence(
     live_edge_sec = (last_sq + 1) * chunk_dur
 
     req_dur = max(3.0, min(120.0, float(duration_sec)))
-    if start_time is not None and float(start_time) >= 0:
-        st = float(start_time)
-        # If user is at live edge (within 4s of live), record trailing req_dur
-        if st >= (live_edge_sec - 4.0):
-            target_start_sec = max(0.0, live_edge_sec - req_dur)
-        else:
-            # User rewound into the past: record forward starting from this exact second!
-            target_start_sec = st
-    elif rewind_sec is not None and float(rewind_sec) >= 3.0:
+    if rewind_sec is not None and float(rewind_sec) >= 3.0:
+        # User rewound into the stream's past: record forward starting from that moment
         target_start_sec = max(0.0, live_edge_sec - float(rewind_sec))
+    elif start_time is not None and float(start_time) > 10.0 and float(start_time) < (live_edge_sec - 4.0):
+        # Historical timestamp passed explicitly in broadcast coordinates
+        target_start_sec = float(start_time)
     else:
+        # At current live edge: record trailing req_dur
         target_start_sec = max(0.0, live_edge_sec - req_dur)
 
     target_sq = max(0, int(target_start_sec / chunk_dur))
     chunks_needed = max(2, math.ceil(req_dur / chunk_dur) + 1)
+    if (target_sq + chunks_needed) > (last_sq + 1):
+        target_sq = max(0, last_sq - chunks_needed + 1)
     chunk_start_sec = target_sq * chunk_dur
     sub_offset = max(0.0, round(target_start_sec - chunk_start_sec, 3))
 
@@ -1058,6 +1057,23 @@ def download_live_dvr_segment(
     res2 = _run_live_ffmpeg(None)
     if res2.returncode == 0 and output_path.exists() and output_path.stat().st_size > 20_000:
         return output_path, 0.0
+
+    # Fallback Strategy: Direct stream recording via yt-dlp
+    try:
+        if progress_cb:
+            progress_cb("Recording directly from live broadcast stream...", 32)
+        raw_dl, pad = download_clip_segment(
+            url=url,
+            video_id=video_id,
+            start_time=0.0,
+            end_time=duration_sec,
+            output_path=output_path,
+            progress_cb=progress_cb,
+        )
+        if raw_dl.exists() and raw_dl.stat().st_size > 20_000:
+            return raw_dl, pad
+    except Exception:
+        pass
 
     err_msg = (res2.stderr or res.stderr or "FFmpeg live download failed").strip()[:260]
     raise RuntimeError(f"Could not capture live stream clip: {err_msg}")

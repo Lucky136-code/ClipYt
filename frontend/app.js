@@ -877,7 +877,9 @@ function pollTaskProgress(taskId) {
       if (!res.ok) {
         clearInterval(timer);
         hideProgressModal();
-        showError("Lost connection while creating Short.");
+        const msg = "Lost connection while creating Short.";
+        showError(msg);
+        showProError(msg);
         return;
       }
 
@@ -892,7 +894,9 @@ function pollTaskProgress(taskId) {
         clearInterval(timer);
         fetchRateLimitStatus();
         hideProgressModal();
-        showError(task.error || task.message || "Short creation failed.");
+        const errText = task.error || task.message || "Short creation failed.";
+        showError(errText);
+        showProError(errText);
       }
     } catch (e) {
       console.error(e);
@@ -942,6 +946,35 @@ function showResultModal(result) {
   const dlBtn = document.getElementById("result-download-btn");
   dlBtn.href = result.download_url;
   dlBtn.setAttribute("download", result.filename);
+
+  // Reliable mobile WebView + browser direct download handler
+  if (dlBtn && !dlBtn.dataset.boundDownload) {
+    dlBtn.dataset.boundDownload = "1";
+    dlBtn.addEventListener("click", async (e) => {
+      const url = dlBtn.getAttribute("href");
+      const filename = dlBtn.getAttribute("download") || "ClipYT_Short.mp4";
+      if (!url || url === "#") return;
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+          }, 1500);
+          e.preventDefault();
+        }
+      } catch (err) {
+        // Fallback to normal anchor click behavior
+      }
+    });
+  }
 
   const hookBadge = result.climax_hook ? " • Climax Hook" : "";
   const proBadge = result.is_pro ? " • Live Studio" : "";
@@ -1895,41 +1928,40 @@ async function submitLiveClipExport() {
   const isLive = Boolean(proState.source.is_live);
   const dur = proState.clipDuration || 35;
 
-  let currentSec = proState.currentPlaySec;
-  let playerDur = proState.totalSec || 0;
-  if (ytLivePlayer) {
-    try {
-      if (typeof ytLivePlayer.getCurrentTime === "function") {
-        const liveCur = ytLivePlayer.getCurrentTime();
-        if (typeof liveCur === "number" && !isNaN(liveCur) && liveCur >= 0) {
-          currentSec = liveCur;
-        }
-      }
-      if (typeof ytLivePlayer.getDuration === "function") {
-        const liveDur = ytLivePlayer.getDuration();
-        if (typeof liveDur === "number" && !isNaN(liveDur) && liveDur > 0) {
-          playerDur = liveDur;
-          proState.totalSec = Math.floor(liveDur);
-        }
-      }
-    } catch (e) {}
-  }
+  const slider = document.getElementById("pro-scrubber-slider");
+  const total = proState.totalSec || (slider ? parseFloat(slider.max) : 300) || 300;
 
-  // Calculate rewind_sec: how many seconds behind the live edge the player is right now
+  // Use the timeline slider position as the primary authority for time positioning
+  let sliderVal = slider ? parseFloat(slider.value) : (proState.currentPlaySec || total);
+  if (isNaN(sliderVal) || sliderVal <= 0) sliderVal = total;
+
   let rewindSec = 0;
+  let startSec = 0;
+  let endSec = dur;
+
   if (isLive) {
-    if (playerDur > 0 && typeof currentSec === "number") {
-      rewindSec = Math.max(0, Math.round(playerDur - currentSec));
+    // If slider is within 6 seconds of the live edge, record live broadcast edge
+    if (sliderVal >= (total - 6)) {
+      rewindSec = 0;
+      startSec = Math.max(0, total - dur);
+      endSec = total;
     } else {
-      rewindSec = Math.max(0, Math.round((proState.totalSec || 0) - (proState.currentPlaySec || 0)));
+      rewindSec = Math.max(0, Math.round(total - sliderVal));
+      startSec = Math.max(0, Math.round(sliderVal));
+      endSec = startSec + dur;
     }
+  } else {
+    startSec = Math.max(0, Math.round(sliderVal));
+    endSec = startSec + dur;
+    rewindSec = 0;
   }
 
-  const startSec = Math.max(0, Math.floor(currentSec || 0));
-  const endSec = startSec + dur;
+  const streamUrl = document.getElementById("pro-youtube-url")?.value?.trim() ||
+    (proState.source?.video_id ? `https://www.youtube.com/watch?v=${proState.source.video_id}` : "") ||
+    proState.source?.url || "";
 
   const payload = {
-    url: document.getElementById("pro-youtube-url").value.trim(),
+    url: streamUrl,
     video_id: proState.source.video_id,
     is_live: isLive,
     duration_sec: dur,
@@ -1938,8 +1970,8 @@ async function submitLiveClipExport() {
     end_utc_ts: null,
     start_time: startSec,
     end_time: endSec,
-    cam_box: proState.boxes.cam,
-    stream_box: proState.boxes.stream,
+    cam_box: proState.boxes?.cam || { x: 0.69, y: 0.58, w: 0.28, h: 0.36 },
+    stream_box: proState.boxes?.stream || { x: 0.02, y: 0.03, w: 0.96, h: 0.94 },
     cam_ratio: proState.cam_ratio || 0.40,
     cam_position: proState.cam_position || "top",
     resolution: "1080p",
@@ -1949,8 +1981,8 @@ async function submitLiveClipExport() {
     access_key: proState.accessKey,
   };
 
-  const timeDesc = formatTime(startSec, (playerDur || proState.totalSec || 0) >= 3600);
-  showProgressModal(`Recording & rendering ${dur}s Short from ${timeDesc} (exact on-screen scene)...`);
+  const timeDesc = rewindSec > 0 ? `${rewindSec}s ago` : "Live Edge";
+  showProgressModal(`Recording & rendering ${dur}s Short (${timeDesc})...`);
 
   try {
     const res = await fetchWithTimeout("/api/pro/generate", {

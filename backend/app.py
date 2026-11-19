@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.config import (
     BASE_DIR,
@@ -157,10 +157,24 @@ class GenerateRequest(BaseModel):
 
 
 class BoxModel(BaseModel):
-    x: float = Field(ge=0.0, le=1.0)
-    y: float = Field(ge=0.0, le=1.0)
-    w: float = Field(ge=0.05, le=1.0)
-    h: float = Field(ge=0.05, le=1.0)
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 0.5
+    h: float = 0.5
+
+    @field_validator("x", "y", mode="before")
+    def clamp_coord(cls, v):
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except Exception:
+            return 0.0
+
+    @field_validator("w", "h", mode="before")
+    def clamp_size(cls, v):
+        try:
+            return max(0.05, min(1.0, float(v)))
+        except Exception:
+            return 0.5
 
 
 class LiveKeyVerifyRequest(BaseModel):
@@ -607,7 +621,10 @@ def _run_pro_generate_task(task_id: str, req: ProGenerateRequest):
     except Exception as e:
         with RENDER_LOCK:
             WAITING_QUEUE = max(0, WAITING_QUEUE - 1)
+        import traceback
+        traceback.print_exc()
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        print(f"[ERROR] Pro render failed for task {task_id}: {clean_err}")
         TASKS[task_id]["status"] = "failed"
         TASKS[task_id]["error"] = clean_err
         TASKS[task_id]["message"] = f"Pro render failed: {clean_err}"
@@ -787,6 +804,11 @@ async def api_download(filename: str):
         path=filepath,
         filename=safe_name,
         media_type="video/mp4",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
+            "Accept-Ranges": "bytes",
+            "Access-Control-Allow-Origin": "*",
+        },
     )
 
 
