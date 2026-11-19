@@ -1803,83 +1803,29 @@ function handleLiveTimeUpdate(cur, dur) {
   }
 
   const liveHead = proState.highestLiveSec || cur;
-  const lag = Math.max(0, Math.round(liveHead - cur));
-  proState.liveLagSec = lag;
+  proState.liveLagSec = 0;
+  proState.isLockedMoment = false;
 
-  if (!proState.isDraggingScrubber && !proState.isLockedMoment) {
-    syncScrubberUI(cur);
-  }
+  syncScrubberUI(cur);
 }
 
 window.toggleLockMoment = function () {
-  proState.isLockedMoment = !proState.isLockedMoment;
-  if (proState.isLockedMoment) {
-    proState.lockedLagSec = Math.max(0, proState.liveLagSec || 0);
-    proState.lockedPlaySec = proState.currentPlaySec || 0;
-  }
+  proState.isLockedMoment = false;
+  proState.liveLagSec = 0;
   updateLockMomentUI();
 };
 
 function updateLockMomentUI() {
-  const lockBtn = document.getElementById("btn-lock-moment");
   const badge = document.getElementById("pro-window-badge");
   const dur = proState.clipDuration || 35;
-  const lag = proState.isLockedMoment ? (proState.lockedLagSec || 0) : (proState.liveLagSec || 0);
-
-  if (lockBtn) {
-    if (proState.isLockedMoment) {
-      lockBtn.classList.add("active-locked");
-      lockBtn.innerHTML = "🔒 Moment Locked (Click to Unlock)";
-    } else {
-      lockBtn.classList.remove("active-locked");
-      lockBtn.innerHTML = "📌 Lock This Moment";
-    }
-  }
-
   if (badge) {
-    if (proState.isLockedMoment) {
-      const mins = Math.floor(lag / 60);
-      const secs = lag % 60;
-      const sStr = secs < 10 ? `0${secs}` : `${secs}`;
-      const timeStr = mins > 0 ? `${mins}m ${sStr}s ago` : `${sStr}s ago`;
-      badge.innerHTML = `<span style="color:#38bdf8;font-weight:700;">🔒 LOCKED:</span> ${lag > 5 ? timeStr : "Live Edge"} (${dur}s clip)`;
-    } else if (lag > 5) {
-      const mins = Math.floor(lag / 60);
-      const secs = lag % 60;
-      badge.textContent = `Rewound -${mins > 0 ? mins + "m " : ""}${secs}s (${dur}s clip)`;
-    } else {
-      badge.textContent = `Live Edge (${dur}s clip)`;
-    }
+    badge.textContent = `🔴 Live Edge (${dur}s clip)`;
   }
 }
 
 window.jumpLivePlayback = function (deltaSec) {
-  // deltaSec: negative to rewind (e.g. -60), positive to jump forward
-  const currentLag = proState.isLockedMoment ? (proState.lockedLagSec || 0) : (proState.liveLagSec || 0);
-  const newLag = Math.max(0, currentLag - deltaSec);
-  proState.liveLagSec = newLag;
-  if (proState.isLockedMoment) proState.lockedLagSec = newLag;
-
-  const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
-  const targetTime = Math.max(0, liveHead - newLag);
-  proState.currentPlaySec = targetTime;
-  if (proState.isLockedMoment) proState.lockedPlaySec = targetTime;
-
-  syncScrubberUI(targetTime);
-  updateLockMomentUI();
-
-  if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
-    try {
-      ytLivePlayer.seekTo(targetTime, true);
-      ytLivePlayer.playVideo();
-      return;
-    } catch (e) {}
-  }
-  const iframe = document.getElementById("pro-live-iframe");
-  if (iframe && iframe.contentWindow) {
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [targetTime, true] }), "*");
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
-  }
+  // Live clipper is strictly real-time edge: going back is disabled
+  jumpToLiveEdge();
 };
 
 window.jumpToLiveEdge = function () {
@@ -1924,42 +1870,15 @@ window.toggleLivePlayback = function () {
 };
 
 function seekLivePlayback(sec) {
-  // sec is passed from slider (0 .. 7200, where 7200 is LIVE)
-  const dvrWindow = 7200;
-  const lag = Math.max(0, dvrWindow - sec);
-  proState.liveLagSec = lag;
-
-  const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
-  const targetTime = Math.max(0, liveHead - lag);
-  proState.currentPlaySec = targetTime;
-  syncScrubberUI(targetTime);
-
-  if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
-    try {
-      ytLivePlayer.seekTo(targetTime, true);
-      ytLivePlayer.playVideo();
-      return;
-    } catch (e) {}
-  }
-
-  const iframe = document.getElementById("pro-live-iframe");
-  if (iframe && iframe.contentWindow) {
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [targetTime, true] }), "*");
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
-  }
+  // Live clipper is strictly real-time edge: going back is disabled
+  jumpToLiveEdge();
 }
 
 function syncScrubberUI(currentSec) {
-  const liveHead = Math.max(proState.highestLiveSec || 0, currentSec || 0);
-  const lag = Math.max(0, Math.round(liveHead - currentSec));
-  proState.liveLagSec = lag;
-
-  const dvrWindow = 7200; // 2 hour sliding range
+  proState.liveLagSec = 0;
   const slider = document.getElementById("pro-scrubber-slider");
-  if (slider && !proState.isDraggingScrubber) {
-    slider.min = 0;
-    slider.max = dvrWindow;
-    slider.value = Math.max(0, dvrWindow - lag);
+  if (slider) {
+    slider.value = slider.max || 300;
   }
 
   const curEl = document.getElementById("pro-tl-current");
@@ -1969,27 +1888,14 @@ function syncScrubberUI(currentSec) {
 
   const maxEl = document.getElementById("pro-tl-max");
   if (maxEl) {
-    if (lag > 5) {
-      const mins = Math.floor(lag / 60);
-      const secs = lag % 60;
-      maxEl.textContent = `⏪ -${mins > 0 ? mins + "m " : ""}${secs}s`;
-      maxEl.style.color = "#fbbf24";
-    } else {
-      maxEl.textContent = "🔴 LIVE";
-      maxEl.style.color = "#ef4444";
-    }
+    maxEl.textContent = "● LIVE";
+    maxEl.style.color = "#ef4444";
   }
 
   const dur = proState.clipDuration || 35;
   const badge = document.getElementById("pro-window-badge");
   if (badge) {
-    if (lag > 5) {
-      const mins = Math.floor(lag / 60);
-      const secs = lag % 60;
-      badge.textContent = `Rewound -${mins > 0 ? mins + "m " : ""}${secs}s (${dur}s clip)`;
-    } else {
-      badge.textContent = `Live Edge (${dur}s clip)`;
-    }
+    badge.textContent = `🔴 Live Edge (${dur}s clip)`;
   }
 }
 
@@ -2215,40 +2121,23 @@ async function submitLiveClipExport() {
   const isLive = Boolean(proState.source.is_live);
   const dur = proState.clipDuration || 35;
 
+  let cur = 0;
+  if (ytLivePlayer && typeof ytLivePlayer.getCurrentTime === "function") {
+    try {
+      const t = ytLivePlayer.getCurrentTime();
+      if (typeof t === "number" && !isNaN(t) && t >= 0) cur = t;
+    } catch (e) {}
+  }
+  if (!cur && proState.currentPlaySec) cur = proState.currentPlaySec;
+
   let rewindSec = 0;
-  if (proState.isLockedMoment && typeof proState.lockedLagSec === "number" && proState.lockedLagSec > 0) {
+  if (isLive) {
+    // Strictly Real-Time Live Edge: Never allow going back/rewinding in Live Clipper
+    rewindSec = 0;
+  } else if (proState.isLockedMoment && typeof proState.lockedLagSec === "number" && proState.lockedLagSec > 0) {
     rewindSec = proState.lockedLagSec;
   } else {
-    let cur = null;
-    if (ytLivePlayer && typeof ytLivePlayer.getCurrentTime === "function") {
-      try {
-        const t = ytLivePlayer.getCurrentTime();
-        if (typeof t === "number" && !isNaN(t) && t >= 0) cur = t;
-      } catch (e) {}
-    }
-    if (cur === null) cur = proState.currentPlaySec;
-
-    const liveHead = Math.max(proState.highestLiveSec || 0, cur || 0);
-    if (cur !== null && liveHead > 0) {
-      rewindSec = Math.max(0, Math.round(liveHead - cur));
-    } else {
-      rewindSec = proState.liveLagSec || 0;
-    }
-
-    // Also check if user dragged our scrubber slider
-    const slider = document.getElementById("pro-scrubber-slider");
-    if (slider && slider.max) {
-      const sMax = parseFloat(slider.max) || 7200;
-      const sVal = parseFloat(slider.value) || sMax;
-      const sLag = Math.max(0, Math.round(sMax - sVal));
-      if (sLag > 5 && (rewindSec < 5 || proState.isDraggingScrubber)) {
-        rewindSec = sLag;
-      }
-    }
-
-    if (rewindSec <= 5) {
-      rewindSec = 0;
-    }
+    rewindSec = 0;
   }
 
   const startSec = cur || 0;
