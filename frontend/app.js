@@ -136,19 +136,22 @@ function setupEventListeners() {
   });
 
   // Paste button
-  document.getElementById("paste-btn").addEventListener("click", async () => {
-    try {
-      const text = (await navigator.clipboard.readText()).trim();
-      if (text) {
-        urlInput.value = text;
-        if (looksLikeYouTubeUrl(text)) {
-          runFullAnalysis(text);
+  const pasteBtn = document.getElementById("paste-btn");
+  if (pasteBtn) {
+    pasteBtn.addEventListener("click", async () => {
+      try {
+        const text = (await navigator.clipboard.readText()).trim();
+        if (text) {
+          urlInput.value = text;
+          if (looksLikeYouTubeUrl(text)) {
+            runFullAnalysis(text);
+          }
         }
+      } catch (e) {
+        urlInput.focus();
       }
-    } catch (e) {
-      urlInput.focus();
-    }
-  });
+    });
+  }
 
   // Explore demo clips tab
   const demoClipsBtn = document.getElementById("demo-clips-btn");
