@@ -316,7 +316,7 @@ def _download_dvr_by_sequence(
     req_dur = max(3.0, min(120.0, float(duration_sec)))
 
     # In Live Studio, rewind_sec represents how many seconds behind the live screen edge the user wants.
-    if rewind_sec is not None and float(rewind_sec) >= 6.0:
+    if rewind_sec is not None and float(rewind_sec) >= 4.0:
         # User scrubbed back into the past on the live timeline:
         target_start_sec = max(0.0, screen_head_sec - float(rewind_sec))
         target_end_sec = target_start_sec + req_dur
@@ -399,7 +399,7 @@ def _download_dvr_ts_slice(
         req_dur = max(3.0, min(120.0, float(duration_sec)))
         LIVE_PLAYER_LATENCY_SEC = 16.0
         screen_dur = max(0.0, total_dur - LIVE_PLAYER_LATENCY_SEC)
-        if eff_rewind >= 6.0:
+        if eff_rewind >= 4.0:
             # User rewound into the stream's past:
             win_start = max(0.0, screen_dur - eff_rewind)
             win_end = min(total_dur, win_start + req_dur)
@@ -920,7 +920,7 @@ def download_live_dvr_segment(
     if progress_cb:
         if start_utc_ts is not None and end_utc_ts is not None:
             progress_cb(f"Grabbing exact {int(duration_sec)}s recorded slice in 1080p HD...", 24)
-        elif rewind_sec >= 6.0:
+        elif rewind_sec >= 4.0:
             mins = int(rewind_sec // 60)
             secs = int(rewind_sec % 60)
             ago_txt = f"{mins}m {secs:02d}s ago" if mins > 0 else f"{secs}s ago"

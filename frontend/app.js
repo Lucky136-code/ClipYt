@@ -1585,8 +1585,7 @@ function setupProStudio() {
   if (scrubber) {
     scrubber.addEventListener("input", (e) => {
       proState.isDraggingScrubber = true;
-      const sec = parseInt(e.target.value, 10);
-      seekLivePlayback(sec);
+      seekLivePlayback(parseInt(e.target.value, 10));
     });
     scrubber.addEventListener("change", () => {
       proState.isDraggingScrubber = false;
@@ -1639,9 +1638,28 @@ window.onYouTubeIframeAPIReady = function () {
   ytPlayerReady = true;
 };
 
+// YouTube IFrame postMessage listener for instant, real-time live playback tracking
+window.addEventListener("message", (e) => {
+  if (typeof e.origin === "string" && (e.origin.includes("youtube.com") || e.origin.includes("youtube-nocookie.com"))) {
+    try {
+      const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+      if (data && data.event === "infoDelivery" && data.info) {
+        const info = data.info;
+        if (typeof info.currentTime === "number" && !isNaN(info.currentTime)) {
+          handleLiveTimeUpdate(info.currentTime, info.duration);
+        }
+      }
+    } catch (err) {}
+  }
+});
+
 function loadLiveStreamInPlayer(videoId) {
   const embedWrap = document.getElementById("pro-yt-embed-wrap");
   if (!embedWrap) return;
+
+  proState.highestLiveSec = 0;
+  proState.liveLagSec = 0;
+  proState.currentPlaySec = 0;
 
   embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
@@ -1663,24 +1681,12 @@ function loadLiveStreamInPlayer(videoId) {
               if (typeof e.target.setPlaybackQuality === "function") {
                 e.target.setPlaybackQuality("hd1080");
               }
-              if (typeof e.target.suggestedQuality !== "undefined") {
-                e.target.suggestedQuality = "hd1080";
-              }
             } catch (err) {}
             try { e.target.playVideo(); } catch (err) {}
             startPlayerTracking();
           },
-          onPlaybackQualityChange: (e) => {
-            if (e.data && e.data !== "hd1080") {
-              try {
-                if (typeof e.target.setPlaybackQuality === "function") {
-                  e.target.setPlaybackQuality("hd1080");
-                }
-              } catch (err) {}
-            }
-          },
           onStateChange: (e) => {
-            if (e.data === 1) {
+            if (e.data === 1) { // PLAYING
               try {
                 if (typeof e.target.setPlaybackQuality === "function") {
                   e.target.setPlaybackQuality("hd1080");
@@ -1701,8 +1707,6 @@ function loadLiveStreamInPlayer(videoId) {
 function startPlayerTracking() {
   if (proState.trackerId) clearInterval(proState.trackerId);
   proState.trackerId = setInterval(() => {
-    if (proState.isDraggingScrubber) return;
-
     let cur = null;
     let dur = null;
     if (ytLivePlayer) {
@@ -1711,26 +1715,73 @@ function startPlayerTracking() {
         if (typeof ytLivePlayer.getDuration === "function") dur = ytLivePlayer.getDuration();
       } catch (e) {}
     }
-
-    if (typeof dur === "number" && !isNaN(dur) && dur > 10) {
-      proState.totalSec = Math.floor(dur);
-    }
-
     if (typeof cur === "number" && !isNaN(cur) && cur >= 0) {
-      proState.currentPlaySec = cur;
-      syncScrubberUI(cur);
+      handleLiveTimeUpdate(cur, dur);
     }
-  }, 400);
+  }, 350);
+}
+
+function handleLiveTimeUpdate(cur, dur) {
+  if (typeof cur !== "number" || isNaN(cur) || cur < 0) return;
+  proState.currentPlaySec = cur;
+
+  // Track the highest playback timestamp seen — this is our true real-time live head
+  if (cur > (proState.highestLiveSec || 0)) {
+    proState.highestLiveSec = cur;
+  }
+  if (typeof dur === "number" && !isNaN(dur) && dur > 10) {
+    if (dur > (proState.highestLiveSec || 0)) {
+      proState.highestLiveSec = dur;
+    }
+  }
+
+  const liveHead = proState.highestLiveSec || cur;
+  const lag = Math.max(0, Math.round(liveHead - cur));
+  proState.liveLagSec = lag;
+
+  if (!proState.isDraggingScrubber) {
+    syncScrubberUI(cur);
+  }
 }
 
 window.jumpLivePlayback = function (deltaSec) {
-  const current = proState.currentPlaySec || 0;
-  const target = Math.max(0, current + deltaSec);
-  seekLivePlayback(target);
+  // deltaSec: negative to rewind (e.g. -60), positive to jump forward
+  const currentLag = proState.liveLagSec || 0;
+  const newLag = Math.max(0, currentLag - deltaSec);
+  proState.liveLagSec = newLag;
+  const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
+  const targetTime = Math.max(0, liveHead - newLag);
+  proState.currentPlaySec = targetTime;
+
+  if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
+    try {
+      ytLivePlayer.seekTo(targetTime, true);
+      ytLivePlayer.playVideo();
+      return;
+    } catch (e) {}
+  }
+  const iframe = document.getElementById("pro-live-iframe");
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [targetTime, true] }), "*");
+  }
 };
 
 window.jumpToLiveEdge = function () {
-  seekLivePlayback(proState.totalSec || 999999);
+  proState.liveLagSec = 0;
+  const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
+  proState.currentPlaySec = liveHead;
+  if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
+    try {
+      ytLivePlayer.seekTo(liveHead + 10, true);
+      ytLivePlayer.playVideo();
+      return;
+    } catch (e) {}
+  }
+  const iframe = document.getElementById("pro-live-iframe");
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [liveHead + 10, true] }), "*");
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
+  }
 };
 
 window.toggleLivePlayback = function () {
@@ -1752,12 +1803,19 @@ window.toggleLivePlayback = function () {
 };
 
 function seekLivePlayback(sec) {
-  proState.currentPlaySec = sec;
-  syncScrubberUI(sec);
+  // sec is passed from slider (0 .. 7200, where 7200 is LIVE)
+  const dvrWindow = 7200;
+  const lag = Math.max(0, dvrWindow - sec);
+  proState.liveLagSec = lag;
+
+  const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
+  const targetTime = Math.max(0, liveHead - lag);
+  proState.currentPlaySec = targetTime;
+  syncScrubberUI(targetTime);
 
   if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
     try {
-      ytLivePlayer.seekTo(sec, true);
+      ytLivePlayer.seekTo(targetTime, true);
       ytLivePlayer.playVideo();
       return;
     } catch (e) {}
@@ -1765,43 +1823,52 @@ function seekLivePlayback(sec) {
 
   const iframe = document.getElementById("pro-live-iframe");
   if (iframe && iframe.contentWindow) {
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [sec, true] }), "*");
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [targetTime, true] }), "*");
     iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
   }
 }
 
 function syncScrubberUI(currentSec) {
-  const total = Math.max(10, proState.totalSec || 300);
-  const useH = total >= 3600;
-  const clamped = Math.max(0, Math.min(total, currentSec));
-  proState.currentPlaySec = clamped;
+  const liveHead = Math.max(proState.highestLiveSec || 0, currentSec || 0);
+  const lag = Math.max(0, Math.round(liveHead - currentSec));
+  proState.liveLagSec = lag;
 
+  const dvrWindow = 7200; // 2 hour sliding range
   const slider = document.getElementById("pro-scrubber-slider");
   if (slider && !proState.isDraggingScrubber) {
-    slider.max = total;
-    slider.value = clamped;
+    slider.min = 0;
+    slider.max = dvrWindow;
+    slider.value = Math.max(0, dvrWindow - lag);
   }
 
   const curEl = document.getElementById("pro-tl-current");
-  if (curEl) curEl.textContent = formatTime(clamped, useH);
+  if (curEl) {
+    curEl.textContent = formatTime(currentSec, currentSec >= 3600);
+  }
 
   const maxEl = document.getElementById("pro-tl-max");
   if (maxEl) {
-    const behind = Math.max(0, Math.round(total - clamped));
-    if (behind > 5) {
-      const mins = Math.floor(behind / 60);
-      const secs = behind % 60;
+    if (lag > 5) {
+      const mins = Math.floor(lag / 60);
+      const secs = lag % 60;
       maxEl.textContent = `⏪ -${mins > 0 ? mins + "m " : ""}${secs}s`;
+      maxEl.style.color = "#fbbf24";
     } else {
       maxEl.textContent = "🔴 LIVE";
+      maxEl.style.color = "#ef4444";
     }
   }
 
   const dur = proState.clipDuration || 35;
-  const endSec = Math.min(total, clamped + dur);
   const badge = document.getElementById("pro-window-badge");
   if (badge) {
-    badge.textContent = `${formatTime(clamped, useH)} ➔ ${formatTime(endSec, useH)} (${dur}s)`;
+    if (lag > 5) {
+      const mins = Math.floor(lag / 60);
+      const secs = lag % 60;
+      badge.textContent = `Rewound -${mins > 0 ? mins + "m " : ""}${secs}s (${dur}s clip)`;
+    } else {
+      badge.textContent = `Live Edge (${dur}s clip)`;
+    }
   }
 }
 
@@ -2027,33 +2094,41 @@ async function submitLiveClipExport() {
   const isLive = Boolean(proState.source.is_live);
   const dur = proState.clipDuration || 35;
 
-  const slider = document.getElementById("pro-scrubber-slider");
-  const total = proState.totalSec || (slider ? parseFloat(slider.max) : 300) || 300;
-
-  // Use the timeline slider position as the primary authority for time positioning
-  let sliderVal = slider ? parseFloat(slider.value) : (proState.currentPlaySec || total);
-  if (isNaN(sliderVal) || sliderVal <= 0) sliderVal = total;
-
   let rewindSec = 0;
-  let startSec = 0;
-  let endSec = dur;
+  let cur = null;
+  if (ytLivePlayer && typeof ytLivePlayer.getCurrentTime === "function") {
+    try {
+      const t = ytLivePlayer.getCurrentTime();
+      if (typeof t === "number" && !isNaN(t) && t >= 0) cur = t;
+    } catch (e) {}
+  }
+  if (cur === null) cur = proState.currentPlaySec;
 
-  if (isLive) {
-    // If slider is within 6 seconds of the live edge, record live broadcast edge
-    if (sliderVal >= (total - 6)) {
-      rewindSec = 0;
-      startSec = Math.max(0, total - dur);
-      endSec = total;
-    } else {
-      rewindSec = Math.max(0, Math.round(total - sliderVal));
-      startSec = Math.max(0, Math.round(sliderVal));
-      endSec = startSec + dur;
-    }
+  const liveHead = Math.max(proState.highestLiveSec || 0, cur || 0);
+  if (cur !== null && liveHead > 0) {
+    rewindSec = Math.max(0, Math.round(liveHead - cur));
   } else {
-    startSec = Math.max(0, Math.round(sliderVal));
-    endSec = startSec + dur;
+    rewindSec = proState.liveLagSec || 0;
+  }
+
+  // Also check if user dragged our scrubber slider
+  const slider = document.getElementById("pro-scrubber-slider");
+  if (slider && slider.max) {
+    const sMax = parseFloat(slider.max) || 7200;
+    const sVal = parseFloat(slider.value) || sMax;
+    const sLag = Math.max(0, Math.round(sMax - sVal));
+    if (sLag > 5 && (rewindSec < 5 || proState.isDraggingScrubber)) {
+      rewindSec = sLag;
+    }
+  }
+
+  // Threshold: within 5s of live edge is treated as pure live edge
+  if (rewindSec <= 5) {
     rewindSec = 0;
   }
+
+  const startSec = cur || 0;
+  const endSec = startSec + dur;
 
   const streamUrl = document.getElementById("pro-youtube-url")?.value?.trim() ||
     (proState.source?.video_id ? `https://www.youtube.com/watch?v=${proState.source.video_id}` : "") ||
