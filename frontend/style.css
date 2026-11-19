@@ -3336,6 +3336,49 @@ input:checked + .slider:before {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
+/* Dual Box Tabs & Active Focus Styling */
+.box-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+.box-dot.cam-dot {
+  background: #a855f7;
+  box-shadow: 0 0 6px rgba(168, 85, 247, 0.6);
+}
+.box-dot.stream-dot {
+  background: #0284c7;
+  box-shadow: 0 0 6px rgba(2, 132, 199, 0.6);
+}
+
+.vod-dual-box-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.vod-box-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.crop-box.is-active-box {
+  z-index: 10 !important;
+}
+.crop-box-cam.is-active-box {
+  border-color: #c084fc;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.45), 0 8px 24px rgba(124, 58, 237, 0.4);
+}
+.crop-box-stream.is-active-box {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.45), 0 8px 24px rgba(2, 132, 199, 0.4);
+}
+
 .stage-mini-pill:hover,
 .stage-mini-pill:active {
   background: rgba(124, 58, 237, 0.1);

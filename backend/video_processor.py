@@ -261,8 +261,10 @@ def _measure_exact_leading_pad(
             return fallback_pad
         meta = json.loads(res.stdout or "{}")
         fmt_start = float((meta.get("format") or {}).get("start_time") or 0.0)
-        # When -copyts preserved original YouTube PTS (e.g. 592.633s for a clip at 600.0s):
-        # FFmpeg input t=0.0 corresponds to fmt_start, so exact seek to clip_start is clip_start - fmt_start!
+        # When normal non-copyts cut starts around 0.000s, exact lead-in is fallback_pad (clip_start - pad_start)
+        if fmt_start <= 1.0:
+            return round(fallback_pad, 3)
+        # If the container preserved high original PTS (e.g. HLS sequence):
         if fmt_start > 1.0 and fmt_start <= clip_start and (clip_start - fmt_start) < 25.0:
             return round(clip_start - fmt_start, 3)
     except Exception:
@@ -316,7 +318,6 @@ def download_clip_segment(
     dl_common = {
         "download_ranges": download_range_func(None, [(pad_start, pad_end)]),
         "force_keyframes_at_cuts": False,  # Stream copy (-c copy) -> instant!
-        "external_downloader_args": {"ffmpeg_i": ["-copyts"]},
         "outtmpl": str(output_path.with_suffix(".%(ext)s")),
         "merge_output_format": "mp4",
         "nopart": True,

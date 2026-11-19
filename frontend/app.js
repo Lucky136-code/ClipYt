@@ -2224,9 +2224,10 @@ const vodState = {
   isDraggingScrubber: false,
   cam_position: "top",
   cam_ratio: 0.40,
+  activeBox: "cam",
   boxes: {
-    cam: { x: 0.69, y: 0.58, w: 0.28, h: 0.36 },    // Streamer (Facecam)
-    stream: { x: 0.02, y: 0.03, w: 0.96, h: 0.94 }, // Display (Screen)
+    cam: { x: 0.70, y: 0.58, w: 0.28, h: 0.36 },    // Streamer Facecam in bottom-right
+    stream: { x: 0.02, y: 0.04, w: 0.66, h: 0.92 }, // Display Screen (left/center gameplay area)
   },
   trackerId: null,
 };
@@ -2307,21 +2308,21 @@ window.toggleVodPlayback = function () {
 };
 
 function seekVodPlayback(sec) {
-  vodState.currentPlaySec = sec;
-  syncVodScrubberUI(sec);
+  const total = Math.max(10, vodState.totalSec || 300);
+  const clamped = Math.max(0, Math.min(total, sec));
+  vodState.currentPlaySec = clamped;
+  syncVodScrubberUI(clamped);
 
   if (ytVodPlayer && typeof ytVodPlayer.seekTo === "function") {
     try {
-      ytVodPlayer.seekTo(sec, true);
-      ytVodPlayer.playVideo();
+      ytVodPlayer.seekTo(clamped, true);
       return;
     } catch (e) {}
   }
 
   const iframe = document.getElementById("vod-live-iframe");
   if (iframe && iframe.contentWindow) {
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [sec, true] }), "*");
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
+    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [clamped, true] }), "*");
   }
 }
 
@@ -2431,6 +2432,7 @@ async function inspectVodStream(url) {
     document.getElementById("vod-editor-wrap").classList.remove("hidden");
     requestAnimationFrame(syncVodBoxesToDOM);
     syncVodScrubberUI(0);
+    selectVodActiveBox("cam");
   } catch (err) {
     showVodError(err.message || "Failed to load ended stream VOD.");
   } finally {
@@ -2438,18 +2440,52 @@ async function inspectVodStream(url) {
   }
 }
 
-window.applyVodCamPreset = function (preset) {
-  if (preset === "tl") {
-    vodState.boxes.cam = { x: 0.03, y: 0.04, w: 0.28, h: 0.35 };
-  } else if (preset === "tr") {
-    vodState.boxes.cam = { x: 0.69, y: 0.04, w: 0.28, h: 0.35 };
-  } else if (preset === "bl") {
-    vodState.boxes.cam = { x: 0.03, y: 0.61, w: 0.28, h: 0.35 };
-  } else if (preset === "br") {
-    vodState.boxes.cam = { x: 0.69, y: 0.61, w: 0.28, h: 0.35 };
-  } else {
-    vodState.boxes.cam = { x: 0.68, y: 0.58, w: 0.28, h: 0.36 };
+window.selectVodActiveBox = function (boxKey) {
+  vodState.activeBox = boxKey;
+  const camBtn = document.getElementById("btn-select-box-cam");
+  const streamBtn = document.getElementById("btn-select-box-stream");
+  const camBox = document.getElementById("box-vod-cam");
+  const streamBox = document.getElementById("box-vod-stream");
+  const camPresets = document.getElementById("vod-cam-presets");
+  const streamPresets = document.getElementById("vod-stream-presets");
+
+  if (camBtn) camBtn.classList.toggle("active", boxKey === "cam");
+  if (streamBtn) streamBtn.classList.toggle("active", boxKey === "stream");
+
+  if (camBox) camBox.classList.toggle("is-active-box", boxKey === "cam");
+  if (streamBox) streamBox.classList.toggle("is-active-box", boxKey === "stream");
+
+  if (camPresets) camPresets.classList.toggle("hidden", boxKey !== "cam");
+  if (streamPresets) streamPresets.classList.toggle("hidden", boxKey !== "stream");
+};
+
+window.applyVodDisplayPreset = function (preset) {
+  selectVodActiveBox("stream");
+  if (preset === "full") {
     vodState.boxes.stream = { x: 0.02, y: 0.03, w: 0.96, h: 0.94 };
+  } else if (preset === "left") {
+    vodState.boxes.stream = { x: 0.02, y: 0.04, w: 0.66, h: 0.92 };
+  } else if (preset === "center") {
+    vodState.boxes.stream = { x: 0.17, y: 0.04, w: 0.66, h: 0.92 };
+  } else if (preset === "right") {
+    vodState.boxes.stream = { x: 0.32, y: 0.04, w: 0.66, h: 0.92 };
+  }
+  syncVodBoxesToDOM();
+};
+
+window.applyVodCamPreset = function (preset) {
+  selectVodActiveBox("cam");
+  if (preset === "tl") {
+    vodState.boxes.cam = { x: 0.03, y: 0.04, w: 0.28, h: 0.36 };
+  } else if (preset === "tr") {
+    vodState.boxes.cam = { x: 0.69, y: 0.04, w: 0.28, h: 0.36 };
+  } else if (preset === "bl") {
+    vodState.boxes.cam = { x: 0.03, y: 0.58, w: 0.28, h: 0.36 };
+  } else if (preset === "br") {
+    vodState.boxes.cam = { x: 0.69, y: 0.58, w: 0.28, h: 0.36 };
+  } else {
+    vodState.boxes.cam = { x: 0.70, y: 0.58, w: 0.28, h: 0.36 };
+    vodState.boxes.stream = { x: 0.02, y: 0.04, w: 0.66, h: 0.92 };
   }
   syncVodBoxesToDOM();
 };
@@ -2490,6 +2526,7 @@ function setupVodDualBoxInteractions() {
     const handle = handleEl ? handleEl.getAttribute("data-handle") : "move";
     const stageRect = stage.getBoundingClientRect();
 
+    selectVodActiveBox(key);
     boxEl.classList.add("is-dragging");
     const captureEl = e.target;
     try {
@@ -2516,8 +2553,8 @@ function setupVodDualBoxInteractions() {
     const dx = (e.clientX - dragCtx.startX) / dragCtx.stageRect.width;
     const dy = (e.clientY - dragCtx.startY) / dragCtx.stageRect.height;
     const o = dragCtx.orig;
-    const minW = 0.12;
-    const minH = 0.14;
+    const minW = 0.10;
+    const minH = 0.10;
     let { x, y, w, h } = o;
 
     if (dragCtx.handle === "move") {
@@ -2566,8 +2603,22 @@ async function submitVodClipExport() {
   hideVodError();
   const dur = vodState.clipDuration || 35;
   const slider = document.getElementById("vod-scrubber-slider");
-  let startSec = slider ? parseFloat(slider.value) : (vodState.currentPlaySec || 0);
+
+  // Sample exact playback position from player if active, otherwise scrubber slider
+  let startSec = 0;
+  if (ytVodPlayer && typeof ytVodPlayer.getCurrentTime === "function") {
+    try {
+      const pTime = ytVodPlayer.getCurrentTime();
+      if (typeof pTime === "number" && !isNaN(pTime) && pTime >= 0) {
+        startSec = pTime;
+      }
+    } catch (e) {}
+  }
+  if (startSec <= 0) {
+    startSec = slider ? parseFloat(slider.value) : (vodState.currentPlaySec || 0);
+  }
   if (isNaN(startSec) || startSec < 0) startSec = 0;
+  startSec = Math.round(startSec * 10) / 10;
   const endSec = startSec + dur;
 
   const streamUrl = document.getElementById("vod-youtube-url")?.value?.trim() ||
@@ -2584,8 +2635,8 @@ async function submitVodClipExport() {
     end_utc_ts: null,
     start_time: startSec,
     end_time: endSec,
-    cam_box: vodState.boxes?.cam || { x: 0.69, y: 0.58, w: 0.28, h: 0.36 },
-    stream_box: vodState.boxes?.stream || { x: 0.02, y: 0.03, w: 0.96, h: 0.94 },
+    cam_box: vodState.boxes?.cam || { x: 0.70, y: 0.58, w: 0.28, h: 0.36 },
+    stream_box: vodState.boxes?.stream || { x: 0.02, y: 0.04, w: 0.66, h: 0.92 },
     cam_ratio: vodState.cam_ratio || 0.40,
     cam_position: vodState.cam_position || "top",
     resolution: "1080p",
@@ -2595,7 +2646,7 @@ async function submitVodClipExport() {
     access_key: proState.accessKey,
   };
 
-  showProgressModal(`Rendering ${dur}s Dual-Box VOD Short (${formatTime(startSec)} - ${formatTime(endSec)})...`);
+  showProgressModal(`Rendering ${dur}s Dual-Box VOD Short (${formatTime(startSec)} ➔ ${formatTime(endSec)})...`);
 
   try {
     const res = await fetchWithTimeout("/api/pro/generate", {
@@ -2716,4 +2767,8 @@ function setupVodStudio() {
   window.addEventListener("resize", () => {
     if (proState.mode === "vod" && vodState.source) syncVodBoxesToDOM();
   });
+
+  // Initial Sync
+  syncVodBoxesToDOM();
+  selectVodActiveBox("cam");
 }

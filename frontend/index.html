@@ -574,15 +574,38 @@
             </div>
           </div>
 
-          <!-- Quick Corner Presets Toolbar -->
-          <div class="pro-stage-presets-bar">
-            <span class="preset-label">🎯 Streamer Presets:</span>
-            <div class="preset-buttons-group">
+          <!-- Quick Dual-Box Controls: Streamer Box + Display Box -->
+          <div class="pro-stage-presets-bar vod-dual-box-bar">
+            <!-- Active Box Selection Tabs -->
+            <div class="vod-box-select-row">
+              <span class="preset-label">🎯 Edit Box:</span>
+              <div class="pill-group" id="vod-active-box-picker">
+                <button type="button" class="choice-pill active" id="btn-select-box-cam" onclick="selectVodActiveBox('cam')">
+                  <span class="box-dot cam-dot"></span>
+                  <span>Streamer (Facecam)</span>
+                </button>
+                <button type="button" class="choice-pill" id="btn-select-box-stream" onclick="selectVodActiveBox('stream')">
+                  <span class="box-dot stream-dot"></span>
+                  <span>Display (Screen)</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Presets Group for Currently Active Box -->
+            <div class="preset-buttons-group" id="vod-cam-presets">
+              <span class="preset-label" style="font-size:0.72rem; color:#a855f7;">🟣 Streamer Presets:</span>
               <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('tl')">Top-Left</button>
               <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('tr')">Top-Right</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('bl')">Bottom-Left</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('br')">Bottom-Right</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('bl')">Btm-Left</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('br')">Btm-Right</button>
               <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('reset')">Reset</button>
+            </div>
+            <div class="preset-buttons-group hidden" id="vod-stream-presets">
+              <span class="preset-label" style="font-size:0.72rem; color:#0284c7;">🔵 Display Presets:</span>
+              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('full')">Full Screen</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('left')">Left Game</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('center')">Center Game</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('right')">Right Game</button>
             </div>
           </div>
 
