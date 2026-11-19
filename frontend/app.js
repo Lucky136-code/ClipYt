@@ -1715,6 +1715,13 @@ window.addEventListener("message", (e) => {
         if (typeof info.currentTime === "number" && !isNaN(info.currentTime)) {
           handleLiveTimeUpdate(info.currentTime, info.duration);
         }
+        // Auto-resume if YouTube pauses on its own without user interaction
+        if (info.playerState === 2 && !proState.userExplicitPaused) {
+          const iframe = document.getElementById("pro-live-iframe");
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
+          }
+        }
       }
     } catch (err) {}
   }
@@ -1727,8 +1734,9 @@ function loadLiveStreamInPlayer(videoId) {
   proState.highestLiveSec = 0;
   proState.liveLagSec = 0;
   proState.currentPlaySec = 0;
+  proState.userExplicitPaused = false;
 
-  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
@@ -1736,29 +1744,19 @@ function loadLiveStreamInPlayer(videoId) {
         playerVars: {
           autoplay: 1,
           playsinline: 1,
-          vq: "hd1080",
-          suggestedQuality: "hd1080",
           modestbranding: 1,
           rel: 0,
         },
         events: {
           onReady: (e) => {
             ytPlayerReady = true;
-            try {
-              if (typeof e.target.setPlaybackQuality === "function") {
-                e.target.setPlaybackQuality("hd1080");
-              }
-            } catch (err) {}
             try { e.target.playVideo(); } catch (err) {}
             startPlayerTracking();
           },
           onStateChange: (e) => {
-            if (e.data === 1) { // PLAYING
-              try {
-                if (typeof e.target.setPlaybackQuality === "function") {
-                  e.target.setPlaybackQuality("hd1080");
-                }
-              } catch (err) {}
+            // Never allow live stream to get paused automatically
+            if (e.data === 2 && !proState.userExplicitPaused) {
+              try { e.target.playVideo(); } catch (err) {}
             }
           },
         },
@@ -1780,6 +1778,13 @@ function startPlayerTracking() {
       try {
         if (typeof ytLivePlayer.getCurrentTime === "function") cur = ytLivePlayer.getCurrentTime();
         if (typeof ytLivePlayer.getDuration === "function") dur = ytLivePlayer.getDuration();
+        // Keep live stream playing automatically unless user explicitly paused
+        if (!proState.userExplicitPaused && typeof ytLivePlayer.getPlayerState === "function") {
+          const s = ytLivePlayer.getPlayerState();
+          if (s === 2 || s === 0) { // PAUSED or ENDED/STALLED
+            ytLivePlayer.playVideo();
+          }
+        }
       } catch (e) {}
     }
     if (typeof cur === "number" && !isNaN(cur) && cur >= 0) {
@@ -1832,40 +1837,49 @@ window.jumpToLiveEdge = function () {
   proState.liveLagSec = 0;
   proState.isLockedMoment = false;
   proState.lockedLagSec = 0;
+  proState.userExplicitPaused = false;
   const liveHead = proState.highestLiveSec || proState.currentPlaySec || 0;
   proState.currentPlaySec = liveHead;
   updateLockMomentUI();
   syncScrubberUI(liveHead);
 
-  if (ytLivePlayer && typeof ytLivePlayer.seekTo === "function") {
+  if (ytLivePlayer && typeof ytLivePlayer.playVideo === "function") {
     try {
-      ytLivePlayer.seekTo(liveHead + 10, true);
       ytLivePlayer.playVideo();
       return;
     } catch (e) {}
   }
   const iframe = document.getElementById("pro-live-iframe");
   if (iframe && iframe.contentWindow) {
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [liveHead + 10, true] }), "*");
     iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
   }
 };
 
 window.toggleLivePlayback = function () {
+  const iframe = document.getElementById("pro-live-iframe");
+  let isPlaying = false;
   if (ytLivePlayer && typeof ytLivePlayer.getPlayerState === "function") {
     try {
-      const state = ytLivePlayer.getPlayerState();
-      if (state === 1) { // PLAYING
-        ytLivePlayer.pauseVideo();
-      } else {
-        ytLivePlayer.playVideo();
-      }
-      return;
+      isPlaying = (ytLivePlayer.getPlayerState() === 1);
     } catch (e) {}
   }
-  const iframe = document.getElementById("pro-live-iframe");
-  if (iframe && iframe.contentWindow) {
-    iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "pauseVideo" }), "*");
+
+  if (isPlaying) {
+    proState.userExplicitPaused = true;
+    if (ytLivePlayer && typeof ytLivePlayer.pauseVideo === "function") {
+      try { ytLivePlayer.pauseVideo(); } catch (e) {}
+    }
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "pauseVideo" }), "*");
+    }
+  } else {
+    proState.userExplicitPaused = false;
+    if (ytLivePlayer && typeof ytLivePlayer.playVideo === "function") {
+      try { ytLivePlayer.playVideo(); } catch (e) {}
+    }
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
+    }
   }
 };
 
