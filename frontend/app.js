@@ -966,6 +966,11 @@ function showResultModal(result) {
   const videoEl = document.getElementById("result-video");
   if (videoEl) {
     videoEl.preload = "metadata";
+    videoEl.onerror = () => {
+      // Prevent browser infinite 404 reconnect storm if clip expired
+      videoEl.removeAttribute("src");
+      videoEl.load();
+    };
     videoEl.src = result.download_url;
   }
 

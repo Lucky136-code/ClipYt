@@ -803,7 +803,12 @@ async def api_download(filename: str):
     safe_name = Path(filename).name
     filepath = TEMP_DIR / safe_name
     if not filepath.exists() or not filepath.is_file():
-        raise HTTPException(status_code=404, detail="Video expired or not found")
+        return Response(
+            status_code=404,
+            content="Video expired or not found",
+            media_type="text/plain",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
     file_size = filepath.stat().st_size
     return FastDownloadFileResponse(
         path=filepath,
