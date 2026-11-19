@@ -64,9 +64,9 @@ WAITING_QUEUE = 0
 # RATE LIMITING: 3 YOUTUBE LINK PASTES/ANALYSES PER 4 HOURS (14,400s) PER CLIENT IP
 # Users can export and download generated shorts unlimited times from their analyzed videos!
 # =========================================================================
-RATE_LIMIT_MAX_LINKS = 3
-RATE_LIMIT_MAX_CLIPS = 3
-RATE_LIMIT_WINDOW_SECONDS = 4 * 3600  # 4 hours
+RATE_LIMIT_MAX_LINKS = 999999
+RATE_LIMIT_MAX_CLIPS = 999999
+RATE_LIMIT_WINDOW_SECONDS = 0
 PASTE_RATE_LIMITS: Dict[str, List[float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
 
@@ -88,28 +88,8 @@ def get_client_ip(request: Request) -> str:
 
 
 def check_link_rate_limit(client_id: str) -> Tuple[bool, int, float]:
-    """
-    Check if client can paste/analyze a new YouTube link.
-    Returns: (allowed: bool, remaining_links: int, next_reset_in_seconds: float)
-    """
-    now = time.time()
-    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
-    with RATE_LIMIT_LOCK:
-        timestamps = PASTE_RATE_LIMITS.get(client_id, [])
-        valid_ts = [t for t in timestamps if t > cutoff]
-        PASTE_RATE_LIMITS[client_id] = valid_ts
-
-        remaining = max(0, RATE_LIMIT_MAX_LINKS - len(valid_ts))
-        if len(valid_ts) >= RATE_LIMIT_MAX_LINKS:
-            oldest = min(valid_ts)
-            reset_in = max(0.0, (oldest + RATE_LIMIT_WINDOW_SECONDS) - now)
-            return False, 0, reset_in
-
-        reset_in = 0.0
-        if valid_ts:
-            oldest = min(valid_ts)
-            reset_in = max(0.0, (oldest + RATE_LIMIT_WINDOW_SECONDS) - now)
-        return True, remaining, reset_in
+    """Unlimited link pastes and clip generations for all users."""
+    return True, 999999, 0.0
 
 
 # Alias for backward compatibility
@@ -465,29 +445,17 @@ def _run_generate_task(task_id: str, req: GenerateRequest):
 
 @app.get("/api/rate-limit")
 async def api_rate_limit(request: Request):
-    """Return link paste rate limit quota for client (3 YouTube links per 4 hours)."""
-    client_ip = get_client_ip(request)
-    allowed, remaining, reset_in = check_link_rate_limit(client_ip)
-    hrs = int(reset_in // 3600)
-    mins = int((reset_in % 3600) // 60)
-    if hrs > 0:
-        human_str = f"{hrs}h {mins}m"
-    elif mins > 0:
-        human_str = f"{mins}m"
-    elif reset_in > 0:
-        human_str = f"{int(reset_in)}s"
-    else:
-        human_str = "now"
-
+    """Return link paste rate limit quota for client (Unlimited)."""
     return {
         "success": True,
-        "allowed": allowed,
-        "max_links": RATE_LIMIT_MAX_LINKS,
-        "max_clips": RATE_LIMIT_MAX_LINKS,  # Compat
-        "remaining": remaining,
-        "window_hours": 4,
-        "reset_in_seconds": round(reset_in, 1),
-        "reset_human": human_str,
+        "allowed": True,
+        "unlimited": True,
+        "max_links": 999999,
+        "max_clips": 999999,
+        "remaining": 999999,
+        "window_hours": 0,
+        "reset_in_seconds": 0.0,
+        "reset_human": "Unlimited",
     }
 
 
