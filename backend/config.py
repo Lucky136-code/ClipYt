@@ -90,7 +90,7 @@ ASPECT_RATIOS_720 = {
 # ==============================================================================
 # Telegram 6-Hour Access Key System for Live YouTube Studio
 # ==============================================================================
-TELEGRAM_CHANNEL_URL = "https://t.me/+PqPmXBG4M8A2MDJl"
+TELEGRAM_CHANNEL_URL = "https://t.me/+N0hxuYHqK5kyY2U1"
 LIVE_KEYS_FILE = DATA_DIR / "live_keys.json"
 DEFAULT_LIVE_KEYS = [
     "LUCKY6H",
