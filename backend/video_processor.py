@@ -85,29 +85,47 @@ def detect_best_encoder() -> Dict[str, Any]:
 
 def _build_stream_strategies(target_res: str = "1080p") -> list:
     """
-    Preferred fast H.264 stream strategies (1080p or 4K) with flexible bv*+ba/b fallback.
+    Preferred fast H.264 / VP9 / AV1 stream strategies (1080p or 4K) with flexible bv*+ba/b fallback.
     Each entry is (label, opts_dict, allow_cookies).
     Note: Some clients (web_embedded, android_vr) drop all formats if cookies are passed.
     """
     is_4k = target_res in ("4k", "2160p")
     target_h = 2160 if is_4k else 1080
-    hd_fmt = (
-        f"bestvideo[height={target_h}][vcodec^=avc1]+bestaudio[ext=m4a]/"
-        f"bestvideo[height={target_h}]+bestaudio/"
-        f"bestvideo[height<={target_h}][vcodec^=avc1]+bestaudio[ext=m4a]/"
-        f"bestvideo[height<={target_h}]+bestaudio/"
-        f"best[height={target_h}][protocol^=m3u8]/"
-        f"best[height<={target_h}][protocol^=m3u8]/"
-        "bestvideo+bestaudio/"
-        "bv*+ba/b"
-    )
-    safari_fmt = (
-        f"bestvideo[height={target_h}]+bestaudio/"
-        f"best[height={target_h}][protocol^=m3u8]/"
-        f"bestvideo[height<={target_h}]+bestaudio/"
-        f"best[height<={target_h}][protocol^=m3u8]/"
-        "bv*+ba/b"
-    )
+    if is_4k:
+        # YouTube 4K (2160p) is primarily in VP9 and AV1 formats
+        hd_fmt = (
+            "bestvideo[height>=2160]+bestaudio/"
+            "bestvideo[height=2160]+bestaudio/"
+            "bestvideo[height<=2160]+bestaudio/"
+            "best[height>=2160][protocol^=m3u8]/"
+            "best[height=2160][protocol^=m3u8]/"
+            "bestvideo+bestaudio/"
+            "bv*+ba/b"
+        )
+        safari_fmt = (
+            "bestvideo[height>=2160]+bestaudio/"
+            "bestvideo[height=2160]+bestaudio/"
+            "bestvideo+bestaudio/"
+            "bv*+ba/b"
+        )
+    else:
+        hd_fmt = (
+            "bestvideo[height=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
+            "bestvideo[height=1080]+bestaudio/"
+            "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
+            "bestvideo[height<=1080]+bestaudio/"
+            "best[height=1080][protocol^=m3u8]/"
+            "best[height<=1080][protocol^=m3u8]/"
+            "bestvideo+bestaudio/"
+            "bv*+ba/b"
+        )
+        safari_fmt = (
+            "bestvideo[height=1080]+bestaudio/"
+            "best[height=1080][protocol^=m3u8]/"
+            "bestvideo[height<=1080]+bestaudio/"
+            "best[height<=1080][protocol^=m3u8]/"
+            "bv*+ba/b"
+        )
     strategies = []
     if YTDLP_BASE_OPTS.get("cookiefile"):
         strategies.extend([
@@ -354,8 +372,9 @@ def download_clip_segment(
     clip_dur = max(5.0, end_time - start_time)
     seg_timeout = max(35, int(clip_dur * 1.5) + 20)
 
-    # Attempt 0: Instant pre-warmed cached metadata (skips webpage + JS solve!)
-    cached = STREAM_INFO_CACHE.get(video_id)
+    # Attempt 0: Instant pre-warmed cached metadata for this specific resolution
+    cache_key = f"{video_id}_{resolution}"
+    cached = STREAM_INFO_CACHE.get(cache_key)
     if cached and (time.time() - cached["ts"] < STREAM_CACHE_TTL_SEC):
         ydl_opts = _make_ydl_opts(cached["strat_opts"], cached.get("allow_cookies", True))
         ydl_opts.update(dl_common)
@@ -368,7 +387,7 @@ def download_clip_segment(
                     return cand, exact_pad
         except Exception:
             # Cache expired or failed; drop cache and fall through to live waterfall
-            STREAM_INFO_CACHE.pop(video_id, None)
+            STREAM_INFO_CACHE.pop(cache_key, None)
 
     # Live multi-tier waterfall fallback
     errors = []
@@ -384,9 +403,9 @@ def download_clip_segment(
 
         try:
             info = _download_with_guard(ydl_opts, url, is_info_dict=False, timeout_sec=seg_timeout)
-            # Cache for subsequent clips from the same video
+            # Cache for subsequent clips from the same video with matching resolution
             if info:
-                STREAM_INFO_CACHE[video_id] = {
+                STREAM_INFO_CACHE[cache_key] = {
                     "info": info,
                     "strat_opts": strat_opts,
                     "allow_cookies": allow_cookies,

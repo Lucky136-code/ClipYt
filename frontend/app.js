@@ -430,12 +430,14 @@ function renderFullAnalysis(data) {
   previewSec.classList.remove("hidden");
   resultsSec.classList.remove("hidden");
 
-  // Validate selected resolution against loaded video
+  // Auto-select 4k if available for highest quality
   const resSelect = document.getElementById("opt-resolution");
-  if (resSelect && resSelect.value === "4k" && data.has_4k === false) {
-    resSelect.value = "1080p";
-    const maxStr = data.max_height ? `${data.max_height}p` : "1080p";
-    show4kUnavailableModal(maxStr);
+  if (resSelect) {
+    if (data.has_4k) {
+      resSelect.value = "4k";
+    } else {
+      resSelect.value = "1080p";
+    }
   }
 
   // Video Thumbnail (1080p MaxRes with fallback) + Title + Caption as it is from YouTube
@@ -1027,6 +1029,62 @@ function updateProgressModal(msg, pct) {
   document.getElementById("progress-fill").style.width = `${pct}%`;
 }
 
+async function executeVideoDownload(downloadUrl, filename, btn) {
+  const origHtml = btn ? btn.innerHTML : "⬇️ Download Short (MP4)";
+  if (btn) {
+    btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:8px;">⏳ <span>Preparing download...</span></span>`;
+  }
+
+  const videoEl = document.getElementById("result-video");
+  if (videoEl && !videoEl.paused) {
+    videoEl.pause();
+  }
+
+  try {
+    // 1. Fetch file directly as a Blob to guarantee native browser download across all devices
+    const res = await fetch(downloadUrl);
+    if (!res.ok) throw new Error("HTTP download error: " + res.status);
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+
+    const tempLink = document.createElement("a");
+    tempLink.style.display = "none";
+    tempLink.href = blobUrl;
+    tempLink.setAttribute("download", filename || "clip.mp4");
+    document.body.appendChild(tempLink);
+    tempLink.click();
+
+    setTimeout(() => {
+      document.body.removeChild(tempLink);
+      window.URL.revokeObjectURL(blobUrl);
+    }, 15000);
+
+    if (btn) {
+      btn.innerHTML = "<span>✓ Saved to Downloads!</span>";
+      setTimeout(() => {
+        btn.innerHTML = origHtml;
+      }, 3500);
+    }
+  } catch (err) {
+    console.warn("Direct blob download fallback triggered:", err);
+    // 2. Safe fallback: hidden iframe triggers download without page navigation
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = downloadUrl;
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 6000);
+
+    if (btn) {
+      btn.innerHTML = "<span>✓ Download started! Check downloads</span>";
+      setTimeout(() => {
+        btn.innerHTML = origHtml;
+      }, 3500);
+    }
+  }
+}
+
 function showResultModal(result) {
   const videoEl = document.getElementById("result-video");
   if (videoEl) {
@@ -1043,26 +1101,17 @@ function showResultModal(result) {
     videoEl.src = streamUrl;
   }
 
+  const is4k = (result.resolution === "4k" || result.resolution === "2160p");
   const dlBtn = document.getElementById("result-download-btn");
   if (dlBtn) {
     dlBtn.href = result.download_url;
     dlBtn.setAttribute("download", result.filename || "clip.mp4");
-    dlBtn.innerHTML = "⬇️ Download Short (MP4)";
+    dlBtn.innerHTML = is4k ? "⬇️ Download 4K Ultra HD Short" : "⬇️ Download Short (MP4)";
 
-    if (!dlBtn.dataset.boundDownload) {
-      dlBtn.dataset.boundDownload = "1";
-      dlBtn.addEventListener("click", () => {
-        // Pause preview video to allocate 100% bandwidth to file download
-        if (videoEl && !videoEl.paused) {
-          videoEl.pause();
-        }
-
-        dlBtn.innerHTML = "<span>✓ Downloading started! Check downloads</span>";
-        setTimeout(() => {
-          dlBtn.innerHTML = "⬇️ Download Short (MP4)";
-        }, 4000);
-      });
-    }
+    dlBtn.onclick = (e) => {
+      e.preventDefault();
+      executeVideoDownload(result.download_url, result.filename || "clip.mp4", dlBtn);
+    };
   }
 
   const hookBadge = result.climax_hook ? " • Climax Hook" : "";
@@ -1070,9 +1119,10 @@ function showResultModal(result) {
   const capBadge = result.has_subtitles
     ? (result.caption_engine === "ai_whisper_hinglish" ? " • AI Hinglish Captions" : " • Captions")
     : (result.caption_note ? ` • Captions skipped: ${result.caption_note}` : "");
+  const resBadge = is4k ? " • 🌟 4K (2160x3840)" : " • 1080p (1080x1920)";
   const sizeVal = result.file_size_mb ?? result.size_mb ?? 0;
   document.getElementById("result-meta").textContent =
-    `${result.aspect_ratio} • ${result.duration}s • ${sizeVal} MB${proBadge}${capBadge}${hookBadge}`;
+    `${result.aspect_ratio}${resBadge} • ${result.duration}s • ${sizeVal} MB${proBadge}${capBadge}${hookBadge}`;
 
   document.getElementById("modal-progress-view").classList.add("hidden");
   document.getElementById("modal-result-view").classList.remove("hidden");
@@ -2092,13 +2142,16 @@ async function inspectLiveStream(url, forceRefresh = false) {
     proState.source = src;
     proState.firstPdtUtc = src.first_pdt_utc || null;
 
-    if (src && src.has_4k === false && proState.resolution === "4k") {
+    if (src && src.has_4k) {
+      proState.resolution = "4k";
+      document.querySelectorAll("#pro-res-picker .choice-pill").forEach((b) => {
+        b.classList.toggle("active", b.dataset.res === "4k");
+      });
+    } else {
       proState.resolution = "1080p";
       document.querySelectorAll("#pro-res-picker .choice-pill").forEach((b) => {
         b.classList.toggle("active", b.dataset.res === "1080p");
       });
-      const maxStr = src.max_height ? `${src.max_height}p` : "1080p";
-      show4kUnavailableModal(maxStr);
     }
 
     const total = src.is_live
@@ -2799,13 +2852,16 @@ async function inspectVodStream(url) {
     const src = json.data;
     vodState.source = src;
 
-    if (src && src.has_4k === false && vodState.resolution === "4k") {
+    if (src && src.has_4k) {
+      vodState.resolution = "4k";
+      document.querySelectorAll("#vod-res-picker .choice-pill").forEach((b) => {
+        b.classList.toggle("active", b.dataset.res === "4k");
+      });
+    } else {
       vodState.resolution = "1080p";
       document.querySelectorAll("#vod-res-picker .choice-pill").forEach((b) => {
         b.classList.toggle("active", b.dataset.res === "1080p");
       });
-      const maxStr = src.max_height ? `${src.max_height}p` : "1080p";
-      show4kUnavailableModal(maxStr);
     }
 
     const total = Math.max(10, Math.floor(src.duration || 60));

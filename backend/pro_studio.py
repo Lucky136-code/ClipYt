@@ -1319,6 +1319,19 @@ def render_pro_split_short(
 
     filter_complex = ";".join(filters)
     enc = detect_best_encoder()
+    is_high_res = (out_w > 1920 or out_h > 1920)
+
+    if is_high_res:
+        if enc["name"] == "h264_nvenc":
+            primary_enc_args = ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "19", "-b:v", "22000k", "-maxrate", "30000k", "-bufsize", "40000k"]
+        elif enc["name"] == "h264_qsv":
+            primary_enc_args = ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "19", "-b:v", "22000k", "-maxrate", "30000k"]
+        elif enc["name"] == "h264_amf":
+            primary_enc_args = ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "vbr_peak", "-b:v", "22000k", "-maxrate", "30000k"]
+        else:
+            primary_enc_args = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-maxrate", "26000k", "-bufsize", "36000k"]
+    else:
+        primary_enc_args = enc["enc_args"]
 
     def _run_encode(enc_args: List[str]) -> subprocess.CompletedProcess:
         cmd = [
@@ -1332,7 +1345,7 @@ def render_pro_split_short(
             *enc_args,
             "-pix_fmt", "yuv420p",
             "-profile:v", "high",
-            "-level", ("5.1" if (out_w > 1920 or out_h > 1920) else "4.1"),
+            "-level", ("5.1" if is_high_res else "4.1"),
             "-r", "30",
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-movflags", "+faststart",
@@ -1346,14 +1359,13 @@ def render_pro_split_short(
             timeout=240,
         )
 
-    res = _run_encode(enc["enc_args"])
+    res = _run_encode(primary_enc_args)
     if res.returncode != 0 and enc["name"] != "libx264":
         # Safe CPU fallback if hardware encoder rejected a specific stream profile
-        is_high_res = (out_w > 1920 or out_h > 1920)
         res = _run_encode([
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-            "-maxrate", ("24000k" if is_high_res else "6000k"),
-            "-bufsize", ("32000k" if is_high_res else "10000k"),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", ("19" if is_high_res else "22"),
+            "-maxrate", ("26000k" if is_high_res else "6000k"),
+            "-bufsize", ("36000k" if is_high_res else "10000k"),
         ])
 
     if res.returncode != 0 or not output_path.exists():
