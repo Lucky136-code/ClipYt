@@ -338,6 +338,8 @@ async def api_preview(url: str):
             title = j.get("title", title)
             author = j.get("author_name", "")
             thumbnail = j.get("thumbnail_url", thumbnail)
+            if thumbnail and "hqdefault.jpg" in thumbnail:
+                thumbnail = thumbnail.replace("hqdefault.jpg", "maxresdefault.jpg")
     except Exception:
         pass
     return {

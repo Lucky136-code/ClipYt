@@ -1834,7 +1834,10 @@ function loadLiveStreamInPlayer(videoId) {
   proState.currentPlaySec = 0;
   proState.userExplicitPaused = false;
 
-  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  const is4k = Boolean(proState.source && proState.source.has_4k);
+  const preferredQ = is4k ? "highres" : "hd1080";
+
+  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&vq=${preferredQ}&suggestedQuality=${preferredQ}&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
@@ -1842,6 +1845,8 @@ function loadLiveStreamInPlayer(videoId) {
         playerVars: {
           autoplay: 1,
           playsinline: 1,
+          vq: preferredQ,
+          suggestedQuality: preferredQ,
           modestbranding: 1,
           rel: 0,
         },
@@ -1850,10 +1855,18 @@ function loadLiveStreamInPlayer(videoId) {
             ytPlayerReady = true;
             try { e.target.playVideo(); } catch (err) {}
             try {
-              if (typeof e.target.setPlaybackQuality === "function") e.target.setPlaybackQuality("hd1080");
-              if (typeof e.target.setPlaybackQualityRange === "function") e.target.setPlaybackQualityRange("hd1080", "hd1080");
+              if (typeof e.target.setPlaybackQuality === "function") e.target.setPlaybackQuality(preferredQ);
+              if (typeof e.target.setPlaybackQualityRange === "function") e.target.setPlaybackQualityRange(preferredQ, preferredQ);
             } catch (err) {}
             startPlayerTracking();
+          },
+          onPlaybackQualityChange: (e) => {
+            const highQList = ["highres", "hd2160", "hd1440", "hd1080"];
+            if (e.data && !highQList.includes(e.data)) {
+              try {
+                if (typeof e.target.setPlaybackQuality === "function") e.target.setPlaybackQuality(preferredQ);
+              } catch (err) {}
+            }
           },
           onStateChange: (e) => {
             // Never allow live stream to get paused automatically
@@ -2028,21 +2041,24 @@ window.toggleBoxesOverlay = function () {
 };
 
 window.setPlayer1080p = function () {
-  const iframe = document.getElementById("pro-live-iframe");
-  if (ytLivePlayer) {
+  const is4k = Boolean((proState.source && proState.source.has_4k) || (vodState.source && vodState.source.has_4k));
+  const targetQ = is4k ? "highres" : "hd1080";
+  const iframe = document.getElementById("pro-live-iframe") || document.getElementById("vod-live-iframe");
+  const player = ytLivePlayer || ytVodPlayer;
+  if (player) {
     try {
-      if (typeof ytLivePlayer.setPlaybackQuality === "function") {
-        ytLivePlayer.setPlaybackQuality("hd1080");
+      if (typeof player.setPlaybackQuality === "function") {
+        player.setPlaybackQuality(targetQ);
       }
-      if (typeof ytLivePlayer.setPlaybackQualityRange === "function") {
-        ytLivePlayer.setPlaybackQualityRange("hd1080", "hd1080");
+      if (typeof player.setPlaybackQualityRange === "function") {
+        player.setPlaybackQualityRange(targetQ, targetQ);
       }
     } catch (e) {}
   }
   if (iframe && iframe.contentWindow) {
     try {
-      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setPlaybackQuality", args: ["hd1080"] }), "*");
-      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setPlaybackQualityRange", args: ["hd1080", "hd1080"] }), "*");
+      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setPlaybackQuality", args: [targetQ] }), "*");
+      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setPlaybackQualityRange", args: [targetQ, targetQ] }), "*");
     } catch (e) {}
   }
 
@@ -2622,7 +2638,10 @@ function loadVodStreamInPlayer(videoId) {
   const embedWrap = document.getElementById("vod-yt-embed-wrap");
   if (!embedWrap) return;
 
-  embedWrap.innerHTML = `<iframe id="vod-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  const is4k = Boolean(vodState.source && vodState.source.has_4k);
+  const preferredQ = is4k ? "highres" : "hd1080";
+
+  embedWrap.innerHTML = `<iframe id="vod-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&vq=${preferredQ}&suggestedQuality=${preferredQ}&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
@@ -2630,8 +2649,8 @@ function loadVodStreamInPlayer(videoId) {
         playerVars: {
           autoplay: 1,
           playsinline: 1,
-          vq: "hd1080",
-          suggestedQuality: "hd1080",
+          vq: preferredQ,
+          suggestedQuality: preferredQ,
           modestbranding: 1,
           rel: 0,
         },
@@ -2639,20 +2658,21 @@ function loadVodStreamInPlayer(videoId) {
           onReady: (e) => {
             try {
               if (typeof e.target.setPlaybackQuality === "function") {
-                e.target.setPlaybackQuality("hd1080");
+                e.target.setPlaybackQuality(preferredQ);
               }
               if (typeof e.target.suggestedQuality !== "undefined") {
-                e.target.suggestedQuality = "hd1080";
+                e.target.suggestedQuality = preferredQ;
               }
             } catch (err) {}
             try { e.target.playVideo(); } catch (err) {}
             startVodPlayerTracking();
           },
           onPlaybackQualityChange: (e) => {
-            if (e.data && e.data !== "hd1080") {
+            const highQList = ["highres", "hd2160", "hd1440", "hd1080"];
+            if (e.data && !highQList.includes(e.data)) {
               try {
                 if (typeof e.target.setPlaybackQuality === "function") {
-                  e.target.setPlaybackQuality("hd1080");
+                  e.target.setPlaybackQuality(preferredQ);
                 }
               } catch (err) {}
             }
@@ -2661,7 +2681,7 @@ function loadVodStreamInPlayer(videoId) {
             if (e.data === 1) {
               try {
                 if (typeof e.target.setPlaybackQuality === "function") {
-                  e.target.setPlaybackQuality("hd1080");
+                  e.target.setPlaybackQuality(preferredQ);
                 }
               } catch (err) {}
             }

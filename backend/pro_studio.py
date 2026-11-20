@@ -192,8 +192,8 @@ def _pick_preview_hls_url(info: Dict[str, Any]) -> Tuple[Optional[str], Dict[str
         and f.get("acodec") not in (None, "none")
     ]
     if muxed_hls:
-        # Strongly prefer 1080p HD first, then fallback to 720p, 480p, 360p
-        for target_h in (1080, 720, 480, 360):
+        # Strongly prefer 4K (2160p), 1440p, 1080p HD first, then fallback to 720p, 480p, 360p
+        for target_h in (2160, 1440, 1080, 720, 480, 360):
             for f in muxed_hls:
                 if int(f.get("height") or 0) == target_h:
                     return f["url"], dict(f.get("http_headers") or info.get("http_headers") or {})
@@ -575,8 +575,7 @@ def _grab_frame_b64(
         cmd.extend([
             "-i", target_input,
             "-frames:v", "1",
-            "-vf", "scale=960:-2:flags=lanczos",
-            "-q:v", "3",
+            "-q:v", "1",
             "-f", "image2pipe",
             "-vcodec", "mjpeg",
             "pipe:1",
@@ -650,16 +649,14 @@ def _grab_single_ts_frame_b64(
                 "-i", str(tmp_ts),
                 "-ss", f"{min(4.2, sub_offset):.2f}",
                 "-frames:v", "1",
-                "-vf", "scale=960:-2:flags=lanczos",
-                "-q:v", "3",
+                "-q:v", "1",
                 "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
             ])
         attempts.append([
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
             "-i", str(tmp_ts),
             "-frames:v", "1",
-            "-vf", "scale=960:-2:flags=lanczos",
-            "-q:v", "3",
+            "-q:v", "1",
             "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
         ])
         for cmd in attempts:
@@ -1249,7 +1246,7 @@ def render_pro_split_short(
                 f"scale={out_w}:{out_h}:flags=bilinear[bg]"
             ),
             (
-                f"[fg_in]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
+                f"[fg_in]scale={out_w}:{out_h}:force_original_aspect_ratio=decrease:flags=lanczos,"
                 f"setsar=1[fg]"
             ),
             "[bg][fg]overlay=(W-w)/2:(H-h)/2[vstacked]",
@@ -1292,7 +1289,7 @@ def render_pro_split_short(
                     f"boxblur=10:3,eq=brightness=-0.15,scale={out_w}:{stream_h}:flags=bilinear[vstr_bg]"
                 ),
                 (
-                    f"[vstr_fg_in]scale={out_w}:{stream_h}:force_original_aspect_ratio=decrease,setsar=1[vstr_fg]"
+                    f"[vstr_fg_in]scale={out_w}:{stream_h}:force_original_aspect_ratio=decrease:flags=lanczos,setsar=1[vstr_fg]"
                 ),
                 "[vstr_bg][vstr_fg]overlay=(W-w)/2:(H-h)/2[vstr]",
             ])
@@ -1322,16 +1319,25 @@ def render_pro_split_short(
     is_high_res = (out_w > 1920 or out_h > 1920)
 
     if is_high_res:
+        # Cinema 4K Master: CRF/CQ 16, 35 Mbps - 50 Mbps near-lossless visual quality
         if enc["name"] == "h264_nvenc":
-            primary_enc_args = ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "19", "-b:v", "22000k", "-maxrate", "30000k", "-bufsize", "40000k"]
+            primary_enc_args = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "16", "-b:v", "35000k", "-maxrate", "50000k", "-bufsize", "65000k"]
         elif enc["name"] == "h264_qsv":
-            primary_enc_args = ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "19", "-b:v", "22000k", "-maxrate", "30000k"]
+            primary_enc_args = ["-c:v", "h264_qsv", "-preset", "slow", "-global_quality", "16", "-b:v", "35000k", "-maxrate", "50000k"]
         elif enc["name"] == "h264_amf":
-            primary_enc_args = ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "vbr_peak", "-b:v", "22000k", "-maxrate", "30000k"]
+            primary_enc_args = ["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "35000k", "-maxrate", "50000k"]
         else:
-            primary_enc_args = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-maxrate", "26000k", "-bufsize", "36000k"]
+            primary_enc_args = ["-c:v", "libx264", "-preset", "fast", "-crf", "16", "-maxrate", "45000k", "-bufsize", "60000k"]
     else:
-        primary_enc_args = enc["enc_args"]
+        # Studio 1080p Master: CRF/CQ 17, 14 Mbps - 20 Mbps (crisp detail, zero pixel compression artifacts)
+        if enc["name"] == "h264_nvenc":
+            primary_enc_args = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "17", "-b:v", "14000k", "-maxrate", "20000k", "-bufsize", "30000k"]
+        elif enc["name"] == "h264_qsv":
+            primary_enc_args = ["-c:v", "h264_qsv", "-preset", "slow", "-global_quality", "17", "-b:v", "14000k", "-maxrate", "20000k"]
+        elif enc["name"] == "h264_amf":
+            primary_enc_args = ["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "14000k", "-maxrate", "20000k"]
+        else:
+            primary_enc_args = ["-c:v", "libx264", "-preset", "fast", "-crf", "17", "-maxrate", "18000k", "-bufsize", "26000k"]
 
     def _run_encode(enc_args: List[str]) -> subprocess.CompletedProcess:
         cmd = [
@@ -1363,9 +1369,9 @@ def render_pro_split_short(
     if res.returncode != 0 and enc["name"] != "libx264":
         # Safe CPU fallback if hardware encoder rejected a specific stream profile
         res = _run_encode([
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", ("19" if is_high_res else "22"),
-            "-maxrate", ("26000k" if is_high_res else "6000k"),
-            "-bufsize", ("36000k" if is_high_res else "10000k"),
+            "-c:v", "libx264", "-preset", "fast", "-crf", ("16" if is_high_res else "17"),
+            "-maxrate", ("45000k" if is_high_res else "18000k"),
+            "-bufsize", ("60000k" if is_high_res else "26000k"),
         ])
 
     if res.returncode != 0 or not output_path.exists():

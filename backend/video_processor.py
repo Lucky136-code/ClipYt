@@ -40,7 +40,7 @@ def detect_best_encoder() -> Dict[str, Any]:
         _BEST_ENCODER = {
             "name": "libx264",
             "hw_in": [],
-            "enc_args": ["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"],
+            "enc_args": ["-c:v", "libx264", "-preset", "fast", "-crf", "17", "-maxrate", "18000k", "-bufsize", "26000k"],
         }
         return _BEST_ENCODER
 
@@ -48,17 +48,17 @@ def detect_best_encoder() -> Dict[str, Any]:
         (
             "h264_nvenc",
             ["-hwaccel", "cuda"],
-            ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "5500k", "-maxrate", "7500k", "-bufsize", "10000k"],
+            ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "17", "-b:v", "14000k", "-maxrate", "20000k", "-bufsize", "30000k"],
         ),
         (
             "h264_qsv",
             [],
-            ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "23", "-b:v", "5500k", "-maxrate", "7500k"],
+            ["-c:v", "h264_qsv", "-preset", "slow", "-global_quality", "17", "-b:v", "14000k", "-maxrate", "20000k"],
         ),
         (
             "h264_amf",
             [],
-            ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "vbr_peak", "-b:v", "5500k", "-maxrate", "7500k"],
+            ["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "14000k", "-maxrate", "20000k"],
         ),
     ]
 
@@ -78,7 +78,7 @@ def detect_best_encoder() -> Dict[str, Any]:
     _BEST_ENCODER = {
         "name": "libx264",
         "hw_in": [],
-        "enc_args": ["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"],
+        "enc_args": ["-c:v", "libx264", "-preset", "fast", "-crf", "17", "-maxrate", "18000k", "-bufsize", "26000k"],
     }
     return _BEST_ENCODER
 
@@ -708,18 +708,30 @@ def render_short(
         ])
         return subprocess.run(cmd, cwd=working_dir, capture_output=True, text=True)
 
+    is_high_res = (target_w > 1920 or target_h > 1920)
+    if is_high_res:
+        if encoder["name"] == "h264_nvenc":
+            primary_enc_args = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "16", "-b:v", "35000k", "-maxrate", "50000k", "-bufsize", "65000k"]
+        elif encoder["name"] == "h264_qsv":
+            primary_enc_args = ["-c:v", "h264_qsv", "-preset", "slow", "-global_quality", "16", "-b:v", "35000k", "-maxrate", "50000k"]
+        elif encoder["name"] == "h264_amf":
+            primary_enc_args = ["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "35000k", "-maxrate", "50000k"]
+        else:
+            primary_enc_args = ["-c:v", "libx264", "-preset", "fast", "-crf", "16", "-maxrate", "45000k", "-bufsize", "60000k"]
+    else:
+        primary_enc_args = encoder["enc_args"]
+
     # Try GPU decode+encode -> retry GPU encode with CPU decode (e.g. AV1/VP9 input) -> CPU fallback
-    result = _run_ffmpeg(use_hw_in=True, enc_args=encoder["enc_args"])
+    result = _run_ffmpeg(use_hw_in=True, enc_args=primary_enc_args)
     if result.returncode != 0 and encoder["hw_in"]:
-        result = _run_ffmpeg(use_hw_in=False, enc_args=encoder["enc_args"])
+        result = _run_ffmpeg(use_hw_in=False, enc_args=primary_enc_args)
     if result.returncode != 0 and encoder["name"] != "libx264":
-        is_high_res = (target_w > 1920 or target_h > 1920)
         result = _run_ffmpeg(
             use_hw_in=False,
             enc_args=[
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-                "-maxrate", ("24000k" if is_high_res else "6000k"),
-                "-bufsize", ("32000k" if is_high_res else "10000k"),
+                "-c:v", "libx264", "-preset", "fast", "-crf", ("16" if is_high_res else "17"),
+                "-maxrate", ("45000k" if is_high_res else "18000k"),
+                "-bufsize", ("60000k" if is_high_res else "26000k"),
             ],
         )
 
