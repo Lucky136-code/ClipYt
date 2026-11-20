@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://jungle-surgeons-using-grid.trycloudflare.com/api/:path*"
+      "destination": "https://zone-physical-responded-modeling.trycloudflare.com/api/:path*"
     }
   ]
 }
