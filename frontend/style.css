@@ -2408,7 +2408,7 @@ input:checked+.slider:before {
 }
 
 .pro-boxes-overlay .crop-box {
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
 .pro-boxes-overlay .crop-drag-body {
@@ -2417,18 +2417,22 @@ input:checked+.slider:before {
   left: 0;
   right: 0;
   bottom: 0;
-  pointer-events: auto;
-  cursor: move;
-  touch-action: none;
+  pointer-events: none !important;
 }
 
 .pro-boxes-overlay .crop-box-label {
-  pointer-events: auto;
-  cursor: move;
+  pointer-events: auto !important;
+  cursor: grab !important;
+  touch-action: none;
+}
+
+.pro-boxes-overlay .crop-box-label:active {
+  cursor: grabbing !important;
 }
 
 .pro-boxes-overlay .crop-handle {
-  pointer-events: auto;
+  pointer-events: auto !important;
+  touch-action: none;
 }
 
 /* When Boxes Locked (Interact with YouTube Video mode), clicks pass straight to YouTube player! */
@@ -4003,12 +4007,24 @@ input:checked+.slider:before {
 }
 
 .pro-boxes-overlay .crop-box {
-  pointer-events: auto !important;
+  pointer-events: none !important;
 }
 
-.pro-boxes-overlay.clickthrough-mode .crop-box {
+.pro-boxes-overlay .crop-drag-body {
   pointer-events: none !important;
-  opacity: 0.45;
+}
+
+.pro-boxes-overlay .crop-box-label {
+  pointer-events: auto !important;
+  cursor: grab !important;
+}
+
+.pro-boxes-overlay .crop-box-label:active {
+  cursor: grabbing !important;
+}
+
+.pro-boxes-overlay .crop-handle {
+  pointer-events: auto !important;
 }
 
 /* Quick Corner Presets Toolbar (Docked cleanly below the big video) */
