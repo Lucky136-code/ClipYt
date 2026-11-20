@@ -52,7 +52,14 @@ async function parseApiResponse(res) {
     throw new Error(`Server returned unexpected response (${res.status} ${res.statusText || "Error"}).`);
   }
   try {
-    return await res.json();
+    const data = await res.json();
+    if (res.status === 403) {
+      if (typeof revokeLiveKeySession === "function") {
+        const msg = (data && (data.detail?.message || data.detail || data.message)) || "Access key changed or expired.";
+        revokeLiveKeySession(msg);
+      }
+    }
+    return data;
   } catch (err) {
     throw new Error("Invalid response format from server. Please try again.");
   }
@@ -1491,6 +1498,39 @@ function isLiveStudioUnlocked() {
   return Boolean(getLiveKeySession());
 }
 
+function revokeLiveKeySession(message) {
+  try {
+    localStorage.removeItem(LIVE_KEY_STORAGE);
+  } catch (e) {}
+  proState.unlocked = false;
+  proState.accessKey = null;
+  refreshLiveKeyUI();
+  openLiveKeyModal();
+  const kErr = document.getElementById("live-key-error");
+  if (kErr) {
+    kErr.textContent = message || "The access key has changed or expired. Please enter the new active key to login.";
+    kErr.classList.remove("hidden");
+  }
+}
+
+async function verifyLiveKeySessionWithServer() {
+  const sess = getLiveKeySession();
+  if (!sess || !sess.key) return;
+  try {
+    const res = await fetchWithTimeout("/api/live/verify-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: sess.key }),
+    }, 6000);
+    const json = await res.json().catch(() => ({}));
+    if (res.status === 403 || !res.ok || !json.valid) {
+      revokeLiveKeySession("The access key was updated. Please enter the new active key to continue.");
+    }
+  } catch (e) {
+    // Offline/network blip: retain local session
+  }
+}
+
 function refreshLiveKeyUI() {
   const sess = getLiveKeySession();
   const badgePill = document.getElementById("pro-badge-pill");
@@ -1683,6 +1723,7 @@ function setupProStudio() {
 
   refreshLiveKeyUI();
   setInterval(refreshLiveKeyUI, 30000);
+  verifyLiveKeySessionWithServer();
 
   if (isSiteUnlocked() && !isLiveStudioUnlocked()) {
     setTimeout(openLiveKeyModal, 350);

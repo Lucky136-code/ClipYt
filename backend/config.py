@@ -117,13 +117,14 @@ def get_rolling_6h_key(offset: int = 0) -> str:
 
 
 def get_all_valid_live_keys() -> list[str]:
-    """Retrieves all currently active valid keys (admin list + custom JSON + rolling 6h keys)."""
+    """
+    Retrieves all currently active valid keys.
+    When custom keys are configured in live_keys.json, ONLY those keys are valid!
+    This ensures that when an admin updates the key in live_keys.json, all old keys
+    are immediately revoked and previous users are locked out.
+    """
     import json
-    keys = set(k.upper().strip() for k in DEFAULT_LIVE_KEYS)
-
-    # Add rolling 6h key for current slot and previous slot (grace period)
-    keys.add(get_rolling_6h_key(0).upper())
-    keys.add(get_rolling_6h_key(-1).upper())
+    custom_keys = set()
 
     # Check custom keys file
     if LIVE_KEYS_FILE.exists():
@@ -132,15 +133,22 @@ def get_all_valid_live_keys() -> list[str]:
             if isinstance(custom_data, list):
                 for k in custom_data:
                     if isinstance(k, str) and k.strip():
-                        keys.add(k.upper().strip())
+                        custom_keys.add(k.upper().strip())
             elif isinstance(custom_data, dict):
                 for k in custom_data.get("keys", []):
                     if isinstance(k, str) and k.strip():
-                        keys.add(k.upper().strip())
+                        custom_keys.add(k.upper().strip())
         except Exception:
             pass
 
-    return sorted(list(keys))
+    if custom_keys:
+        return sorted(list(custom_keys))
+
+    # If no custom keys are configured, fallback to default admin and rolling keys
+    fallback_keys = set(k.upper().strip() for k in DEFAULT_LIVE_KEYS)
+    fallback_keys.add(get_rolling_6h_key(0).upper())
+    fallback_keys.add(get_rolling_6h_key(-1).upper())
+    return sorted(list(fallback_keys))
 
 
 def verify_live_key(candidate: str) -> tuple[bool, str, int]:
