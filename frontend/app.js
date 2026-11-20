@@ -1055,60 +1055,39 @@ function updateProgressModal(msg, pct) {
   document.getElementById("progress-fill").style.width = `${pct}%`;
 }
 
-async function executeVideoDownload(downloadUrl, filename, btn) {
-  const origHtml = btn ? btn.innerHTML : "⬇️ Download Short (MP4)";
-  if (btn) {
-    btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:8px;">⏳ <span>Preparing download...</span></span>`;
-  }
+function executeVideoDownload(downloadUrl, filename, btn) {
+  const is4k = filename && (filename.includes("4k") || filename.includes("2160"));
+  const origHtml = btn ? btn.innerHTML : (is4k ? "⬇️ Download 4K Ultra HD Short" : "⬇️ Download Short (MP4)");
 
   const videoEl = document.getElementById("result-video");
   if (videoEl && !videoEl.paused) {
     videoEl.pause();
   }
 
-  try {
-    // 1. Fetch file directly as a Blob to guarantee native browser download across all devices
-    const res = await fetch(downloadUrl);
-    if (!res.ok) throw new Error("HTTP download error: " + res.status);
-    const blob = await res.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
-
-    const tempLink = document.createElement("a");
-    tempLink.style.display = "none";
-    tempLink.href = blobUrl;
-    tempLink.setAttribute("download", filename || "clip.mp4");
-    document.body.appendChild(tempLink);
-    tempLink.click();
-
+  if (btn) {
+    btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:8px;">✓ <span>Download Started! Check your downloads</span></span>`;
     setTimeout(() => {
-      document.body.removeChild(tempLink);
-      window.URL.revokeObjectURL(blobUrl);
-    }, 15000);
-
-    if (btn) {
-      btn.innerHTML = "<span>✓ Saved to Downloads!</span>";
-      setTimeout(() => {
-        btn.innerHTML = origHtml;
-      }, 3500);
-    }
-  } catch (err) {
-    console.warn("Direct blob download fallback triggered:", err);
-    // 2. Safe fallback: hidden iframe triggers download without page navigation
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none";
-    iframe.src = downloadUrl;
-    document.body.appendChild(iframe);
-    setTimeout(() => {
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 6000);
-
-    if (btn) {
-      btn.innerHTML = "<span>✓ Download started! Check downloads</span>";
-      setTimeout(() => {
-        btn.innerHTML = origHtml;
-      }, 3500);
-    }
+      btn.innerHTML = origHtml;
+    }, 4500);
   }
+
+  // Pure native browser download:
+  // Since /api/download sends Content-Disposition: attachment, triggering a direct anchor click
+  // delegates the transfer directly to the browser/OS native download manager.
+  // This streams straight to disk with ZERO RAM buffering, prevents hanging on large 100MB+ 4K files,
+  // and displays native download speed, percentage, and notification.
+  const tempLink = document.createElement("a");
+  tempLink.style.display = "none";
+  tempLink.href = downloadUrl;
+  tempLink.setAttribute("download", filename || "clip.mp4");
+  document.body.appendChild(tempLink);
+  tempLink.click();
+
+  setTimeout(() => {
+    if (tempLink.parentNode) {
+      document.body.removeChild(tempLink);
+    }
+  }, 1000);
 }
 
 function showResultModal(result) {
@@ -1132,11 +1111,20 @@ function showResultModal(result) {
   if (dlBtn) {
     dlBtn.href = result.download_url;
     dlBtn.setAttribute("download", result.filename || "clip.mp4");
-    dlBtn.innerHTML = is4k ? "⬇️ Download 4K Ultra HD Short" : "⬇️ Download Short (MP4)";
+    const defaultText = is4k ? "⬇️ Download 4K Ultra HD Short" : "⬇️ Download Short (MP4)";
+    dlBtn.innerHTML = defaultText;
 
     dlBtn.onclick = (e) => {
-      e.preventDefault();
-      executeVideoDownload(result.download_url, result.filename || "clip.mp4", dlBtn);
+      // Pause playback so audio does not collide
+      const videoEl = document.getElementById("result-video");
+      if (videoEl && !videoEl.paused) {
+        videoEl.pause();
+      }
+      // Instant visual feedback without blocking native browser download
+      dlBtn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:8px;">✓ <span>Download Started! Check your downloads</span></span>`;
+      setTimeout(() => {
+        dlBtn.innerHTML = defaultText;
+      }, 4500);
     };
   }
 
