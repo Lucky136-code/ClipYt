@@ -1007,57 +1007,24 @@ function showResultModal(result) {
     videoEl.src = streamUrl;
   }
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
   const dlBtn = document.getElementById("result-download-btn");
   if (dlBtn) {
     dlBtn.href = result.download_url;
-    dlBtn.setAttribute("download", result.filename);
-
-    if (isIOS && typeof navigator.share === "function") {
-      dlBtn.innerHTML = "📲 Save to Photos / Camera Roll";
-    } else {
-      dlBtn.innerHTML = "Download Short (MP4)";
-    }
+    dlBtn.setAttribute("download", result.filename || "clip.mp4");
+    dlBtn.innerHTML = "⬇️ Download Short (MP4)";
 
     if (!dlBtn.dataset.boundDownload) {
       dlBtn.dataset.boundDownload = "1";
-      dlBtn.addEventListener("click", async (e) => {
+      dlBtn.addEventListener("click", () => {
         // Pause preview video to allocate 100% bandwidth to file download
         if (videoEl && !videoEl.paused) {
           videoEl.pause();
         }
 
-        if (isIOS && typeof navigator.share === "function") {
-          e.preventDefault();
-          const origHtml = dlBtn.innerHTML;
-          dlBtn.innerHTML = "<span>⏳ Preparing for Photos...</span>";
-          try {
-            const resp = await fetch(result.download_url);
-            const blob = await resp.blob();
-            const file = new File([blob], result.filename || "clip.mp4", { type: "video/mp4" });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-              await navigator.share({
-                files: [file],
-                title: "ClipYT Short",
-              });
-              dlBtn.innerHTML = "<span>✓ Saved / Shared!</span>";
-              setTimeout(() => { dlBtn.innerHTML = origHtml; }, 4000);
-              return;
-            }
-          } catch (err) {
-            console.warn("iOS Web Share API fallback:", err);
-          }
-          // Direct fallback if user dismissed or cancelled share sheet
-          window.location.href = result.download_url;
-          return;
-        }
-
         dlBtn.innerHTML = "<span>✓ Downloading started! Check downloads</span>";
         setTimeout(() => {
-          dlBtn.innerHTML = "Download Short (MP4)";
-        }, 5000);
+          dlBtn.innerHTML = "⬇️ Download Short (MP4)";
+        }, 4000);
       });
     }
   }
