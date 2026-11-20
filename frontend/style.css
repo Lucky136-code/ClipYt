@@ -4900,26 +4900,30 @@ input:checked+.slider:before {
     font-size: 0.72rem;
   }
 
-  /* Perfect Symmetric Grid for Each Picker on Mobile */
-  #pro-pos-picker {
+  /* Perfect Symmetric Grid for Each Picker on Mobile (Live Clipper + Manual Clipper) */
+  #pro-pos-picker,
+  #vod-pos-picker {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
     width: 100%;
   }
 
-  #pro-pos-picker button:nth-child(3) {
+  #pro-pos-picker button:nth-child(3),
+  #vod-pos-picker button:nth-child(3) {
     grid-column: 1 / -1;
   }
 
-  #pro-ratio-picker {
+  #pro-ratio-picker,
+  #vod-ratio-picker {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 6px;
     width: 100%;
   }
 
-  #pro-duration-picker {
+  #pro-duration-picker,
+  #vod-duration-picker {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 5px;
@@ -4937,7 +4941,8 @@ input:checked+.slider:before {
   }
 
   .compact-selects,
-  #pro-sub-style {
+  #pro-sub-style,
+  #vod-sub-style {
     width: 100%;
     height: 44px;
     font-size: 0.86rem;

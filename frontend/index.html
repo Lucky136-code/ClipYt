@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120_manual_clipper_v1">
+  <link rel="stylesheet" href="/static/style.css?v=20261120_manual_clean">
 </head>
 
 <body>
@@ -582,45 +582,11 @@
             </div>
           </div>
 
-          <!-- Quick Dual-Box Controls: Streamer Box + Display Box -->
-          <div class="pro-stage-presets-bar vod-dual-box-bar">
-            <!-- Active Box Selection Tabs -->
-            <div class="vod-box-select-row">
-              <span class="preset-label">🎯 Edit Box:</span>
-              <div class="pill-group" id="vod-active-box-picker">
-                <button type="button" class="choice-pill active" id="btn-select-box-cam"
-                  onclick="selectVodActiveBox('cam')">
-                  <span class="box-dot cam-dot"></span>
-                  <span>Streamer (Facecam)</span>
-                </button>
-                <button type="button" class="choice-pill" id="btn-select-box-stream"
-                  onclick="selectVodActiveBox('stream')">
-                  <span class="box-dot stream-dot"></span>
-                  <span>Display (Screen)</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Presets Group for Currently Active Box -->
-            <div class="preset-buttons-group" id="vod-cam-presets">
-              <span class="preset-label" style="font-size:0.72rem; color:#a855f7;">🟣 Streamer Presets:</span>
-              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('tl')">Top-Left</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('tr')">Top-Right</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('bl')">Btm-Left</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('br')">Btm-Right</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodCamPreset('reset')">Reset</button>
-            </div>
-            <div class="preset-buttons-group hidden" id="vod-stream-presets">
-              <span class="preset-label" style="font-size:0.72rem; color:#0284c7;">🔵 Display Presets:</span>
-              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('full')">Full Screen</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('left')">Left Game</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('center')">Center Game</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('right')">Right Game</button>
-            </div>
-          </div>
-
           <!-- Scrubbing & Playback Controller -->
           <div class="pro-timeline-control-bar vod-timeline-bar">
+            <!-- Hidden clip duration readout for backward compatibility -->
+            <span id="vod-window-badge" style="display:none;"></span>
+
             <!-- Scrubber Track & Current Position -->
             <div class="pro-scrub-track-row">
               <span id="vod-tl-current" class="time-readout">00:00:00</span>
@@ -640,13 +606,6 @@
               <button type="button" class="btn-jump btn-step" onclick="jumpVodPlayback(10)" title="Forward 10 seconds">+10s ▶</button>
               <button type="button" class="btn-jump btn-step" onclick="jumpVodPlayback(60)" title="Forward 1 minute">+1m ⏩</button>
             </div>
-
-            <!-- Selected Short Window Callout Card -->
-            <div class="vod-window-card">
-              <span class="vod-window-icon">✂️</span>
-              <span class="vod-window-label">Selected Short Window:</span>
-              <strong id="vod-window-badge" class="vod-window-time">00:00:00 ➔ 00:00:35 (35s)</strong>
-            </div>
           </div>
 
           <!-- Layout & Recording Settings + Generate Button -->
@@ -656,11 +615,10 @@
               <div class="pro-mini-setting">
                 <label class="setting-caption">Streamer Facecam</label>
                 <div class="pill-group" id="vod-pos-picker">
-                  <button type="button" class="choice-pill active" data-pos="top" title="Facecam at top">🔝 Top</button>
-                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">⬇️
-                    Bottom</button>
+                  <button type="button" class="choice-pill active" data-pos="top" title="Facecam at top">Top</button>
+                  <button type="button" class="choice-pill" data-pos="bottom" title="Facecam at bottom">Bottom</button>
                   <button type="button" class="choice-pill" data-pos="none"
-                    title="Disable facecam — record only the display">🚫 No Cam (Display Only)</button>
+                    title="Disable facecam — record only the display">Display Only (No Cam)</button>
                 </div>
               </div>
 
@@ -701,7 +659,7 @@
             <!-- Big Start Generating VOD Short Button -->
             <button type="button" id="vod-create-btn" class="btn-create-short pro-master-record-btn vod-master-btn">
               <span class="rec-dot-pulse" style="background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.8);"></span>
-              <span class="record-btn-text">⚡ Generate 9:16 Short</span>
+              <span class="record-btn-text">Generate 9:16 Short</span>
             </button>
           </div>
         </div>
@@ -1054,7 +1012,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261120_manual_clipper_v1"></script>
+  <script src="/static/app.js?v=20261120_manual_clean"></script>
 </body>
 
 </html>
