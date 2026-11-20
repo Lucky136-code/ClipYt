@@ -1503,7 +1503,7 @@ function refreshLiveKeyUI() {
       globalDot.style.background = "#22c55e";
     }
     if (globalCountdown) {
-      globalCountdown.textContent = `🟢 Key Active (${timeStr})`;
+      globalCountdown.textContent = `6h Key Active • ${timeStr}`;
     }
   } else {
     proState.unlocked = false;
@@ -1522,7 +1522,7 @@ function refreshLiveKeyUI() {
       globalDot.style.background = "#ef4444";
     }
     if (globalCountdown) {
-      globalCountdown.textContent = "🔑 Enter Key to Login";
+      globalCountdown.textContent = "🔑 Login with 6-Hour Key";
     }
   }
 }

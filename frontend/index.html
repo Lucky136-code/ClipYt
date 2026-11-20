@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120_manual_clean">
+  <link rel="stylesheet" href="/static/style.css?v=20261120_timer_top">
 </head>
 
 <body>
@@ -20,6 +20,14 @@
   <div class="bg-overlay"></div>
 
   <main class="main-container">
+    <!-- Top Center 6-Hour Access Key Timer Pill -->
+    <div class="top-timer-center-wrap">
+      <div id="global-key-badge" class="global-key-pill" onclick="openLiveKeyModal()" title="Access Key Status (Click to login or renew)">
+        <span class="live-dot" id="global-key-dot"></span>
+        <span id="global-key-countdown" class="key-countdown-text">🔑 Login with 6-Hour Key</span>
+      </div>
+    </div>
+
     <!-- Studio Mode Switcher Bar -->
     <div class="studio-bar-wrap">
       <div class="studio-pill-bar">
@@ -33,10 +41,6 @@
         <button type="button" id="studio-btn-vod" class="studio-pill">
           <span>Manual Clipper</span>
         </button>
-      </div>
-      <div id="global-key-badge" class="global-key-pill" onclick="openLiveKeyModal()" title="Access Key Status (Click to login or renew)">
-        <span class="live-dot" id="global-key-dot" style="background:#ef4444;"></span>
-        <span id="global-key-countdown" class="key-countdown-text">🔑 Enter Key to Login</span>
       </div>
     </div>
 
@@ -1052,7 +1056,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261120_manual_clean"></script>
+  <script src="/static/app.js?v=20261120_timer_top"></script>
 </body>
 
 </html>
