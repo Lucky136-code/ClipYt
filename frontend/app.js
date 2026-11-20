@@ -1362,8 +1362,8 @@ const proState = {
   cam_position: "top",   // "top" or "bottom"
   cam_ratio: 0.40,       // 0.25 to 0.65
   boxes: {
-    cam: { x: 0.69, y: 0.58, w: 0.28, h: 0.36 },    // Streamer (Facecam)
-    stream: { x: 0.02, y: 0.03, w: 0.96, h: 0.94 }, // Display (Screen)
+    cam: { x: 0.03, y: 0.05, w: 0.28, h: 0.36 },    // Streamer (Facecam) top-left (keeps bottom-right clear)
+    stream: { x: 0.02, y: 0.03, w: 0.96, h: 0.82 }, // Display (Screen) above native YouTube control bar
   },
 };
 
@@ -1763,7 +1763,7 @@ function loadLiveStreamInPlayer(videoId) {
   proState.currentPlaySec = 0;
   proState.userExplicitPaused = false;
 
-  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  embedWrap.innerHTML = `<iframe id="pro-live-iframe" class="pro-live-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&vq=hd1080&suggestedQuality=hd1080&origin=${encodeURIComponent(window.location.origin)}" playsinline allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 
   try {
     if (window.YT && window.YT.Player) {
@@ -1778,6 +1778,10 @@ function loadLiveStreamInPlayer(videoId) {
           onReady: (e) => {
             ytPlayerReady = true;
             try { e.target.playVideo(); } catch (err) {}
+            try {
+              if (typeof e.target.setPlaybackQuality === "function") e.target.setPlaybackQuality("hd1080");
+              if (typeof e.target.setPlaybackQualityRange === "function") e.target.setPlaybackQualityRange("hd1080", "hd1080");
+            } catch (err) {}
             startPlayerTracking();
           },
           onStateChange: (e) => {
@@ -1922,6 +1926,66 @@ window.toggleLivePlayback = function () {
     }
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
+    }
+  }
+};
+
+window.toggleBoxesOverlay = function () {
+  const overlay = document.getElementById("pro-boxes-overlay");
+  const btn = document.getElementById("btn-toggle-boxes");
+  const textEl = document.getElementById("toggle-boxes-text");
+  if (!overlay) return;
+
+  const isHidden = overlay.style.display === "none";
+  if (isHidden) {
+    overlay.style.display = "";
+    if (btn) btn.classList.remove("active-settings-mode");
+    if (textEl) textEl.textContent = "Settings / 1080p";
+    if (btn) {
+      const icon = btn.querySelector(".toggle-icon");
+      if (icon) icon.textContent = "⚙️";
+    }
+  } else {
+    overlay.style.display = "none";
+    if (btn) btn.classList.add("active-settings-mode");
+    if (textEl) textEl.textContent = "Show Crop Boxes";
+    if (btn) {
+      const icon = btn.querySelector(".toggle-icon");
+      if (icon) icon.textContent = "👁️";
+    }
+  }
+};
+
+window.setPlayer1080p = function () {
+  const iframe = document.getElementById("pro-live-iframe");
+  if (ytLivePlayer) {
+    try {
+      if (typeof ytLivePlayer.setPlaybackQuality === "function") {
+        ytLivePlayer.setPlaybackQuality("hd1080");
+      }
+      if (typeof ytLivePlayer.setPlaybackQualityRange === "function") {
+        ytLivePlayer.setPlaybackQualityRange("hd1080", "hd1080");
+      }
+    } catch (e) {}
+  }
+  if (iframe && iframe.contentWindow) {
+    try {
+      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setPlaybackQuality", args: ["hd1080"] }), "*");
+      iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setPlaybackQualityRange", args: ["hd1080", "hd1080"] }), "*");
+    } catch (e) {}
+  }
+
+  // Also toggle boxes overlay off so user can immediately click the YouTube gear icon if they want to verify/select 1080p manually
+  const overlay = document.getElementById("pro-boxes-overlay");
+  const btn = document.getElementById("btn-toggle-boxes");
+  const textEl = document.getElementById("toggle-boxes-text");
+  if (overlay) {
+    overlay.style.display = "none";
+    if (btn) {
+      btn.classList.add("active-settings-mode");
+      if (textEl) textEl.textContent = "Show Crop Boxes";
+      const icon = btn.querySelector(".toggle-icon");
+      if (icon) icon.textContent = "👁️";
     }
   }
 };
@@ -2093,6 +2157,8 @@ function setupDualBoxInteractions() {
 
   stage.addEventListener("pointerdown", (e) => {
     const handleEl = e.target.closest(".crop-handle");
+    const labelEl = e.target.closest(".crop-box-label");
+    if (!handleEl && !labelEl) return;
     const boxEl = e.target.closest(".crop-box");
     if (!boxEl) return;
 
@@ -2789,6 +2855,8 @@ function setupVodDualBoxInteractions() {
 
   stage.addEventListener("pointerdown", (e) => {
     const handleEl = e.target.closest(".crop-handle");
+    const labelEl = e.target.closest(".crop-box-label");
+    if (!handleEl && !labelEl) return;
     const boxEl = e.target.closest(".crop-box");
     if (!boxEl) return;
 

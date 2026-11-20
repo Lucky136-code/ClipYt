@@ -2402,7 +2402,11 @@ input:checked+.slider:before {
 
 .pro-boxes-overlay {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 48px;
+  height: calc(100% - 48px);
   z-index: 5;
   pointer-events: none;
 }
@@ -3996,12 +4000,15 @@ input:checked+.slider:before {
   display: block;
 }
 
-/* Overlay with Pointer-Events */
+/* Overlay with Pointer-Events (ends above YouTube 48px bottom control bar so settings gear is never covered) */
 .pro-boxes-overlay {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 48px;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 48px);
   z-index: 10;
   pointer-events: none;
 }
@@ -4164,6 +4171,59 @@ input:checked+.slider:before {
   justify-content: center;
   gap: 8px;
   border-radius: 10px;
+}
+
+.pro-live-buttons-row .btn-1080p {
+  background: rgba(14, 21, 37, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pro-live-buttons-row .btn-1080p:hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.7);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+  transform: translateY(-1px);
+}
+
+.pro-live-buttons-row .btn-1080p:active {
+  transform: translateY(1px);
+}
+
+/* Header Toggle Boxes Button (Obsidian Stealth with glowing state) */
+.btn-toggle-boxes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.42rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  user-select: none;
+}
+
+.btn-toggle-boxes:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-toggle-boxes.active-settings-mode {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.25), rgba(249, 115, 22, 0.25));
+  border-color: rgba(234, 179, 8, 0.6);
+  color: #fef08a;
+  box-shadow: 0 0 16px rgba(234, 179, 8, 0.3);
 }
 
 .pro-scrub-track-row {
@@ -4613,15 +4673,26 @@ input:checked+.slider:before {
 
   .pro-live-buttons-row {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
   }
 
   .pro-live-buttons-row .btn-jump {
     flex: 1;
     max-width: none;
-    padding: 0.65rem 0.5rem;
-    font-size: 0.82rem;
+    padding: 0.55rem 0.35rem;
+    font-size: 0.76rem;
+    white-space: nowrap;
+  }
+
+  .btn-toggle-boxes {
+    padding: 0.32rem 0.65rem;
+    font-size: 0.72rem;
+  }
+
+  .pro-boxes-overlay {
+    bottom: 44px !important;
+    height: calc(100% - 44px) !important;
   }
 
   .playback-btn-group {

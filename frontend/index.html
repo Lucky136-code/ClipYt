@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120_clickable1">
+  <link rel="stylesheet" href="/static/style.css?v=20261120_1080p_fix">
 </head>
 
 <body>
@@ -370,6 +370,13 @@
                 <span id="pro-source-author" class="pro-stream-author">Channel</span>
               </div>
             </div>
+            <div class="pro-overlay-toggle-wrap">
+              <button type="button" id="btn-toggle-boxes" class="btn-toggle-boxes" onclick="toggleBoxesOverlay()"
+                title="Hide crop boxes to access YouTube settings & quality directly">
+                <span class="toggle-icon">⚙️</span>
+                <span id="toggle-boxes-text">Settings / 1080p</span>
+              </button>
+            </div>
           </div>
 
           <!-- THE BIG 16:9 WIDESCREEN STAGE: Live Stream Video + Draggable Overlay Boxes -->
@@ -411,12 +418,14 @@
             <span id="pro-tl-max" class="time-readout-live" style="display:none;">REAL-TIME</span>
             <span id="pro-window-badge" style="display:none;">Live Edge (35s clip)</span>
 
-            <!-- Only Play/Pause & Go Live Buttons -->
+            <!-- Play/Pause, Go Live & 1080p HD Buttons -->
             <div class="pro-live-buttons-row">
               <button type="button" id="btn-play-pause" class="btn-jump btn-play-pause"
                 onclick="toggleLivePlayback()">⏯️ Play / Pause</button>
               <button type="button" class="btn-jump btn-live-edge active-live" onclick="jumpToLiveEdge()"
                 title="Jump directly to live broadcast">🔴 Go Live</button>
+              <button type="button" id="btn-force-1080p" class="btn-jump btn-1080p" onclick="setPlayer1080p()"
+                title="Switch stream resolution to 1080p HD">⚙️ 1080p HD</button>
             </div>
           </div>
 
@@ -1048,7 +1057,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261120d"></script>
+  <script src="/static/app.js?v=20261120_1080p_fix"></script>
 </body>
 
 </html>
