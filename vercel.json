@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://telescope-busy-hourly-seafood.trycloudflare.com/api/:path*"
+      "destination": "https://matt-checklist-champagne-emission.trycloudflare.com/api/:path*"
     }
   ]
 }
