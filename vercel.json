@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://matt-checklist-champagne-emission.trycloudflare.com/api/:path*"
+      "destination": "https://past-msgstr-wallace-providing.trycloudflare.com/api/:path*"
     }
   ]
 }
