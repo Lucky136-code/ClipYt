@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://capitol-story-leisure-speaker.trycloudflare.com/api/:path*"
+      "destination": "https://myself-carlos-linda-speeds.trycloudflare.com/api/:path*"
     }
   ]
 }
