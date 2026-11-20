@@ -138,6 +138,7 @@ class AnalyzeRequest(BaseModel):
     url: str
     clip_duration: float = Field(default=35.0, ge=10.0, le=120.0)
     max_clips: int = Field(default=5, ge=1, le=15)
+    access_key: Optional[str] = None
 
 
 class GenerateRequest(BaseModel):
@@ -154,6 +155,7 @@ class GenerateRequest(BaseModel):
     resolution: str = "1080p"
     climax_hook: bool = True
     peak_time: Optional[float] = None
+    access_key: Optional[str] = None
 
 
 class BoxModel(BaseModel):
@@ -225,6 +227,7 @@ class AutoViralScanRequest(BaseModel):
     max_peaks: int = Field(default=5, ge=1, le=10)
     clip_duration: float = Field(default=30.0, ge=10.0, le=90.0)
     hook_duration: float = Field(default=3.0, ge=2.0, le=6.0)
+    access_key: Optional[str] = None
 
 
 class AutoViralGenerateRequest(BaseModel):
@@ -248,6 +251,20 @@ class AutoViralGenerateRequest(BaseModel):
     subtitle_position: str = "seam"
     climax_hook: bool = True
     hook_duration: float = Field(default=3.0, ge=2.0, le=6.0)
+    access_key: Optional[str] = None
+
+
+def _require_access_key(key: Optional[str]):
+    """Strictly enforce valid 6-hour Telegram access key before any generation or analysis."""
+    is_valid, msg, _ = verify_live_key(key or "")
+    if not is_valid:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": msg or "Access key required. Get the active 6-hour key from our Telegram group!",
+                "telegram_url": TELEGRAM_CHANNEL_URL,
+            },
+        )
 
 
 @app.get("/api/diag")
@@ -354,6 +371,7 @@ async def api_preview(url: str):
 @app.post("/api/analyze")
 async def api_analyze(req: AnalyzeRequest, request: Request, background_tasks: BackgroundTasks):
     """Analyze YouTube link, extract engagement map & frame pictures, with 3-link-pastes per 4h rate limit."""
+    _require_access_key(req.access_key)
     client_ip = get_client_ip(request)
     allowed, remaining, reset_in = check_link_rate_limit(client_ip)
     if not allowed:
@@ -478,6 +496,7 @@ async def api_rate_limit(request: Request):
 @app.post("/api/generate")
 async def api_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
     """Launch fast asynchronous Short creation (Unlimited exports from analyzed videos!)."""
+    _require_access_key(req.access_key)
     _prune_expired_tasks_and_caches()
 
     task_id = str(uuid.uuid4())
@@ -520,6 +539,7 @@ async def api_live_verify_key(req: LiveKeyVerifyRequest):
 @app.post("/api/pro/inspect")
 async def api_pro_inspect(req: ProInspectRequest):
     """Inspect a YouTube Live Stream or video for Live Studio and return DVR timeline + frame."""
+    _require_access_key(req.access_key)
     try:
         data = await asyncio.to_thread(
             inspect_pro_source,
@@ -536,6 +556,7 @@ async def api_pro_inspect(req: ProInspectRequest):
 @app.post("/api/pro/frames")
 async def api_pro_frames(req: ProFramesRequest):
     """Grab exact Start & End frames directly from the exact DVR/VOD timestamps selected by the user."""
+    _require_access_key(req.access_key)
     try:
         data = await asyncio.to_thread(
             fetch_pro_boundary_frames,
@@ -635,6 +656,7 @@ def _run_pro_generate_task(task_id: str, req: ProGenerateRequest):
 @app.post("/api/pro/generate")
 async def api_pro_generate(req: ProGenerateRequest, background_tasks: BackgroundTasks):
     """Launch asynchronous Pro Studio Split-Screen Short render."""
+    _require_access_key(req.access_key)
     _prune_expired_tasks_and_caches()
     task_id = str(uuid.uuid4())
     TASKS[task_id] = {
@@ -723,6 +745,7 @@ def _run_auto_viral_task(task_id: str, req: AutoViralGenerateRequest):
 @app.post("/api/auto-viral/scan")
 async def api_auto_viral_scan(req: AutoViralScanRequest):
     """Scan YouTube Live stream chat spikes & auto-detect viral peaks + auto-framed boxes."""
+    _require_access_key(req.access_key)
     try:
         inspect_data = await asyncio.to_thread(inspect_pro_source, url=req.url)
         vid = inspect_data.get("video_id")
@@ -768,6 +791,7 @@ async def api_auto_viral_scan(req: AutoViralScanRequest):
 @app.post("/api/auto-viral/generate")
 async def api_auto_viral_generate(req: AutoViralGenerateRequest, background_tasks: BackgroundTasks):
     """Launch asynchronous Auto Viral Short render with 3s hook + auto-framing (Unlimited exports!)."""
+    _require_access_key(req.access_key)
     _prune_expired_tasks_and_caches()
 
     task_id = str(uuid.uuid4())

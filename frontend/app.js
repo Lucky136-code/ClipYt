@@ -349,6 +349,10 @@ function parseTime(str) {
 // Instant Video Preview + Full Heatmap & Frame Analysis
 // -------------------------------------------------------------
 async function runFullAnalysis(url, force = false) {
+  if (!isLiveStudioUnlocked()) {
+    openLiveKeyModal();
+    return;
+  }
   if (!url) return;
   if (!force && url === lastAnalyzedUrl && currentAnalysis) return;
 
@@ -371,12 +375,21 @@ async function runFullAnalysis(url, force = false) {
         url: url,
         clip_duration: duration,
         max_clips: maxClips,
+        access_key: proState.accessKey || getLiveKeySession()?.key,
       }),
     }, 45000);
 
     const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
-      throw new Error(data.detail || "Could not analyze this YouTube video.");
+      if (res.status === 403) {
+        openLiveKeyModal();
+        const kErr = document.getElementById("live-key-error");
+        if (kErr) {
+          kErr.textContent = data.detail?.message || "Please enter the active Telegram access key to login.";
+          kErr.classList.remove("hidden");
+        }
+      }
+      throw new Error(data.detail?.message || data.detail || "Could not analyze this YouTube video.");
     }
 
     currentAnalysis = data.data;
@@ -885,6 +898,10 @@ window.triggerGenerate = async function (clipId) {
 };
 
 async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
+  if (!isLiveStudioUnlocked()) {
+    openLiveKeyModal();
+    return;
+  }
   if (!currentAnalysis) return;
   if (endVal <= startVal) {
     showError("End time must be after Start time.");
@@ -906,6 +923,7 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
     resolution: document.getElementById("opt-resolution").value,
     climax_hook: document.getElementById("opt-climax-hook").checked,
     peak_time: peakTime,
+    access_key: proState.accessKey || getLiveKeySession()?.key,
   };
 
   showProgressModal("Starting...");
@@ -919,7 +937,15 @@ async function submitGenerateRequest(clipId, startVal, endVal, peakTime) {
 
     const data = await parseApiResponse(res);
     if (!res.ok || !data.success) {
-      throw new Error(data.detail || "Could not start creating Short.");
+      if (res.status === 403) {
+        openLiveKeyModal();
+        const kErr = document.getElementById("live-key-error");
+        if (kErr) {
+          kErr.textContent = data.detail?.message || "Please enter the active Telegram access key to login.";
+          kErr.classList.remove("hidden");
+        }
+      }
+      throw new Error(data.detail?.message || data.detail || "Could not start creating Short.");
     }
 
     if (data.remaining_clips !== undefined) {
@@ -1386,6 +1412,9 @@ function setupSiteUnlockGate() {
                 gateEl.classList.add("hidden");
                 gateEl.style.display = "none";
                 document.body.style.overflow = "";
+                if (!isLiveStudioUnlocked()) {
+                  setTimeout(openLiveKeyModal, 350);
+                }
               }, 350);
             }, 300);
           }, 350);
@@ -1447,6 +1476,10 @@ function refreshLiveKeyUI() {
   const activeBadge = document.getElementById("live-key-active-badge");
   const countdownEl = document.getElementById("live-key-countdown");
 
+  const globalBadge = document.getElementById("global-key-badge");
+  const globalCountdown = document.getElementById("global-key-countdown");
+  const globalDot = document.getElementById("global-key-dot");
+
   if (sess) {
     proState.unlocked = true;
     proState.accessKey = sess.key;
@@ -1454,12 +1487,23 @@ function refreshLiveKeyUI() {
       badgePill.textContent = "✓ 6h ACTIVE";
       badgePill.classList.add("unlocked");
     }
+    const remSec = Math.max(0, Math.floor((sess.expiresAt - Date.now()) / 1000));
+    const hrs = Math.floor(remSec / 3600);
+    const mins = Math.floor((remSec % 3600) / 60);
+    const timeStr = `${String(hrs).padStart(2, "0")}h ${String(mins).padStart(2, "0")}m left`;
+
     if (activeBadge && countdownEl) {
       activeBadge.classList.remove("hidden");
-      const remSec = Math.max(0, Math.floor((sess.expiresAt - Date.now()) / 1000));
-      const hrs = Math.floor(remSec / 3600);
-      const mins = Math.floor((remSec % 3600) / 60);
-      countdownEl.textContent = `${String(hrs).padStart(2, "0")}h ${String(mins).padStart(2, "0")}m left`;
+      countdownEl.textContent = timeStr;
+    }
+    if (globalBadge) {
+      globalBadge.classList.add("unlocked");
+    }
+    if (globalDot) {
+      globalDot.style.background = "#22c55e";
+    }
+    if (globalCountdown) {
+      globalCountdown.textContent = `🟢 Key Active (${timeStr})`;
     }
   } else {
     proState.unlocked = false;
@@ -1470,6 +1514,15 @@ function refreshLiveKeyUI() {
     }
     if (activeBadge) {
       activeBadge.classList.add("hidden");
+    }
+    if (globalBadge) {
+      globalBadge.classList.remove("unlocked");
+    }
+    if (globalDot) {
+      globalDot.style.background = "#ef4444";
+    }
+    if (globalCountdown) {
+      globalCountdown.textContent = "🔑 Enter Key to Login";
     }
   }
 }
@@ -1486,6 +1539,14 @@ function openLiveKeyModal() {
 }
 
 function closeLiveKeyModal() {
+  if (!isLiveStudioUnlocked()) {
+    const errEl = document.getElementById("live-key-error");
+    if (errEl) {
+      errEl.textContent = "Please enter the active Telegram access key to login.";
+      errEl.classList.remove("hidden");
+    }
+    return;
+  }
   const modal = document.getElementById("live-key-modal");
   if (modal) modal.classList.add("hidden");
 }
@@ -1534,8 +1595,9 @@ async function submitLiveAccessKey() {
     }));
 
     refreshLiveKeyUI();
-    closeLiveKeyModal();
-    switchStudioMode("pro");
+    const modal = document.getElementById("live-key-modal");
+    if (modal) modal.classList.add("hidden");
+    switchStudioMode(proState.mode || "standard");
   } catch (err) {
     if (errEl) {
       errEl.textContent = err.message || "Invalid access key. Check Telegram channel!";
@@ -1543,7 +1605,7 @@ async function submitLiveAccessKey() {
     }
   } finally {
     submitBtn.disabled = false;
-    if (btnTxt) btnTxt.textContent = "Verify";
+    if (btnTxt) btnTxt.textContent = "Verify & Login";
     if (sp) sp.classList.add("hidden");
   }
 }
@@ -1556,7 +1618,7 @@ function switchStudioMode(targetMode) {
   const proWrap = document.getElementById("pro-studio-section");
   const vodWrap = document.getElementById("vod-studio-section");
 
-  if (targetMode === "pro" && !isLiveStudioUnlocked()) {
+  if (!isLiveStudioUnlocked()) {
     openLiveKeyModal();
     return;
   }
@@ -1600,6 +1662,10 @@ function setupProStudio() {
 
   refreshLiveKeyUI();
   setInterval(refreshLiveKeyUI, 30000);
+
+  if (isSiteUnlocked() && !isLiveStudioUnlocked()) {
+    setTimeout(openLiveKeyModal, 350);
+  }
 
   // Top mode switcher
   const stdBtn = document.getElementById("studio-btn-standard");
@@ -2126,6 +2192,10 @@ function hideProError() {
 }
 
 async function inspectLiveStream(url, forceRefresh = false) {
+  if (!isLiveStudioUnlocked()) {
+    openLiveKeyModal();
+    return;
+  }
   if (!looksLikeYouTubeUrl(url)) {
     showProError("Please paste a valid YouTube Live or Video link.");
     return;
@@ -2334,6 +2404,10 @@ function setupDualBoxInteractions() {
 }
 
 async function submitLiveClipExport() {
+  if (!isLiveStudioUnlocked()) {
+    openLiveKeyModal();
+    return;
+  }
   if (!proState.source) {
     showProError("Please paste and load a YouTube Live Stream link first.");
     return;
@@ -2552,6 +2626,10 @@ function useViralPeakInLiveStudio(p) {
 }
 
 async function generateAutoViralShort(peak, btnEl) {
+  if (!isLiveStudioUnlocked()) {
+    openLiveKeyModal();
+    return;
+  }
   if (!proState.source) {
     showProError("Please paste and load a stream link first.");
     return;
@@ -2586,6 +2664,7 @@ async function generateAutoViralShort(peak, btnEl) {
     subtitle_position: document.getElementById("pro-sub-pos")?.value || "seam",
     climax_hook: true,
     hook_duration: 3.0,
+    access_key: proState.accessKey || getLiveKeySession()?.key,
   };
 
   showProgressModal("Extracting 3s hook & 30s clip from live chat spike...");
@@ -2841,6 +2920,10 @@ function hideVodError() {
 }
 
 async function inspectVodStream(url) {
+  if (!isLiveStudioUnlocked()) {
+    openLiveKeyModal();
+    return;
+  }
   if (!looksLikeYouTubeUrl(url)) {
     showVodError("Please paste a valid YouTube Ended Stream or Video link.");
     return;
@@ -3076,6 +3159,10 @@ function setupVodDualBoxInteractions() {
 }
 
 async function submitVodClipExport() {
+  if (!isLiveStudioUnlocked()) {
+    openLiveKeyModal();
+    return;
+  }
   if (!vodState.source) {
     showVodError("Please paste and load an ended live stream or VOD link first.");
     return;

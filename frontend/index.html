@@ -34,6 +34,10 @@
           <span>Manual Clipper</span>
         </button>
       </div>
+      <div id="global-key-badge" class="global-key-pill" onclick="openLiveKeyModal()" title="Access Key Status (Click to login or renew)">
+        <span class="live-dot" id="global-key-dot" style="background:#ef4444;"></span>
+        <span id="global-key-countdown" class="key-countdown-text">🔑 Enter Key to Login</span>
+      </div>
     </div>
 
     <!-- ==================== AUTO CLIPPER WORKSPACE ==================== -->
@@ -965,27 +969,32 @@
 
   <!-- 🔒 Telegram Access Key Modal -->
   <div id="live-key-modal" class="modal-backdrop hidden">
-    <div class="glass-card live-key-card" style="max-width: 420px; padding: 1.5rem;">
-      <div class="modal-result-head" style="margin-bottom: 1.15rem;">
-        <a href="https://t.me/+N0hxuYHqK5kyY2U1" target="_blank" rel="noopener noreferrer" class="live-key-header-link"
-          title="Open Telegram Channel">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="#3b82f6" class="tg-svg-icon">
-            <path
-              d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z" />
-          </svg>
-          <span class="live-key-header-title">Get the key from telegram ↗</span>
-        </a>
+    <div class="glass-card live-key-card" style="max-width: 440px; padding: 1.8rem 1.6rem;">
+      <div class="modal-result-head" style="margin-bottom: 0.85rem; justify-content: space-between; align-items: center;">
+        <span class="live-key-badge">🔐 TELEGRAM ACCESS KEY</span>
         <button type="button" id="live-key-close-x" class="banner-close" title="Close">×</button>
       </div>
+
+      <h3 style="font-size: 1.32rem; font-weight: 800; color: #fff; margin: 0 0 0.4rem;">Login with 6-Hour Access Key</h3>
+      <p style="font-size: 0.88rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.15rem;">
+        To unlock Auto Clipper, Manual Clipper, and Live Clipper, get the latest active 6-hour access key from our Telegram group.
+      </p>
+
+      <a href="https://t.me/+N0hxuYHqK5kyY2U1" target="_blank" rel="noopener noreferrer" class="btn-task-action" style="background: linear-gradient(135deg, #0088cc 0%, #006699 100%); margin-bottom: 1.25rem; text-decoration: none; box-shadow: 0 4px 16px rgba(0, 136, 204, 0.35); font-weight: 800;">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="#ffffff" style="margin-right: 6px;">
+          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z" />
+        </svg>
+        <span>Get Key on Telegram (Join Group) ↗</span>
+      </a>
 
       <!-- Key Input Form -->
       <form id="live-key-form" class="live-key-form" onsubmit="return false;">
         <div class="live-key-input-wrap">
-          <input type="text" id="live-access-key-input" placeholder="Enter key..." autocomplete="off">
+          <input type="text" id="live-access-key-input" placeholder="Enter key (e.g. CLIP6H, GTA6LIVE)..." autocomplete="off">
         </div>
-        <div id="live-key-error" class="unlock-gate-error hidden"></div>
-        <button type="button" id="live-key-submit-btn" class="btn-red" style="width:100%; margin-top:0.85rem;">
-          <span class="btn-text">Verify</span>
+        <div id="live-key-error" class="unlock-gate-error hidden" style="margin-top:0.75rem;"></div>
+        <button type="button" id="live-key-submit-btn" class="btn-red" style="width:100%; margin-top:0.85rem; padding: 0.82rem 1.2rem; font-size: 1rem; font-weight: 800;">
+          <span class="btn-text">Verify &amp; Login</span>
           <div class="spinner hidden"></div>
         </button>
       </form>

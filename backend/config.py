@@ -156,7 +156,7 @@ def verify_live_key(candidate: str) -> tuple[bool, str, int]:
     valid_keys = get_all_valid_live_keys()
 
     if clean in valid_keys:
-        return True, "Key verified! Live Studio unlocked for 6 hours.", 6 * 3600
+        return True, "Key verified! Full access unlocked for 6 hours.", 6 * 3600
 
     return False, "Invalid or expired key. Please get the latest key on our Telegram channel.", 0
 
