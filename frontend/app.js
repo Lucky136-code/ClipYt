@@ -2493,8 +2493,8 @@ const vodState = {
   cam_ratio: 0.40,
   activeBox: "cam",
   boxes: {
-    cam: { x: 0.70, y: 0.58, w: 0.28, h: 0.36 },    // Streamer Facecam in bottom-right
-    stream: { x: 0.02, y: 0.04, w: 0.66, h: 0.92 }, // Display Screen (left/center gameplay area)
+    cam: { x: 0.03, y: 0.05, w: 0.28, h: 0.36 },    // Streamer Facecam top-left
+    stream: { x: 0.02, y: 0.03, w: 0.96, h: 0.82 }, // Display Screen above YouTube control bar
   },
   trackerId: null,
 };
@@ -2605,6 +2605,32 @@ window.toggleVodPlayback = function () {
   const iframe = document.getElementById("vod-live-iframe");
   if (iframe && iframe.contentWindow) {
     iframe.contentWindow.postMessage(JSON.stringify({ event: "command", func: "pauseVideo" }), "*");
+  }
+};
+
+window.toggleVodBoxesOverlay = function () {
+  const overlay = document.getElementById("vod-boxes-overlay");
+  const btn = document.getElementById("btn-toggle-vod-boxes");
+  const textEl = document.getElementById("toggle-vod-boxes-text");
+  if (!overlay) return;
+
+  const isHidden = overlay.style.display === "none";
+  if (isHidden) {
+    overlay.style.display = "";
+    if (btn) btn.classList.remove("active-settings-mode");
+    if (textEl) textEl.textContent = "Full Video Controls";
+    if (btn) {
+      const icon = btn.querySelector(".toggle-icon");
+      if (icon) icon.textContent = "⚙️";
+    }
+  } else {
+    overlay.style.display = "none";
+    if (btn) btn.classList.add("active-settings-mode");
+    if (textEl) textEl.textContent = "Show Crop Boxes";
+    if (btn) {
+      const icon = btn.querySelector(".toggle-icon");
+      if (icon) icon.textContent = "👁️";
+    }
   }
 };
 
@@ -3033,31 +3059,22 @@ function setupVodStudio() {
     });
   });
 
-  // Overlay Mode Toggle: Move Boxes vs Click Video
-  const overlayBtn = document.getElementById("btn-toggle-vod-overlay-mode");
-  if (overlayBtn) {
-    overlayBtn.addEventListener("click", () => {
-      const overlay = document.getElementById("vod-boxes-overlay");
-      if (!overlay) return;
-      const isClickthrough = overlay.classList.toggle("clickthrough-mode");
-      overlayBtn.classList.toggle("active", !isClickthrough);
-      overlayBtn.innerHTML = isClickthrough
-        ? "<span>Interactive Video</span>"
-        : "<span>Move Boxes</span>";
-    });
-  }
-
-  // Scrubber Slider
+  // Scrubber Slider - Smooth Scrubbing & Seeking Front/Back in Time
   const scrubber = document.getElementById("vod-scrubber-slider");
   if (scrubber) {
-    scrubber.addEventListener("input", (e) => {
+    const handleScrub = (e) => {
       vodState.isDraggingScrubber = true;
-      const sec = parseInt(e.target.value, 10);
+      const sec = parseFloat(e.target.value) || 0;
       seekVodPlayback(sec);
-    });
-    scrubber.addEventListener("change", () => {
+    };
+    const endScrub = () => {
       vodState.isDraggingScrubber = false;
-    });
+    };
+    scrubber.addEventListener("input", handleScrub);
+    scrubber.addEventListener("change", endScrub);
+    scrubber.addEventListener("pointerup", endScrub);
+    scrubber.addEventListener("touchend", endScrub);
+    scrubber.addEventListener("pointercancel", endScrub);
   }
 
   // Load VOD form & Paste button

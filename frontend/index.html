@@ -12,7 +12,7 @@
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120_1080p_fix">
+  <link rel="stylesheet" href="/static/style.css?v=20261120_manual_clipper_v1">
 </head>
 
 <body>
@@ -535,17 +535,18 @@
           <!-- Top Stream Info Header -->
           <div class="pro-player-header">
             <div class="pro-header-info">
-              <span id="vod-status-badge" class="pro-status-live is-vod">🎬 ENDED STREAM</span>
+              <span id="vod-status-badge" class="pro-status-live is-vod">🎬 MANUAL CLIPPER</span>
               <div class="pro-title-wrap">
                 <h2 id="vod-source-title" class="pro-stream-title">Stream Title</h2>
                 <span id="vod-source-author" class="pro-stream-author">Channel</span>
               </div>
             </div>
-            <!-- Mode Switch: Move Boxes vs Direct Video Interaction -->
+            <!-- Mode Switch: Full Video Interaction vs Move Crop Boxes -->
             <div class="pro-overlay-toggle-wrap">
-              <button type="button" id="btn-toggle-vod-overlay-mode" class="choice-pill active"
-                title="Toggle box movement or video controls">
-                <span>🎯 Move Boxes</span>
+              <button type="button" id="btn-toggle-vod-boxes" class="btn-toggle-boxes" onclick="toggleVodBoxesOverlay()"
+                title="Hide crop boxes to access native YouTube controls & full video directly">
+                <span class="toggle-icon">⚙️</span>
+                <span id="toggle-vod-boxes-text">Full Video Controls</span>
               </button>
             </div>
           </div>
@@ -563,7 +564,7 @@
               <!-- Display Box (Cyan - Main Gameplay/Screen) -->
               <div id="box-vod-stream" class="crop-box crop-box-stream" data-box="stream">
                 <div class="crop-drag-body"></div>
-                <div class="crop-box-label label-stream">Display (Screen)</div>
+                <div class="crop-box-label label-stream" title="Drag this label to move the Display box"><span>⠿</span> Display (Screen)</div>
                 <div class="crop-handle handle-nw" data-handle="nw"></div>
                 <div class="crop-handle handle-ne" data-handle="ne"></div>
                 <div class="crop-handle handle-sw" data-handle="sw"></div>
@@ -572,7 +573,7 @@
               <!-- Streamer Box (Purple - Facecam) -->
               <div id="box-vod-cam" class="crop-box crop-box-cam" data-box="cam">
                 <div class="crop-drag-body"></div>
-                <div class="crop-box-label label-cam">Streamer (Facecam)</div>
+                <div class="crop-box-label label-cam" title="Drag this label to move the Facecam box"><span>⠿</span> Streamer (Facecam)</div>
                 <div class="crop-handle handle-nw" data-handle="nw"></div>
                 <div class="crop-handle handle-ne" data-handle="ne"></div>
                 <div class="crop-handle handle-sw" data-handle="sw"></div>
@@ -613,41 +614,38 @@
               <span class="preset-label" style="font-size:0.72rem; color:#0284c7;">🔵 Display Presets:</span>
               <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('full')">Full Screen</button>
               <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('left')">Left Game</button>
-              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('center')">Center
-                Game</button>
+              <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('center')">Center Game</button>
               <button type="button" class="stage-mini-pill" onclick="applyVodDisplayPreset('right')">Right Game</button>
             </div>
           </div>
 
           <!-- Scrubbing & Playback Controller -->
-          <div class="pro-timeline-control-bar">
+          <div class="pro-timeline-control-bar vod-timeline-bar">
             <!-- Scrubber Track & Current Position -->
             <div class="pro-scrub-track-row">
               <span id="vod-tl-current" class="time-readout">00:00:00</span>
               <div class="pro-scrubber-wrap">
                 <input type="range" id="vod-scrubber-slider" min="0" max="300" step="1" value="0"
-                  class="pro-scrubber-slider">
+                  class="pro-scrubber-slider" title="Drag slider to scrub back and forth in video">
               </div>
-              <span id="vod-tl-max" class="time-readout-live" style="color:var(--accent);">00:00:00</span>
+              <span id="vod-tl-max" class="time-readout-live">00:00:00</span>
             </div>
 
-            <!-- Playback Jump Buttons & Status -->
-            <div class="pro-playback-buttons-row">
-              <div class="playback-btn-group">
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-60)" title="Go back 1 minute">⏪
-                  -1m</button>
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(-10)" title="Go back 10 seconds">⏪
-                  -10s</button>
-                <button type="button" id="btn-vod-play-pause" class="btn-jump btn-play-pause"
-                  onclick="toggleVodPlayback()">⏯️ Play / Pause</button>
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(10)" title="Forward 10 seconds">⏩
-                  +10s</button>
-                <button type="button" class="btn-jump" onclick="jumpVodPlayback(60)" title="Forward 1 minute">⏩
-                  +1m</button>
-              </div>
-              <div class="recording-window-preview">
-                <span>Short Window: <strong id="vod-window-badge">00:00:00 ➔ 00:00:35 (35s)</strong></span>
-              </div>
+            <!-- Playback Jump Buttons Row -->
+            <div class="playback-btn-group">
+              <button type="button" class="btn-jump btn-step" onclick="jumpVodPlayback(-60)" title="Rewind 1 minute">⏪ -1m</button>
+              <button type="button" class="btn-jump btn-step" onclick="jumpVodPlayback(-10)" title="Rewind 10 seconds">◀ -10s</button>
+              <button type="button" id="btn-vod-play-pause" class="btn-jump btn-play-pause"
+                onclick="toggleVodPlayback()">⏯️ Play / Pause</button>
+              <button type="button" class="btn-jump btn-step" onclick="jumpVodPlayback(10)" title="Forward 10 seconds">+10s ▶</button>
+              <button type="button" class="btn-jump btn-step" onclick="jumpVodPlayback(60)" title="Forward 1 minute">+1m ⏩</button>
+            </div>
+
+            <!-- Selected Short Window Callout Card -->
+            <div class="vod-window-card">
+              <span class="vod-window-icon">✂️</span>
+              <span class="vod-window-label">Selected Short Window:</span>
+              <strong id="vod-window-badge" class="vod-window-time">00:00:00 ➔ 00:00:35 (35s)</strong>
             </div>
           </div>
 
@@ -701,10 +699,9 @@
             </div>
 
             <!-- Big Start Generating VOD Short Button -->
-            <button type="button" id="vod-create-btn" class="btn-create-short pro-master-record-btn"
-              style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);">
+            <button type="button" id="vod-create-btn" class="btn-create-short pro-master-record-btn vod-master-btn">
               <span class="rec-dot-pulse" style="background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.8);"></span>
-              <span class="record-btn-text">⚡ Generate Dual-Box Short</span>
+              <span class="record-btn-text">⚡ Generate 9:16 Short</span>
             </button>
           </div>
         </div>
@@ -1057,7 +1054,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261120_direct_download"></script>
+  <script src="/static/app.js?v=20261120_manual_clipper_v1"></script>
 </body>
 
 </html>
