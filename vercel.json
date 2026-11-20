@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://relating-pressed-combination-strategy.trycloudflare.com/api/:path*"
+      "destination": "https://capitol-story-leisure-speaker.trycloudflare.com/api/:path*"
     }
   ]
 }
