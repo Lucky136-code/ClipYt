@@ -3327,14 +3327,15 @@ input:checked+.slider:before {
 }
 
 .unlock-gate-card {
-  max-width: 520px;
+  max-width: 490px;
   width: 100%;
   border-radius: 24px;
-  padding: 2.2rem 2.2rem 1.8rem;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(36px);
-  -webkit-backdrop-filter: blur(36px);
-  box-shadow: 0 24px 64px rgba(15, 12, 41, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.7);
+  padding: 2.2rem 2rem 1.8rem;
+  background: rgba(15, 20, 32, 0.96);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75);
   animation: gatePopIn 0.38s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -3364,9 +3365,9 @@ input:checked+.slider:before {
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.6px;
-  color: #dc2626;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #60a5fa;
+  background: rgba(37, 99, 235, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.28);
   margin-bottom: 0.75rem;
 }
 
@@ -3378,14 +3379,15 @@ input:checked+.slider:before {
   font-size: 1.62rem;
   font-weight: 900;
   letter-spacing: -0.5px;
-  color: #0f172a;
-  margin-bottom: 0.45rem;
+  color: #f8fafc;
+  margin-bottom: 0.35rem;
 }
 
 .unlock-gate-subtitle {
-  font-size: 0.88rem;
+  font-size: 0.92rem;
   line-height: 1.5;
-  color: #475569;
+  color: #94a3b8;
+  margin: 0;
 }
 
 .unlock-tasks-list {
@@ -3396,11 +3398,11 @@ input:checked+.slider:before {
 }
 
 .unlock-task-card {
-  background: rgba(12, 18, 30, 0.85);
-  border: 1px solid rgba(37, 99, 235, 0.22);
+  background: rgba(22, 30, 49, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
-  padding: 1.05rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 1.1rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
@@ -3453,14 +3455,14 @@ input:checked+.slider:before {
 }
 
 .unlock-task-name {
-  font-size: 0.94rem;
+  font-size: 0.95rem;
   font-weight: 800;
-  color: #0f172a;
+  color: #f8fafc;
 }
 
 .unlock-task-desc {
-  font-size: 0.8rem;
-  color: #64748b;
+  font-size: 0.82rem;
+  color: #94a3b8;
   margin: 0;
 }
 
@@ -3469,8 +3471,8 @@ input:checked+.slider:before {
   font-weight: 800;
   padding: 3px 9px;
   border-radius: 9999px;
-  background: rgba(100, 116, 139, 0.12);
-  color: #64748b;
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   transition: all 0.2s ease;
@@ -3529,21 +3531,27 @@ input:checked+.slider:before {
 .task-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 0.68rem 0.9rem;
+  padding: 0.72rem 0.95rem;
   border-radius: 10px;
-  border: 1.5px solid rgba(0, 0, 0, 0.14);
-  background: #ffffff;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: rgba(11, 15, 25, 0.88);
   font-family: var(--font-sans);
   font-size: 0.88rem;
   font-weight: 600;
-  color: #0f172a;
+  color: #f8fafc;
   outline: none;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.task-input::placeholder {
+  color: #64748b;
+  font-weight: 500;
 }
 
 .task-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  border-color: #3b82f6;
+  background: rgba(11, 15, 25, 0.98);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 
 .task-hint-status {
