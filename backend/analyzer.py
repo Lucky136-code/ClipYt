@@ -1,7 +1,8 @@
 import re
 import io
 import base64
-from typing import List, Dict, Any, Optional
+import concurrent.futures
+from typing import List, Dict, Any, Optional, Tuple
 import requests
 from PIL import Image
 import yt_dlp
@@ -88,6 +89,7 @@ def _extract_storyboard_frames(
     """
     Crops actual video frame thumbnails for the given timestamps from YouTube's
     highest-resolution storyboard sprite sheets (zero video download required).
+    Uses fast parallel HTTP fetches for sprite sheets.
     Returns mapping of timestamp index -> base64 JPEG data URL.
     """
     frames_out: Dict[int, str] = {}
@@ -103,7 +105,9 @@ def _extract_storyboard_frames(
     t_acc = sb_meta["total_duration"]
     frag_windows = [(f["start"], f["end"], f["url"]) for f in sb_meta["fragments"]]
 
-    sheet_cache: Dict[str, Optional[Image.Image]] = {}
+    # Pre-determine which fragment URL is needed for each timestamp
+    target_assignments: List[Tuple[int, float, Optional[str], float, float]] = []
+    needed_urls = set()
 
     for idx, ts in enumerate(timestamps):
         ts_clamped = max(0.0, min(ts, t_acc - 0.01))
@@ -118,30 +122,42 @@ def _extract_storyboard_frames(
                 frag_dur = max(0.01, f_end - f_start)
                 break
 
-        if not chosen_frag:
+        if not chosen_frag and frag_windows:
             chosen_frag = frag_windows[-1][2]
             frag_start = frag_windows[-1][0]
             frag_dur = max(0.01, frag_windows[-1][1] - frag_start)
 
-        if not chosen_frag:
-            continue
+        if chosen_frag:
+            needed_urls.add(chosen_frag)
+            target_assignments.append((idx, ts_clamped, chosen_frag, frag_start, frag_dur))
 
-        # Fetch sprite sheet once and cache
-        if chosen_frag not in sheet_cache:
-            try:
-                resp = requests.get(chosen_frag, timeout=6)
-                if resp.status_code == 200:
-                    sheet_cache[chosen_frag] = Image.open(io.BytesIO(resp.content)).convert("RGB")
-                else:
-                    sheet_cache[chosen_frag] = None
-            except Exception:
-                sheet_cache[chosen_frag] = None
+    # Download needed sprite sheets in parallel (super fast <0.5s total!)
+    sheet_cache: Dict[str, Optional[Image.Image]] = {}
 
+    def _fetch_sheet(url: str) -> Tuple[str, Optional[Image.Image]]:
+        try:
+            resp = requests.get(url, timeout=4)
+            if resp.status_code == 200:
+                return url, Image.open(io.BytesIO(resp.content)).convert("RGB")
+        except Exception:
+            pass
+        return url, None
+
+    if needed_urls:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(needed_urls))) as pool:
+            futures = [pool.submit(_fetch_sheet, u) for u in needed_urls]
+            for fut in concurrent.futures.as_completed(futures, timeout=5):
+                try:
+                    u, img = fut.result()
+                    sheet_cache[u] = img
+                except Exception:
+                    pass
+
+    for idx, ts_clamped, chosen_frag, frag_start, frag_dur in target_assignments:
         sheet_img = sheet_cache.get(chosen_frag)
         if sheet_img is None:
             continue
 
-        # Determine cell index inside this sprite sheet
         actual_cols = max(1, sheet_img.width // cell_w)
         actual_rows = max(1, sheet_img.height // cell_h)
         actual_cells = actual_cols * actual_rows
@@ -162,11 +178,14 @@ def _extract_storyboard_frames(
         y2 = min(sheet_img.height, y1 + cell_h)
 
         if x2 > x1 and y2 > y1:
-            crop = sheet_img.crop((x1, y1, x2, y2))
-            buf = io.BytesIO()
-            crop.save(buf, format="JPEG", quality=88)
-            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-            frames_out[idx] = f"data:image/jpeg;base64,{b64}"
+            try:
+                crop = sheet_img.crop((x1, y1, x2, y2))
+                buf = io.BytesIO()
+                crop.save(buf, format="JPEG", quality=88)
+                b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                frames_out[idx] = f"data:image/jpeg;base64,{b64}"
+            except Exception:
+                pass
 
     return frames_out
 
@@ -187,6 +206,7 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "format": None,
         "writesubtitles": True,
         "writeautomaticsub": True,
+        "subtitleslangs": ["en.*", "hi.*", "en-orig", "hi-orig"],
     })
 
     info = None
@@ -329,6 +349,7 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "clips": clips,
         "_caption_info": caption_info,
         "_prefetched_transcript": prefetched_transcript,
+        "_info": info,
     }
 
 

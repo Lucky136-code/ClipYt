@@ -244,6 +244,7 @@ def _extract_audio_energy_signal(
     if headers.get("User-Agent"):
         cmd.extend(["-user_agent", headers["User-Agent"]])
     cmd.extend([
+        "-t", "180",
         "-i", audio_url,
         "-vn", "-ac", "1", "-ar", str(sr),
         "-f", "s16le",
@@ -251,7 +252,7 @@ def _extract_audio_energy_signal(
     ])
 
     try:
-        res = subprocess.run(cmd, capture_output=True, timeout=18)
+        res = subprocess.run(cmd, capture_output=True, timeout=4.5)
         if res.returncode != 0 or not res.stdout or len(res.stdout) < sr * 4:
             return None
 

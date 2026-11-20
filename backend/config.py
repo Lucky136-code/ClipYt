@@ -35,9 +35,9 @@ YTDLP_BASE_OPTS = {
     "overwrites": True,
     "concurrent_fragment_downloads": 4,
     "buffersize": 8 * 1024 * 1024,
-    "socket_timeout": 12,
-    "retries": 3,
-    "fragment_retries": 3,
+    "socket_timeout": 8,
+    "retries": 1,
+    "fragment_retries": 2,
 }
 
 # Optional YouTube cookies support for cloud hosting (e.g. Hugging Face Spaces Secret: YOUTUBE_COOKIES)

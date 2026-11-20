@@ -50,6 +50,7 @@ app.add_middleware(
 TASKS: Dict[str, Dict[str, Any]] = {}
 TRANSCRIPT_CACHE: Dict[str, Any] = {}
 HEATMAP_CACHE: Dict[str, Any] = {}
+ANALYSIS_CACHE: Dict[str, Any] = {}
 
 # Production Concurrency Guard: Up to 3 simultaneous NVENC GPU renders
 import threading
@@ -121,6 +122,8 @@ def _prune_expired_tasks_and_caches():
         TRANSCRIPT_CACHE.clear()
     if len(HEATMAP_CACHE) > 40:
         HEATMAP_CACHE.clear()
+    if len(ANALYSIS_CACHE) > 50:
+        ANALYSIS_CACHE.clear()
 
 
 @app.on_event("startup")
@@ -373,6 +376,13 @@ async def api_analyze(req: AnalyzeRequest, request: Request, background_tasks: B
     """Analyze YouTube link, extract engagement map & frame pictures, with 3-link-pastes per 4h rate limit."""
     _require_access_key(req.access_key)
     client_ip = get_client_ip(request)
+
+    # 0. Instant Cache: If already analyzed recently, return in 0.001s!
+    cache_k = f"{req.url}_{req.clip_duration}_{req.max_clips}"
+    cached = ANALYSIS_CACHE.get(cache_k)
+    if cached and (time.time() - cached.get("ts", 0)) < 900:
+        return {"success": True, "data": cached["data"], "remaining_links": 999999}
+
     allowed, remaining, reset_in = check_link_rate_limit(client_ip)
     if not allowed:
         hrs = int(reset_in // 3600)
@@ -392,15 +402,17 @@ async def api_analyze(req: AnalyzeRequest, request: Request, background_tasks: B
         )
         vid = data["video_id"]
         caption_info = data.pop("_caption_info", None)
+        info_obj = data.pop("_info", None)
         prefetched = data.pop("_prefetched_transcript", None)
         transcript = (
             prefetched
             if prefetched is not None
-            else await asyncio.to_thread(fetch_youtube_transcript, vid, caption_info)
+            else await asyncio.to_thread(fetch_youtube_transcript, vid, info_obj or caption_info)
         )
         data["has_transcript"] = bool(transcript and len(transcript) > 0)
         TRANSCRIPT_CACHE[vid] = transcript
         HEATMAP_CACHE[vid] = data.get("heatmap") or []
+        ANALYSIS_CACHE[cache_k] = {"data": data, "ts": time.time()}
 
         # Successfully analyzed valid YouTube link -> count 1 link paste
         record_link_paste(client_ip)

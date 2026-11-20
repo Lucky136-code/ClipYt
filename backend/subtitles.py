@@ -255,24 +255,26 @@ def fetch_youtube_transcript(
         words = extract_word_transcript_from_info(info_dict)
         if words:
             return words
-
-    # 2. Fetch json3 directly via yt-dlp (uses YOUTUBE_COOKIES + deno on cloud)
-    try:
-        opts = dict(YTDLP_BASE_OPTS)
-        opts.update({
-            "extract_flat": False,
-            "ignore_no_formats_error": True,
-            "format": None,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-        })
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-        words = extract_word_transcript_from_info(info)
-        if words:
-            return words
-    except Exception:
-        pass
+        # If info_dict was already provided, yt-dlp has already run! Skip redundant second scrape.
+    else:
+        # 2. Fetch json3 directly via yt-dlp only when info_dict was not supplied
+        try:
+            opts = dict(YTDLP_BASE_OPTS)
+            opts.update({
+                "extract_flat": False,
+                "ignore_no_formats_error": True,
+                "format": None,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": ["en.*", "hi.*", "en-orig", "hi-orig"],
+            })
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            words = extract_word_transcript_from_info(info)
+            if words:
+                return words
+        except Exception:
+            pass
 
     # 3. Fallback: youtube-transcript-api (de-overlapped into word timings)
     try:

@@ -348,17 +348,40 @@ function parseTime(str) {
 // -------------------------------------------------------------
 // Instant Video Preview + Full Heatmap & Frame Analysis
 // -------------------------------------------------------------
+let isAnalyzingUrl = false;
+let analysisStepTimer = null;
+
 async function runFullAnalysis(url, force = false) {
   if (!isLiveStudioUnlocked()) {
     openLiveKeyModal();
     return;
   }
   if (!url) return;
+  if (isAnalyzingUrl && !force) return;
   if (!force && url === lastAnalyzedUrl && currentAnalysis) return;
 
+  isAnalyzingUrl = true;
   hideError();
   setAnalyzeLoading(true);
   lastAnalyzedUrl = url;
+
+  const indicator = document.getElementById("analyzing-indicator");
+  const indicatorText = indicator ? indicator.querySelector("span") : null;
+  const defaultText = "Finding where viewers interacted the most...";
+  if (indicatorText) indicatorText.textContent = defaultText;
+
+  if (analysisStepTimer) clearInterval(analysisStepTimer);
+  let stepIdx = 0;
+  const progressSteps = [
+    "Finding where viewers interacted the most...",
+    "Scanning viewer retention & replay peaks...",
+    "Mapping storyboard frames & peak moments...",
+    "Preparing instant viral clip cards...",
+  ];
+  analysisStepTimer = setInterval(() => {
+    stepIdx = (stepIdx + 1) % progressSteps.length;
+    if (indicatorText) indicatorText.textContent = progressSteps[stepIdx];
+  }, 2200);
 
   // Step 1: Instant preview (thumbnail + YouTube title)
   fetchInstantPreview(url);
@@ -396,10 +419,16 @@ async function runFullAnalysis(url, force = false) {
     renderFullAnalysis(currentAnalysis);
     fetchRateLimitStatus();
   } catch (err) {
-    document.getElementById("analyzing-indicator").classList.add("hidden");
+    if (indicator) indicator.classList.add("hidden");
     showError(err.message || "Something went wrong. Please check the YouTube link.");
     fetchRateLimitStatus();
   } finally {
+    if (analysisStepTimer) {
+      clearInterval(analysisStepTimer);
+      analysisStepTimer = null;
+    }
+    if (indicatorText) indicatorText.textContent = defaultText;
+    isAnalyzingUrl = false;
     setAnalyzeLoading(false);
   }
 }
@@ -435,6 +464,10 @@ async function fetchInstantPreview(url) {
 }
 
 function renderFullAnalysis(data) {
+  if (analysisStepTimer) {
+    clearInterval(analysisStepTimer);
+    analysisStepTimer = null;
+  }
   const previewSec = document.getElementById("video-preview-section");
   const resultsSec = document.getElementById("results-section");
   const indicator = document.getElementById("analyzing-indicator");
