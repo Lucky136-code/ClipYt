@@ -14,6 +14,7 @@ from backend.config import (
     TEMP_DIR,
     YTDLP_BASE_OPTS,
     ASPECT_RATIOS,
+    ASPECT_RATIOS_4K,
     ASPECT_RATIOS_720,
     ensure_fresh_cookiefile,
 )
@@ -82,36 +83,39 @@ def detect_best_encoder() -> Dict[str, Any]:
     return _BEST_ENCODER
 
 
-def _build_stream_strategies() -> list:
+def _build_stream_strategies(target_res: str = "1080p") -> list:
     """
-    Preferred fast H.264 1080p stream strategies with flexible bv*+ba/b fallback.
+    Preferred fast H.264 stream strategies (1080p or 4K) with flexible bv*+ba/b fallback.
     Each entry is (label, opts_dict, allow_cookies).
     Note: Some clients (web_embedded, android_vr) drop all formats if cookies are passed.
     """
+    is_4k = target_res in ("4k", "2160p")
+    target_h = 2160 if is_4k else 1080
     hd_fmt = (
-        "bestvideo[height=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
-        "bestvideo[height=1080]+bestaudio/"
-        "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/"
-        "bestvideo[height<=1080]+bestaudio/"
-        "best[height=1080][protocol^=m3u8]/"
-        "best[height<=1080][protocol^=m3u8]/"
+        f"bestvideo[height={target_h}][vcodec^=avc1]+bestaudio[ext=m4a]/"
+        f"bestvideo[height={target_h}]+bestaudio/"
+        f"bestvideo[height<={target_h}][vcodec^=avc1]+bestaudio[ext=m4a]/"
+        f"bestvideo[height<={target_h}]+bestaudio/"
+        f"best[height={target_h}][protocol^=m3u8]/"
+        f"best[height<={target_h}][protocol^=m3u8]/"
         "bestvideo+bestaudio/"
+        "bv*+ba/b"
+    )
+    safari_fmt = (
+        f"bestvideo[height={target_h}]+bestaudio/"
+        f"best[height={target_h}][protocol^=m3u8]/"
+        f"bestvideo[height<={target_h}]+bestaudio/"
+        f"best[height<={target_h}][protocol^=m3u8]/"
         "bv*+ba/b"
     )
     strategies = []
     if YTDLP_BASE_OPTS.get("cookiefile"):
         strategies.extend([
             (
-                "Authenticated Safari HLS 1080p",
+                f"Authenticated Safari HLS {target_h}p",
                 {
                     "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
-                    "format": (
-                        "bestvideo[height=1080]+bestaudio/"
-                        "best[height=1080][protocol^=m3u8]/"
-                        "bestvideo[height<=1080]+bestaudio/"
-                        "best[height<=1080][protocol^=m3u8]/"
-                        "bv*+ba/b"
-                    ),
+                    "format": safari_fmt,
                 },
                 True,
             ),
@@ -165,16 +169,10 @@ def _build_stream_strategies() -> list:
             False,
         ),
         (
-            "Safari HLS 1080p",
+            f"Safari HLS {target_h}p",
             {
                 "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
-                "format": (
-                    "bestvideo[height=1080]+bestaudio/"
-                    "best[height=1080][protocol^=m3u8]/"
-                    "bestvideo[height<=1080]+bestaudio/"
-                    "best[height<=1080][protocol^=m3u8]/"
-                    "bv*+ba/b"
-                ),
+                "format": safari_fmt,
             },
             False,
         ),
@@ -190,8 +188,8 @@ def _build_stream_strategies() -> list:
             "HD HLS Stream",
             {
                 "format": (
-                    "bestvideo[height<=1080][protocol^=m3u8]+bestaudio[protocol^=m3u8]/"
-                    "best[height<=1080][protocol^=m3u8]/bv*+ba/b"
+                    f"bestvideo[height<={target_h}][protocol^=m3u8]+bestaudio[protocol^=m3u8]/"
+                    f"best[height<={target_h}][protocol^=m3u8]/bv*+ba/b"
                 ),
             },
             False,
@@ -327,6 +325,7 @@ def download_clip_segment(
     end_time: float,
     output_path: Path,
     progress_cb: Optional[Callable[[str, int], None]] = None,
+    resolution: str = "1080p",
 ) -> Tuple[Path, float]:
     """
     Downloads ONLY the requested segment using stream-copy (-c copy, NO CPU re-encode!)
@@ -373,7 +372,7 @@ def download_clip_segment(
 
     # Live multi-tier waterfall fallback
     errors = []
-    for idx, (label, strat_opts, allow_cookies) in enumerate(_build_stream_strategies(), 1):
+    for idx, (label, strat_opts, allow_cookies) in enumerate(_build_stream_strategies(resolution), 1):
         if idx > 1 and progress_cb:
             progress_cb(f"Switching to {label}...", min(48, 22 + idx * 3))
 
@@ -497,7 +496,12 @@ def render_short(
     - Uses 1/4-scale blur pass (15x faster, visually identical creamy blur)
     - Uses NVIDIA NVENC / Intel QSV / AMD AMF when available (with CPU fallback)
     """
-    res_table = ASPECT_RATIOS if resolution == "1080p" else ASPECT_RATIOS_720
+    if resolution in ("4k", "2160p"):
+        res_table = ASPECT_RATIOS_4K
+    elif resolution == "720p":
+        res_table = ASPECT_RATIOS_720
+    else:
+        res_table = ASPECT_RATIOS
     target_spec = res_table.get(aspect_ratio, res_table["9:16"])
     target_w = target_spec["width"]
     target_h = target_spec["height"]
@@ -677,7 +681,7 @@ def render_short(
             *enc_args,
             "-pix_fmt", "yuv420p",
             "-profile:v", "high",
-            "-level", "4.1",
+            "-level", ("5.1" if (target_w > 1920 or target_h > 1920) else "4.1"),
             "-c:a", "aac",
             "-b:a", "160k",
             "-movflags", "+faststart",
@@ -690,9 +694,14 @@ def render_short(
     if result.returncode != 0 and encoder["hw_in"]:
         result = _run_ffmpeg(use_hw_in=False, enc_args=encoder["enc_args"])
     if result.returncode != 0 and encoder["name"] != "libx264":
+        is_high_res = (target_w > 1920 or target_h > 1920)
         result = _run_ffmpeg(
             use_hw_in=False,
-            enc_args=["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"],
+            enc_args=[
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                "-maxrate", ("24000k" if is_high_res else "6000k"),
+                "-bufsize", ("32000k" if is_high_res else "10000k"),
+            ],
         )
 
     if ass_file and ass_file.exists():
@@ -748,6 +757,7 @@ def process_clip_pipeline(
             end_time=end_time,
             output_path=raw_temp_path,
             progress_cb=progress_cb,
+            resolution=resolution,
         )
 
         render_short(

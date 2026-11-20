@@ -79,6 +79,20 @@ let currentQuota = {
   reset_in_seconds: 0,
 };
 
+function show4kUnavailableModal(maxRes) {
+  const el = document.getElementById("res-notice-max");
+  if (el) el.textContent = maxRes || "1080p";
+  const modal = document.getElementById("res-notice-modal");
+  if (modal) modal.classList.remove("hidden");
+}
+
+function closeResNoticeModal() {
+  const modal = document.getElementById("res-notice-modal");
+  if (modal) modal.classList.add("hidden");
+}
+window.closeResNoticeModal = closeResNoticeModal;
+window.show4kUnavailableModal = show4kUnavailableModal;
+
 async function fetchRateLimitStatus() {
   try {
     const res = await fetchWithTimeout("/api/rate-limit", {}, 4000);
@@ -216,6 +230,20 @@ function setupEventListeners() {
   // Modal close buttons
   document.getElementById("modal-close-btn").addEventListener("click", hideProgressModal);
   document.getElementById("modal-close-x").addEventListener("click", hideProgressModal);
+
+  // Auto Clipper resolution selection listener (1080p vs 4K)
+  const resSelect = document.getElementById("opt-resolution");
+  if (resSelect) {
+    resSelect.addEventListener("change", (e) => {
+      if (e.target.value === "4k") {
+        if (currentAnalysis && currentAnalysis.has_4k === false) {
+          e.target.value = "1080p";
+          const maxStr = currentAnalysis.max_height ? `${currentAnalysis.max_height}p` : "1080p";
+          show4kUnavailableModal(maxStr);
+        }
+      }
+    });
+  }
 
   // Mode tabs: Auto Moments vs Select Manually
   const tabAuto = document.getElementById("tab-auto");
@@ -401,6 +429,14 @@ function renderFullAnalysis(data) {
   indicator.classList.add("hidden");
   previewSec.classList.remove("hidden");
   resultsSec.classList.remove("hidden");
+
+  // Validate selected resolution against loaded video
+  const resSelect = document.getElementById("opt-resolution");
+  if (resSelect && resSelect.value === "4k" && data.has_4k === false) {
+    resSelect.value = "1080p";
+    const maxStr = data.max_height ? `${data.max_height}p` : "1080p";
+    show4kUnavailableModal(maxStr);
+  }
 
   // Video Thumbnail (1080p MaxRes with fallback) + Title + Caption as it is from YouTube
   const fullThumbEl = document.getElementById("meta-thumb");
@@ -1328,6 +1364,7 @@ const proState = {
   trackerId: null,
   cam_position: "top",   // "top" or "bottom"
   cam_ratio: 0.40,       // 0.25 to 0.65
+  resolution: "1080p",   // "1080p" or "4k"
   boxes: {
     cam: { x: 0.03, y: 0.05, w: 0.28, h: 0.36 },    // Streamer (Facecam) top-left (keeps bottom-right clear)
     stream: { x: 0.02, y: 0.03, w: 0.96, h: 0.82 }, // Display (Screen) above native YouTube control bar
@@ -1597,6 +1634,23 @@ function setupProStudio() {
       btn.classList.add("active");
       proState.clipDuration = parseInt(btn.dataset.dur, 10) || 35;
       syncScrubberUI(proState.currentPlaySec);
+    });
+  });
+
+  // Resolution Controls (1080p vs 4K)
+  document.querySelectorAll("#pro-res-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const res = btn.dataset.res;
+      if (res === "4k") {
+        if (proState.source && proState.source.has_4k === false) {
+          const maxStr = proState.source.max_height ? `${proState.source.max_height}p` : "1080p";
+          show4kUnavailableModal(maxStr);
+          return;
+        }
+      }
+      document.querySelectorAll("#pro-res-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      proState.resolution = res;
     });
   });
 
@@ -2038,6 +2092,15 @@ async function inspectLiveStream(url, forceRefresh = false) {
     proState.source = src;
     proState.firstPdtUtc = src.first_pdt_utc || null;
 
+    if (src && src.has_4k === false && proState.resolution === "4k") {
+      proState.resolution = "1080p";
+      document.querySelectorAll("#pro-res-picker .choice-pill").forEach((b) => {
+        b.classList.toggle("active", b.dataset.res === "1080p");
+      });
+      const maxStr = src.max_height ? `${src.max_height}p` : "1080p";
+      show4kUnavailableModal(maxStr);
+    }
+
     const total = src.is_live
       ? Math.max(30, Math.floor(src.dvr_window_sec || src.live_elapsed_sec || 7200))
       : Math.max(10, Math.floor(src.duration || 60));
@@ -2252,7 +2315,7 @@ async function submitLiveClipExport() {
     stream_box: proState.boxes?.stream || { x: 0.02, y: 0.03, w: 0.96, h: 0.94 },
     cam_ratio: proState.cam_ratio || 0.40,
     cam_position: proState.cam_position || "top",
-    resolution: "1080p",
+    resolution: proState.resolution || "1080p",
     burn_subtitles: true,
     subtitle_style: document.getElementById("pro-sub-style")?.value || "viral_pop",
     subtitle_position: isNoCam ? "bottom" : "seam",
@@ -2448,7 +2511,7 @@ async function generateAutoViralShort(peak, btnEl) {
     stream_box: streamBox,
     cam_ratio: proState.cam_ratio || 0.40,
     cam_position: proState.cam_position || "top",
-    resolution: document.getElementById("pro-resolution")?.value || "1080p",
+    resolution: proState.resolution || "1080p",
     burn_subtitles: document.getElementById("pro-burn-subs")?.checked ?? true,
     subtitle_style: document.getElementById("pro-sub-style")?.value || "viral_pop",
     subtitle_position: document.getElementById("pro-sub-pos")?.value || "seam",
@@ -2491,6 +2554,7 @@ const vodState = {
   isDraggingScrubber: false,
   cam_position: "top",
   cam_ratio: 0.40,
+  resolution: "1080p",
   activeBox: "cam",
   boxes: {
     cam: { x: 0.03, y: 0.05, w: 0.28, h: 0.36 },    // Streamer Facecam top-left
@@ -2735,6 +2799,15 @@ async function inspectVodStream(url) {
     const src = json.data;
     vodState.source = src;
 
+    if (src && src.has_4k === false && vodState.resolution === "4k") {
+      vodState.resolution = "1080p";
+      document.querySelectorAll("#vod-res-picker .choice-pill").forEach((b) => {
+        b.classList.toggle("active", b.dataset.res === "1080p");
+      });
+      const maxStr = src.max_height ? `${src.max_height}p` : "1080p";
+      show4kUnavailableModal(maxStr);
+    }
+
     const total = Math.max(10, Math.floor(src.duration || 60));
     vodState.totalSec = total;
     vodState.currentPlaySec = 0;
@@ -2972,7 +3045,7 @@ async function submitVodClipExport() {
     stream_box: vodState.boxes?.stream || { x: 0.02, y: 0.04, w: 0.66, h: 0.92 },
     cam_ratio: vodState.cam_ratio || 0.40,
     cam_position: vodState.cam_position || "top",
-    resolution: "1080p",
+    resolution: vodState.resolution || "1080p",
     burn_subtitles: true,
     subtitle_style: document.getElementById("vod-sub-style")?.value || "viral_pop",
     subtitle_position: isNoCam ? "bottom" : "seam",
@@ -3056,6 +3129,23 @@ function setupVodStudio() {
       btn.classList.add("active");
       vodState.clipDuration = parseInt(btn.dataset.dur, 10) || 35;
       syncVodScrubberUI(vodState.currentPlaySec);
+    });
+  });
+
+  // Resolution Controls (1080p vs 4K)
+  document.querySelectorAll("#vod-res-picker .choice-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const res = btn.dataset.res;
+      if (res === "4k") {
+        if (vodState.source && vodState.source.has_4k === false) {
+          const maxStr = vodState.source.max_height ? `${vodState.source.max_height}p` : "1080p";
+          show4kUnavailableModal(maxStr);
+          return;
+        }
+      }
+      document.querySelectorAll("#vod-res-picker .choice-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      vodState.resolution = res;
     });
   });
 

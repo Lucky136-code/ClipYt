@@ -118,7 +118,7 @@ def _extract_pro_info(url: str, video_id: Optional[str]) -> Dict[str, Any]:
     raise RuntimeError(f"Could not load YouTube stream ({last_err or 'no playable formats found'}).")
 
 
-def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
+def _extract_media_urls(info: Dict[str, Any], max_height: int = 1080) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
     """
     Return (video_url, audio_url_or_None, http_headers) from yt-dlp info dict.
     For muxed HLS/MP4 streams, audio_url is None (video_url already contains audio).
@@ -135,13 +135,13 @@ def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[s
         headers = dict(info.get("http_headers") or {})
         return info["url"], None, headers
 
-    # Pick best <=1080p muxed or video stream from formats list, strongly prioritizing 1080p
+    # Pick best <=max_height muxed or video stream from formats list
     fmts = info.get("formats") or []
     vids = [
         f for f in fmts
         if f.get("url")
         and f.get("vcodec") not in (None, "none")
-        and (f.get("height") or 0) <= 1080
+        and (f.get("height") or 0) <= max_height
     ]
     auds = [
         f for f in fmts
@@ -154,20 +154,20 @@ def _extract_media_urls(info: Dict[str, Any]) -> Tuple[Optional[str], Optional[s
         if f.get("url")
         and f.get("vcodec") not in (None, "none")
         and f.get("acodec") not in (None, "none")
-        and (f.get("height") or 0) <= 1080
+        and (f.get("height") or 0) <= max_height
     ]
 
     best_v = None
     if vids:
-        vids.sort(key=lambda f: (1 if (f.get("height") or 0) == 1080 else 0, f.get("height") or 0, f.get("tbr") or 0))
+        vids.sort(key=lambda f: (1 if (f.get("height") or 0) >= max_height else 0, f.get("height") or 0, f.get("tbr") or 0))
         best_v = vids[-1]
 
     best_m = None
     if muxed:
-        muxed.sort(key=lambda f: (1 if (f.get("height") or 0) == 1080 else 0, f.get("height") or 0, f.get("tbr") or 0))
+        muxed.sort(key=lambda f: (1 if (f.get("height") or 0) >= max_height else 0, f.get("height") or 0, f.get("tbr") or 0))
         best_m = muxed[-1]
 
-    # If separate video stream achieves 1080p or >= muxed height, use video+audio to ensure true 1080p
+    # If separate video stream achieves max_height or >= muxed height, use video+audio
     if best_v and (not best_m or (best_v.get("height") or 0) >= (best_m.get("height") or 0)):
         best_a = sorted(auds, key=lambda f: f.get("abr") or f.get("tbr") or 0)[-1] if auds else None
         return best_v["url"], (best_a["url"] if best_a else None), dict(best_v.get("http_headers") or {})
@@ -822,6 +822,18 @@ def inspect_pro_source(
     effective_total = live_elapsed_sec if is_live else duration
     use_hours = effective_total >= 3600
 
+    # Detect maximum resolution and whether 4K (height >= 2160) is available
+    formats = info.get("formats") or []
+    max_height = 0
+    for f in formats:
+        h = f.get("height")
+        if h and isinstance(h, (int, float)):
+            if int(h) > max_height:
+                max_height = int(h)
+    if info.get("height") and isinstance(info.get("height"), (int, float)):
+        max_height = max(max_height, int(info["height"]))
+    has_4k = bool(max_height >= 2160)
+
     frame_image, frame_source = _grab_frame_b64(
         video_url=v_url,
         is_live=is_live,
@@ -848,6 +860,9 @@ def inspect_pro_source(
             else format_timestamp(duration, force_hours=use_hours)
         ),
         "use_hours": use_hours,
+        "has_4k": has_4k,
+        "max_height": max_height,
+        "max_resolution": "4k" if has_4k else "1080p",
         "thumbnail": thumbnail,
         "frame_image": frame_image,
         "frame_source": frame_source,
@@ -1212,7 +1227,12 @@ def render_pro_split_short(
     if probed_dur > 1.0 and (pad_start + actual_dur) > (probed_dur + 0.5):
         actual_dur = max(1.0, probed_dur - pad_start)
 
-    out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
+    if resolution in ("4k", "2160p"):
+        out_w, out_h = (2160, 3840)
+    elif resolution == "720p":
+        out_w, out_h = (720, 1280)
+    else:
+        out_w, out_h = (1080, 1920)
 
     if cam_position in ("none", "disabled", "off"):
         # Display Only Mode: Streamer facecam is disabled — record only the display/gameplay box!
@@ -1311,7 +1331,8 @@ def render_pro_split_short(
             "-map", "0:a:0?",
             *enc_args,
             "-pix_fmt", "yuv420p",
-            "-profile:v", "high", "-level", "4.1",
+            "-profile:v", "high",
+            "-level", ("5.1" if (out_w > 1920 or out_h > 1920) else "4.1"),
             "-r", "30",
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-movflags", "+faststart",
@@ -1328,7 +1349,12 @@ def render_pro_split_short(
     res = _run_encode(enc["enc_args"])
     if res.returncode != 0 and enc["name"] != "libx264":
         # Safe CPU fallback if hardware encoder rejected a specific stream profile
-        res = _run_encode(["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", "6000k", "-bufsize", "10000k"])
+        is_high_res = (out_w > 1920 or out_h > 1920)
+        res = _run_encode([
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+            "-maxrate", ("24000k" if is_high_res else "6000k"),
+            "-bufsize", ("32000k" if is_high_res else "10000k"),
+        ])
 
     if res.returncode != 0 or not output_path.exists():
         raise RuntimeError(f"Split-screen render failed: {(res.stderr or 'unknown error').strip()[:260]}")
@@ -1413,6 +1439,7 @@ def process_pro_split_pipeline(
                 end_time=clip_end,
                 output_path=raw_clip,
                 progress_cb=progress_cb,
+                resolution=resolution,
             )
 
         raw_w, raw_h, raw_dur = _probe_video_meta(downloaded_raw)
@@ -1423,7 +1450,12 @@ def process_pro_split_pipeline(
                 "Please choose an archived VOD or a currently live stream."
             )
 
-        out_w, out_h = (720, 1280) if resolution == "720p" else (1080, 1920)
+        if resolution in ("4k", "2160p"):
+            out_w, out_h = (2160, 3840)
+        elif resolution == "720p":
+            out_w, out_h = (720, 1280)
+        else:
+            out_w, out_h = (1080, 1920)
         is_no_cam = cam_position in ("none", "disabled", "off")
         mode_label = "Display-Only" if is_no_cam else "Split-Screen"
         if is_no_cam:

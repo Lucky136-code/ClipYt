@@ -4930,6 +4930,14 @@ input:checked+.slider:before {
     width: 100%;
   }
 
+  #pro-res-picker,
+  #vod-res-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+
   .pro-mini-setting .choice-pill {
     padding: 9px 4px;
     font-size: 0.8rem;

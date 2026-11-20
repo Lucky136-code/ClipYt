@@ -73,6 +73,13 @@ ASPECT_RATIOS = {
     "16:9": {"width": 1920, "height": 1080, "label": "16:9 Landscape (Original)"},
 }
 
+ASPECT_RATIOS_4K = {
+    "9:16": {"width": 2160, "height": 3840, "label": "9:16 Vertical (4K)"},
+    "1:1": {"width": 2160, "height": 2160, "label": "1:1 Square (4K)"},
+    "4:5": {"width": 2160, "height": 2700, "label": "4:5 Portrait (4K)"},
+    "16:9": {"width": 3840, "height": 2160, "label": "16:9 Landscape (4K)"},
+}
+
 ASPECT_RATIOS_720 = {
     "9:16": {"width": 720, "height": 1280},
     "1:1": {"width": 720, "height": 720},

@@ -230,6 +230,18 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
     if not thumbnail:
         thumbnail = f"https://i.ytimg.com/vi/{v_id}/maxresdefault.jpg"
 
+    # Detect maximum resolution and whether 4K (height >= 2160) is available
+    formats = info.get("formats") or []
+    max_height = 0
+    for f in formats:
+        h = f.get("height")
+        if h and isinstance(h, (int, float)):
+            if int(h) > max_height:
+                max_height = int(h)
+    if info.get("height") and isinstance(info.get("height"), (int, float)):
+        max_height = max(max_height, int(info["height"]))
+    has_4k = bool(max_height >= 2160)
+
     caption_info = {
         "language": info.get("language"),
         "subtitles": info.get("subtitles") or {},
@@ -307,6 +319,9 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "thumbnail": thumbnail,
         "view_count": view_count,
         "has_heatmap": has_heatmap,
+        "has_4k": has_4k,
+        "max_height": max_height,
+        "max_resolution": "4k" if has_4k else "1080p",
         "hype_source": hype_source,
         "hype_signals": hype_signals,
         "heatmap": timeline_chart_data,
