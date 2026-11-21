@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://poetry-tee-starts-invitation.trycloudflare.com/api/:path*"
+      "destination": "https://relative-agenda-normal-corrections.trycloudflare.com/api/:path*"
     }
   ]
 }
