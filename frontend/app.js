@@ -1133,17 +1133,16 @@ function executeVideoDownload(downloadUrl, filename, btn) {
 function showResultModal(result) {
   const videoEl = document.getElementById("result-video");
   if (videoEl) {
-    videoEl.preload = "metadata";
-    videoEl.onerror = () => {
-      // Prevent browser infinite 404 reconnect storm if clip expired
-      videoEl.removeAttribute("src");
-      videoEl.load();
+    videoEl.preload = "auto";
+    videoEl.onerror = (e) => {
+      console.warn("Video preview error:", e);
     };
     // Stream inline for RFC 7233 byte-range playback (avoids iOS Safari attachment cancellation)
     const streamUrl = result.download_url.includes("?")
       ? `${result.download_url}&inline=true`
       : `${result.download_url}?inline=true`;
     videoEl.src = streamUrl;
+    videoEl.load();
   }
 
   const is4k = (result.resolution === "4k" || result.resolution === "2160p");

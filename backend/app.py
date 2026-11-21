@@ -837,6 +837,8 @@ class FastDownloadFileResponse(FileResponse):
 
 @app.get("/api/stream/{filename}")
 @app.get("/api/download/{filename}")
+@app.head("/api/stream/{filename}")
+@app.head("/api/download/{filename}")
 async def api_download(filename: str, inline: bool = False):
     """Serve the newly created Short video for instant playback & download.
     Supports RFC 7233 byte-range streaming for Apple iOS/Safari and Fast I/O downloads."""
