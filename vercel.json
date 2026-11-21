@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://miss-gifts-pentium-milton.trycloudflare.com/api/:path*"
+      "destination": "https://seller-bell-missing-obligation.trycloudflare.com/api/:path*"
     }
   ]
 }
