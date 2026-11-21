@@ -1,0 +1,16 @@
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+temp/
+data/temp/
+exports/
+*.mp4
+*.tmp*
+.env*
+test*
+test_*.py
+node_modules
