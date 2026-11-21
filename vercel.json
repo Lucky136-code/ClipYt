@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://pieces-neighborhood-chat-advised.trycloudflare.com/api/:path*"
+      "destination": "https://projects-emily-blue-concerts.trycloudflare.com/api/:path*"
     }
   ]
 }
