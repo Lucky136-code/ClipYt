@@ -1,5 +1,30 @@
 // --- ClipYT Simple Frontend ---
 
+// Calculate server offline & scheduled active hours status message
+function getServerOfflineMessage() {
+  // Server Operating Timings (IST, UTC+5:30):
+  // Morning: 6:30 AM to 8:30 AM (390 - 510 minutes from midnight)
+  // Evening: 6:00 PM to 11:00 PM (1080 - 1380 minutes from midnight)
+  const now = new Date();
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const istMinutes = (utcMinutes + 330) % 1440; // 330 mins = +5h 30m for IST
+
+  const morningStart = 6 * 60 + 30; // 06:30 AM
+  const morningEnd = 8 * 60 + 30;   // 08:30 AM
+  const eveningStart = 18 * 60;     // 06:00 PM
+  const eveningEnd = 23 * 60;       // 11:00 PM
+
+  const isBetweenScheduledHours =
+    (istMinutes >= morningStart && istMinutes < morningEnd) ||
+    (istMinutes >= eveningStart && istMinutes < eveningEnd);
+
+  if (isBetweenScheduledHours) {
+    return "Go touch some grass 🌱 the server will be online soon.\nTimings: Morning 6:30 AM to 8:30 AM and Evening 6:00 PM to 11:00 PM.";
+  }
+
+  return "Server is offline.\nTimings: Morning 6:30 AM to 8:30 AM and Evening 6:00 PM to 11:00 PM.";
+}
+
 // Safe fetch with timeout to prevent frozen/hanging requests
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
@@ -12,13 +37,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     return res;
   } catch (err) {
     if (err.name === "AbortError") {
-      const isVercel = window.location.hostname.includes("vercel.app");
-      if (isVercel) {
-        throw new Error(
-          "Connection timed out. Your AI server is running on your laptop! Please open http://localhost:8000 in your browser."
-        );
-      }
-      throw new Error("Server request timed out. Please check if your backend server is running.");
+      throw new Error(getServerOfflineMessage());
+    }
+    // Network failures / offline server / connection refused
+    if (
+      err instanceof TypeError ||
+      (err.message && (err.message.includes("fetch") || err.message.includes("network") || err.message.includes("Failed")))
+    ) {
+      throw new Error(getServerOfflineMessage());
     }
     throw err;
   } finally {
@@ -29,7 +55,6 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 // Safe API JSON parser: catches HTML error pages and displays a clean, helpful message
 async function parseApiResponse(res) {
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
-  const isVercel = window.location.hostname.includes("vercel.app");
   if (!contentType.includes("application/json")) {
     const text = await res.text().catch(() => "");
     if (
@@ -40,14 +65,7 @@ async function parseApiResponse(res) {
       res.status === 504 ||
       res.status === 404
     ) {
-      if (isVercel) {
-        throw new Error(
-          "Backend is running on your laptop! Please open http://localhost:8000 in your browser to process videos with your laptop GPU."
-        );
-      }
-      throw new Error(
-        "Backend server is offline. Please launch the server on your laptop using 'python run.py'."
-      );
+      throw new Error(getServerOfflineMessage());
     }
     throw new Error(`Server returned unexpected response (${res.status} ${res.statusText || "Error"}).`);
   }
