@@ -8,11 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500;1,600;1,700&family=Newsreader:ital,opsz,wght@1,6..72,500;1,6..72,700&family=JetBrains+Mono:wght@500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500;1,600;1,700&family=Newsreader:ital,opsz,wght@1,6..72,500;1,6..72,700&family=Playfair+Display:ital,wght@1,600;1,700;1,900&family=JetBrains+Mono:wght@500;600&display=swap"
     rel="stylesheet">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20261120_autoclip_fast">
+  <link rel="stylesheet" href="/static/style.css?v=20261123_vip_lifetime">
   <!-- Vercel Web Analytics & Speed Insights for Live Real-Time Visitor Tracking -->
   <script>
     window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
@@ -29,11 +29,11 @@
   <div class="bg-overlay"></div>
 
   <main class="main-container">
-    <!-- Top Center 6-Hour Access Key Timer Pill -->
+    <!-- Top Center VIP Access Key Pill -->
     <div class="top-timer-center-wrap">
       <div id="global-key-badge" class="global-key-pill" onclick="openLiveKeyModal()" title="Access Key Status (Click to login or renew)">
         <span class="live-dot" id="global-key-dot"></span>
-        <span id="global-key-countdown" class="key-countdown-text">🔑 Login with 6-Hour Key</span>
+        <span id="global-key-countdown" class="key-countdown-text">🔑 <strong>ENTER</strong> <em>VIP</em> Access Key</span>
       </div>
     </div>
 
@@ -330,14 +330,12 @@
       <section class="hero-section pro-hero">
         <div class="pro-hero-badge">
           <span class="live-dot"></span>
-          <span>LIVE CLIPPER • 9:16 DUAL BOX • 6-HR KEY PROTECTED</span>
+          <span>LIVE CLIPPER • 9:16 DUAL BOX • VIP ACCESS</span>
         </div>
         <div class="pro-key-status-row">
           <div id="live-key-active-badge" class="live-key-active-pill hidden">
-            <span>🔑 6-Hour Access Active</span>
-            <span id="live-key-countdown" class="key-countdown-text">05h 59m left</span>
-            <button type="button" id="btn-renew-key" class="btn-renew-link" title="Change or renew key">Change
-              Key</button>
+            <span>✦ <strong>VIP</strong> <em>Lifetime</em> Access Active</span>
+            <button type="button" id="btn-renew-key" class="btn-renew-link" title="Change or switch key">Change Key</button>
           </div>
         </div>
         <h1 class="hero-title">Live Clipper</h1>
@@ -875,37 +873,70 @@
     </div>
   </section>
 
-  <!-- 🔒 Telegram Access Key Modal -->
+  <!-- 🔒 VIP Lifetime Access Key Modal -->
   <div id="live-key-modal" class="modal-backdrop hidden">
-    <div class="glass-card live-key-card" style="max-width: 440px; padding: 1.8rem 1.6rem;">
-      <div class="modal-result-head" style="margin-bottom: 0.85rem; justify-content: space-between; align-items: center;">
-        <span class="live-key-badge">🔐 TELEGRAM ACCESS KEY</span>
-        <button type="button" id="live-key-close-x" class="banner-close" title="Close">×</button>
+    <div class="glass-card live-key-card vip-glass-modal">
+      <div class="vip-glow-mesh"></div>
+
+      <!-- Header Row: VIP Tag + Close -->
+      <div class="vip-modal-top-bar">
+        <span class="vip-badge-tag">
+          <span class="vip-badge-pulsar"></span>
+          <span class="vip-tag-caps">VIP</span>
+          <span class="vip-tag-cursive">Lifetime</span>
+          <span class="vip-tag-caps">ACCESS</span>
+        </span>
+        <button type="button" id="live-key-close-x" class="vip-modal-close-btn" title="Close">×</button>
       </div>
 
-      <h3 style="font-size: 1.32rem; font-weight: 800; color: #fff; margin: 0 0 0.4rem;">Login with 6-Hour Access Key</h3>
-      <p style="font-size: 0.88rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.15rem;">
-        To unlock Auto Clipper, Manual Clipper, and Live Clipper, get the latest active 6-hour access key from our Telegram group.
-      </p>
+      <!-- Typography Title Cluster -->
+      <div class="vip-title-cluster">
+        <span class="vip-micro-cap">OFFICIAL ACCESS REQUIRED</span>
+        <h3 class="vip-headline">
+          <span class="text-cap-bold">UNLOCK</span>
+          <span class="text-cursive-glow">ClipYt</span>
+          <span class="text-italic-serif"><em>Studio</em></span>
+        </h3>
+        <p class="vip-lead-desc">
+          Enter your <strong>VIP ACCESS KEY</strong> to unlock <em>unlimited 4K rendering</em> &amp; instant viral AI clipping.
+        </p>
+      </div>
 
-      <a href="https://t.me/+N0hxuYHqK5kyY2U1" target="_blank" rel="noopener noreferrer" class="btn-task-action" style="background: linear-gradient(135deg, #0088cc 0%, #006699 100%); margin-bottom: 1.25rem; text-decoration: none; box-shadow: 0 4px 16px rgba(0, 136, 204, 0.35); font-weight: 800;">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="#ffffff" style="margin-right: 6px;">
-          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z" />
-        </svg>
-        <span>Get Key on Telegram (Join Group) ↗</span>
+      <!-- Telegram VIP Channel Card -->
+      <a href="https://t.me/+N0hxuYHqK5kyY2U1" target="_blank" rel="noopener noreferrer" class="vip-tg-card">
+        <div class="vip-tg-icon-wrap">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="#38bdf8">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.536-.196 1.006.128.832.942z" />
+          </svg>
+        </div>
+        <div class="vip-tg-text-block">
+          <span class="tg-tiny-cap">DON'T HAVE A KEY? JOIN COMMUNITY</span>
+          <span class="tg-prominent-title">Get <em>Free Access Key</em> on Telegram ↗</span>
+        </div>
+        <span class="vip-tg-arrow">→</span>
       </a>
 
       <!-- Key Input Form -->
       <form id="live-key-form" class="live-key-form" onsubmit="return false;">
-        <div class="live-key-input-wrap">
-          <input type="text" id="live-access-key-input" placeholder="Enter key (e.g. CLIP6H, GTA6LIVE)..." autocomplete="off">
+        <div class="vip-input-wrap">
+          <span class="vip-input-icon">🔑</span>
+          <input type="text" id="live-access-key-input" class="vip-key-input" placeholder="PASTE VIP KEY HERE..." autocomplete="off">
         </div>
         <div id="live-key-error" class="unlock-gate-error hidden" style="margin-top:0.75rem;"></div>
-        <button type="button" id="live-key-submit-btn" class="btn-red" style="width:100%; margin-top:0.85rem; padding: 0.82rem 1.2rem; font-size: 1rem; font-weight: 800;">
-          <span class="btn-text">Verify &amp; Login</span>
+        <button type="button" id="live-key-submit-btn" class="vip-submit-btn">
+          <span class="btn-text">
+            <span class="btn-word-cap">ACTIVATE</span>
+            <span class="btn-word-cursive"><em>Lifetime Access</em></span>
+            <span class="btn-sparkle">⚡</span>
+          </span>
           <div class="spinner hidden"></div>
         </button>
       </form>
+
+      <!-- Trust & Lifetime Guarantee note -->
+      <div class="vip-footer-note">
+        <span>✦ <strong>100% FREE</strong> • <em>No Credit Card</em> • <strong>LIFETIME ACCESS</strong></span>
+      </div>
     </div>
   </div>
 
@@ -960,7 +991,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20261123_direct_stream"></script>
+  <script src="/static/app.js?v=20261123_vip_lifetime"></script>
 </body>
 
 </html>

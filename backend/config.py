@@ -93,13 +93,14 @@ ASPECT_RATIOS_720 = {
 TELEGRAM_CHANNEL_URL = "https://t.me/+N0hxuYHqK5kyY2U1"
 LIVE_KEYS_FILE = DATA_DIR / "live_keys.json"
 DEFAULT_LIVE_KEYS = [
-    "LUCKY6H",
-    "CLIP6H",
-    "GTA6LIVE",
+    "CLIPYT",
+    "CLIPYTPREMIUM",
+    "PREMIUMUSER21",
+    "PREMIUMUSER77",
+    "458YY89",
+    "LUCKYVIP",
     "STREAM2026",
     "VIRAL2026",
-    "TELEGRAM6H",
-    "LIVE6H",
 ]
 
 
@@ -155,16 +156,16 @@ def verify_live_key(candidate: str) -> tuple[bool, str, int]:
     """
     Validates a submitted key.
     Returns (is_valid, message, expires_in_sec).
-    Valid keys grant 6 hours (21600 seconds) of access.
+    Valid keys grant lifetime VIP access (10 years = 315,360,000 seconds).
     """
     if not candidate:
-        return False, "Please enter the 6-hour access key from our Telegram channel.", 0
+        return False, "Please enter your VIP access key from Telegram.", 0
 
     clean = candidate.strip().upper()
     valid_keys = get_all_valid_live_keys()
 
     if clean in valid_keys:
-        return True, "Key verified! Full access unlocked for 6 hours.", 6 * 3600
+        return True, "Key verified! Lifetime VIP access unlocked.", 10 * 365 * 24 * 3600
 
-    return False, "Invalid or expired key. Please get the latest key on our Telegram channel.", 0
+    return False, "Invalid key. Please get the active key from our Telegram channel.", 0
 

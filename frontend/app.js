@@ -1211,12 +1211,12 @@ function isSiteUnlocked() {
 }
 
 function setupSiteUnlockGate() {
-  // Social follow gate removed; authentication handled strictly via 6-hour Access Key
+  // Social follow gate removed; authentication handled strictly via VIP Access Key
 }
 
 
 // =============================================================
-// LIVE STUDIO: TELEGRAM 6-HOUR KEY GATE + STREAM PLAYER + DUAL BOX
+// LIVE STUDIO: TELEGRAM VIP KEY GATE + STREAM PLAYER + DUAL BOX
 // =============================================================
 const LIVE_KEY_STORAGE = "clipyt_live_key_session";
 
@@ -1297,7 +1297,6 @@ function refreshLiveKeyUI() {
   const sess = getLiveKeySession();
   const badgePill = document.getElementById("pro-badge-pill");
   const activeBadge = document.getElementById("live-key-active-badge");
-  const countdownEl = document.getElementById("live-key-countdown");
 
   const globalBadge = document.getElementById("global-key-badge");
   const globalCountdown = document.getElementById("global-key-countdown");
@@ -1307,32 +1306,27 @@ function refreshLiveKeyUI() {
     proState.unlocked = true;
     proState.accessKey = sess.key;
     if (badgePill) {
-      badgePill.textContent = "✓ 6h ACTIVE";
+      badgePill.innerHTML = "✦ VIP LIFETIME";
       badgePill.classList.add("unlocked");
     }
-    const remSec = Math.max(0, Math.floor((sess.expiresAt - Date.now()) / 1000));
-    const hrs = Math.floor(remSec / 3600);
-    const mins = Math.floor((remSec % 3600) / 60);
-    const timeStr = `${String(hrs).padStart(2, "0")}h ${String(mins).padStart(2, "0")}m left`;
-
-    if (activeBadge && countdownEl) {
+    if (activeBadge) {
       activeBadge.classList.remove("hidden");
-      countdownEl.textContent = timeStr;
     }
     if (globalBadge) {
       globalBadge.classList.add("unlocked");
     }
     if (globalDot) {
-      globalDot.style.background = "#22c55e";
+      globalDot.style.background = "#38bdf8";
+      globalDot.style.boxShadow = "0 0 10px #38bdf8";
     }
     if (globalCountdown) {
-      globalCountdown.textContent = `6h Key Active • ${timeStr}`;
+      globalCountdown.innerHTML = "✦ <strong>VIP</strong> <em>Lifetime</em> Access Active";
     }
   } else {
     proState.unlocked = false;
     proState.accessKey = null;
     if (badgePill) {
-      badgePill.textContent = "🔒 6h KEY";
+      badgePill.innerHTML = "🔑 VIP ACCESS";
       badgePill.classList.remove("unlocked");
     }
     if (activeBadge) {
@@ -1342,10 +1336,11 @@ function refreshLiveKeyUI() {
       globalBadge.classList.remove("unlocked");
     }
     if (globalDot) {
-      globalDot.style.background = "#ef4444";
+      globalDot.style.background = "#3b82f6";
+      globalDot.style.boxShadow = "0 0 8px rgba(59, 130, 246, 0.65)";
     }
     if (globalCountdown) {
-      globalCountdown.textContent = "🔑 Login with 6-Hour Key";
+      globalCountdown.innerHTML = "🔑 <strong>ENTER</strong> <em>VIP</em> Access Key";
     }
   }
 }
@@ -1362,14 +1357,6 @@ function openLiveKeyModal() {
 }
 
 function closeLiveKeyModal() {
-  if (!isLiveStudioUnlocked()) {
-    const errEl = document.getElementById("live-key-error");
-    if (errEl) {
-      errEl.textContent = "Please enter the active Telegram access key to login.";
-      errEl.classList.remove("hidden");
-    }
-    return;
-  }
   const modal = document.getElementById("live-key-modal");
   if (modal) modal.classList.add("hidden");
 }
@@ -1385,7 +1372,7 @@ async function submitLiveAccessKey() {
 
   if (!keyVal) {
     if (errEl) {
-      errEl.textContent = "Please enter the 6-hour access key from Telegram.";
+      errEl.textContent = "Please enter your VIP access key from Telegram.";
       errEl.classList.remove("hidden");
     }
     return;
@@ -1394,7 +1381,7 @@ async function submitLiveAccessKey() {
   const btnTxt = submitBtn.querySelector(".btn-text");
   const sp = submitBtn.querySelector(".spinner");
   submitBtn.disabled = true;
-  if (btnTxt) btnTxt.textContent = "Verifying Key...";
+  if (btnTxt) btnTxt.innerHTML = "<span>VERIFYING KEY...</span>";
   if (sp) sp.classList.remove("hidden");
 
   try {
@@ -1410,7 +1397,7 @@ async function submitLiveAccessKey() {
       throw new Error(msg);
     }
 
-    const expSec = json.expires_in_sec || (6 * 3600);
+    const expSec = json.expires_in_sec || (10 * 365 * 24 * 3600);
     localStorage.setItem(LIVE_KEY_STORAGE, JSON.stringify({
       key: keyVal,
       unlockedAt: Date.now(),
@@ -1428,7 +1415,13 @@ async function submitLiveAccessKey() {
     }
   } finally {
     submitBtn.disabled = false;
-    if (btnTxt) btnTxt.textContent = "Verify & Login";
+    if (btnTxt) {
+      btnTxt.innerHTML = `
+        <span class="btn-word-cap">ACTIVATE</span>
+        <span class="btn-word-cursive"><em>Lifetime Access</em></span>
+        <span class="btn-sparkle">⚡</span>
+      `;
+    }
     if (sp) sp.classList.add("hidden");
   }
 }
