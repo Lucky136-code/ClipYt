@@ -1136,10 +1136,11 @@ function showResultModal(result) {
     videoEl.onerror = (e) => {
       console.warn("Video preview error:", e);
     };
-    // Stream inline for RFC 7233 byte-range playback (avoids iOS Safari attachment cancellation)
-    const streamUrl = result.download_url.includes("?")
-      ? `${result.download_url}&inline=true`
-      : `${result.download_url}?inline=true`;
+    const effectiveUrl = result.direct_download_url || result.download_url;
+    // Stream directly via Cloudflare Tunnel to bypass Vercel bandwidth limits!
+    const streamUrl = effectiveUrl.includes("?")
+      ? `${effectiveUrl}&inline=true`
+      : `${effectiveUrl}?inline=true`;
     videoEl.src = streamUrl;
     videoEl.load();
   }
@@ -1147,7 +1148,8 @@ function showResultModal(result) {
   const is4k = (result.resolution === "4k" || result.resolution === "2160p");
   const dlBtn = document.getElementById("result-download-btn");
   if (dlBtn) {
-    dlBtn.href = result.download_url;
+    const effectiveDlUrl = result.direct_download_url || result.download_url;
+    dlBtn.href = effectiveDlUrl;
     dlBtn.setAttribute("download", result.filename || "clip.mp4");
     const defaultText = is4k ? "⬇️ Download 4K Ultra HD Short" : "⬇️ Download Short (MP4)";
     dlBtn.innerHTML = defaultText;

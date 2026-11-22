@@ -1,5 +1,6 @@
 import io
 import re
+import json
 import uuid
 import asyncio
 from pathlib import Path
@@ -26,6 +27,7 @@ from backend.video_processor import (
     process_clip_pipeline,
     prewarm_video_streams,
     detect_best_encoder,
+    cleanup_old_temp_files,
 )
 from backend.pro_studio import (
     inspect_pro_source,
@@ -112,6 +114,40 @@ def record_link_paste(client_id: str):
 record_clip_export = record_link_paste
 
 
+def get_current_tunnel_url() -> Optional[str]:
+    """Retrieve active Cloudflare Tunnel URL from vercel.json to bypass Vercel bandwidth limits."""
+    try:
+        vercel_cfg = BASE_DIR / "vercel.json"
+        if vercel_cfg.exists():
+            content = json.loads(vercel_cfg.read_text(encoding="utf-8"))
+            for rule in content.get("rewrites", []):
+                if rule.get("source") == "/api/:path*":
+                    dest = rule.get("destination", "")
+                    m = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", dest)
+                    if m:
+                        return m.group(0)
+    except Exception:
+        pass
+    return None
+
+
+async def _periodic_disk_cleaner():
+    """Wakes up every 60 seconds and auto-deletes any temporary video or fragment older than 5 minutes (300s)."""
+    while True:
+        try:
+            await asyncio.sleep(60)
+            await asyncio.to_thread(cleanup_old_temp_files, 300)
+            now = time.time()
+            for tmp in BASE_DIR.glob("*.tmp*"):
+                if tmp.is_file() and (now - tmp.stat().st_mtime) > 300:
+                    try:
+                        tmp.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+
 def _prune_expired_tasks_and_caches():
     """Purge tasks and caches older than 30 minutes to prevent RAM creep under high traffic."""
     now = time.time()
@@ -128,12 +164,13 @@ def _prune_expired_tasks_and_caches():
 
 @app.on_event("startup")
 async def on_startup():
-    """Probe GPU encoder once on startup and scale thread pool to handle 30+ concurrent clients."""
+    """Probe GPU encoder once on startup, launch 5-min auto disk cleaner, and scale thread pool."""
     try:
         loop = asyncio.get_running_loop()
         loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
     except Exception:
         pass
+    asyncio.create_task(_periodic_disk_cleaner())
     await asyncio.to_thread(detect_best_encoder)
 
 
@@ -824,10 +861,21 @@ async def api_auto_viral_generate(req: AutoViralGenerateRequest, background_task
 
 @app.get("/api/task/{task_id}")
 async def api_get_task(task_id: str):
-    """Return current creation status and download URL once complete."""
+    """Return current creation status and direct tunnel download URL to bypass Vercel bandwidth limits."""
     task = TASKS.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.get("status") == "completed" and task.get("result"):
+        res = dict(task["result"])
+        tunnel = get_current_tunnel_url()
+        dl_path = res.get("download_url", "")
+        if tunnel and dl_path:
+            res["direct_download_url"] = f"{tunnel}{dl_path}"
+        task_copy = dict(task)
+        task_copy["result"] = res
+        return task_copy
+
     return task
 
 
