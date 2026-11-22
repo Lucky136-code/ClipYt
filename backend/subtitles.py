@@ -55,15 +55,39 @@ def _estimate_word_duration(word: str) -> float:
     return min(0.62, max(0.18, 0.13 + 0.055 * clean_len))
 
 
-def _pick_best_caption_url(info: Dict[str, Any]) -> Optional[str]:
+def _is_hindi_video(info: Dict[str, Any]) -> bool:
     """
-    Pick the best YouTube json3 caption track URL from yt-dlp info.
-    Prefers auto-captions (which include exact word-level tOffsetMs!) in the video's
-    original language or English, falling back to manual json3 tracks.
+    Determine if the video was originally spoken in Hindi/Hinglish.
+    Ensures Hindi speech is never translated to English, while English videos remain in English.
     """
     auto = info.get("automatic_captions") or {}
     manual = info.get("subtitles") or {}
-    video_lang = (info.get("language") or "").strip()
+    vlang = (info.get("language") or "").strip().lower()
+
+    if vlang.startswith("hi"):
+        return True
+    if vlang.startswith("en") and "en-orig" in auto:
+        return False
+    if "hi-orig" in auto or "hi-Latn" in auto or "hi-Latn" in manual:
+        return True
+    if "hi" in auto and "en-orig" not in auto:
+        return True
+    return False
+
+
+def _pick_best_caption_url(info: Dict[str, Any]) -> Optional[str]:
+    """
+    Pick the best YouTube json3 caption track URL from yt-dlp info.
+    Prefers auto-captions (which include exact word-level tOffsetMs!).
+    CRITICAL:
+    - If the video is originally Hindi/Hinglish, prioritizes original Hindi speech (hi-orig, hi-Latn, hi)
+      so that captions preserve the exact spoken words in Hinglish, and NEVER chooses YouTube's
+      auto-translated English track!
+    - If the video is originally English, prioritizes original English speech (en-orig, en).
+    """
+    auto = info.get("automatic_captions") or {}
+    manual = info.get("subtitles") or {}
+    video_lang = (info.get("language") or "").strip().lower()
 
     def _find_json3(tracks: List[Dict[str, Any]]) -> Optional[str]:
         for t in tracks or []:
@@ -71,14 +95,24 @@ def _pick_best_caption_url(info: Dict[str, Any]) -> Optional[str]:
                 return t["url"]
         return None
 
-    # Build priority language order:
-    # 1. Original video language (e.g. 'en-orig', 'hi-orig', 'en', 'hi')
-    # 2. English variants
-    # 3. Any non-translated original track (keys without '-' or ending in '-orig')
+    is_hi = _is_hindi_video(info)
+
     priority_langs: List[str] = []
-    if video_lang:
-        priority_langs.extend([f"{video_lang}-orig", video_lang, video_lang.split("-")[0]])
-    priority_langs.extend(["en-orig", "en", "en-US", "en-GB", "hi-orig", "hi"])
+    if is_hi:
+        # Spoken language is Hindi/Hinglish: prioritize Hindi tracks first!
+        # Devanagari Hindi is automatically converted to clean Roman Hinglish.
+        # NEVER pick 'en' here because 'en' on a Hindi video is YouTube's auto-generated translation!
+        priority_langs.extend(["hi-Latn", "hi-orig", "hi", "ur-orig", "ur", "mr-orig", "pa-orig"])
+        if video_lang and not video_lang.startswith("en"):
+            priority_langs.extend([f"{video_lang}-orig", video_lang])
+        # Only fallback to English if Indic tracks fail
+        priority_langs.extend(["en-orig", "en-IN", "en", "en-US", "en-GB"])
+    else:
+        # Spoken language is English or another language: prioritize original English
+        if video_lang:
+            priority_langs.extend([f"{video_lang}-orig", video_lang, video_lang.split("-")[0]])
+        priority_langs.extend(["en-orig", "en", "en-US", "en-GB", "en-IN"])
+        priority_langs.extend(["hi-Latn", "hi-orig", "hi"])
 
     # Prefer auto-captions first because YouTube auto-captions have exact per-word tOffsetMs!
     for lang in priority_langs:
@@ -87,7 +121,7 @@ def _pick_best_caption_url(info: Dict[str, Any]) -> Optional[str]:
             if url:
                 return url
 
-    # Check any '-orig' auto-caption key (always the video's spoken language)
+    # Check any '-orig' auto-caption key (always the video's actual spoken language)
     for lang, tracks in auto.items():
         if lang.endswith("-orig"):
             url = _find_json3(tracks)
@@ -266,7 +300,7 @@ def fetch_youtube_transcript(
                 "format": None,
                 "writesubtitles": True,
                 "writeautomaticsub": True,
-                "subtitleslangs": ["en.*", "hi.*", "en-orig", "hi-orig"],
+                "subtitleslangs": ["hi.*", "hi-orig", "hi-Latn", "en.*", "en-orig"],
             })
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
@@ -281,12 +315,21 @@ def fetch_youtube_transcript(
         api = YouTubeTranscriptApi()
         transcript_list = api.list(video_id)
         transcript = None
+
+        # If video has generated Hindi speech track, use it so words remain in Hinglish!
         try:
-            transcript = transcript_list.find_transcript(["en", "en-US", "en-GB"])
+            transcript = transcript_list.find_generated_transcript(["hi", "hi-Latn"])
         except Exception:
-            for t in transcript_list:
-                transcript = t
-                break
+            pass
+
+        # If not, try manual Hinglish/Hindi or English
+        if not transcript:
+            try:
+                transcript = transcript_list.find_transcript(["hi-Latn", "en", "en-US", "en-GB", "en-IN"])
+            except Exception:
+                for t in transcript_list:
+                    transcript = t
+                    break
         if not transcript:
             return None
 

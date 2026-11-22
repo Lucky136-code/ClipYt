@@ -65,12 +65,12 @@ _COMMON_HINGLISH = {
 
     # Creator & Social Talk
     "भाई": "bhai", "भैया": "bhaiya", "यार": "yaar", "अरे": "arey", "अबे": "abe",
-    "देखो": "dekho", "देख": "dekh", "देखा": "dekha", "देखना": "dekhna",
+    "देखो": "dekho", "देख": "dekh", "देखा": "dekha", "देखना": "dekhna", "देखे": "dekhe", "देखी": "dekhi",
     "सुनो": "suno", "सुन": "sun", "सुना": "suna",
     "बोलो": "bolo", "बोल": "bol", "बोला": "bola", "कहो": "kaho", "कहा": "kaha",
     "बताओ": "batao", "बता": "bata", "बताया": "bataya",
     "समझे": "samjhe", "समझ": "samajh", "समझा": "samjha",
-    "जानते": "jaante", "जाना": "jaana", "पता": "pata", "लगा": "laga", "लग": "lag",
+    "जानते": "jaante", "जाना": "jaana", "पता": "pata", "लगा": "laga", "लग": "lag", "लगे": "lage", "लगी": "lagi", "लगता": "lagta",
     "बहुत": "bahut", "ज़्यादा": "zyada", "ज्यादा": "zyada", "थोड़ा": "thoda", "पूरा": "poora", "कम": "kam",
     "अच्छा": "accha", "बढ़िया": "badhiya", "मस्त": "mast", "सही": "sahi", "गलत": "galat", "खतरनाक": "khatarnak",
     "चलो": "chalo", "चल": "chal", "रुको": "ruko", "रुक": "ruk", "जाओ": "jao", "जा": "ja", "आओ": "aao", "आ": "aa",
@@ -78,6 +78,14 @@ _COMMON_HINGLISH = {
     "गया": "gaya", "गई": "gayi", "गए": "gaye", "दिया": "diya", "लिया": "liya", "किया": "kiya",
     "आया": "aaya", "आई": "aayi", "आए": "aaye", "होगा": "hoga", "होगी": "hogi", "होंगे": "honge",
     "करेगा": "karega", "करेगी": "karegi", "करेंगे": "karenge", "जाएगा": "jaayega", "आएगा": "aayega",
+    "हुआ": "hua", "हुई": "hui", "हुए": "hue", "होता": "hota", "होती": "hoti", "होते": "hote",
+    "सकता": "sakta", "सकती": "sakti", "सकते": "sakte", "चाहिए": "chahiye",
+    "आज": "aaj", "कल": "kal", "परसों": "parso", "दोबारा": "dobara", "फिर": "phir", "पहले": "pehle", "बाद": "baad",
+    "तूने": "tune", "मैंने": "maine", "आपने": "aapne", "हमने": "humne", "किसने": "kisne",
+    "खेल": "khel", "खेलने": "khelne", "खेला": "khela", "खेलते": "khelte",
+    "दिख": "dikh", "दिखा": "dikha", "दिखाना": "dikhana", "दिखाओ": "dikhao",
+    "मिल": "mil", "मिला": "mila", "मिली": "mili", "मिले": "mile",
+    "ले": "le", "दे": "de", "लेकर": "lekar", "देकर": "dekar",
     "लोग": "log", "सब": "sab", "सभी": "sabhi", "कुछ": "kuch", "कोई": "koi", "किसी": "kisi",
     "एक": "ek", "दो": "do", "तीन": "teen", "चार": "chaar", "पाँच": "paanch",
     "पहला": "pehla", "दूसरा": "doosra", "आखिरी": "aakhiri",
@@ -92,6 +100,10 @@ _COMMON_HINGLISH = {
     "लाइक": "like", "शेयर": "share", "सब्सक्राइब": "subscribe", "फॉलो": "follow",
     "चैनल": "channel", "शॉर्ट्स": "shorts", "सुपर": "super", "फन": "fun", "प्लेयर": "player",
     "फाइट": "fight", "टीम": "team", "स्क्वाड": "squad", "जोन": "zone",
+    "कवर": "cover", "एक्साइटेड": "excited", "बिल्कुल": "bilkul", "ज़रूर": "zaroor", "जरूर": "zaroor",
+    "शायद": "shayad", "सच": "sach", "याद": "yaad", "भूल": "bhool",
+    "बंदा": "banda", "बंदे": "bande", "खत्म": "khatam", "गोली": "goli", "गोलियां": "goliyan",
+    "पैसा": "paisa", "पैसे": "paise", "घर": "ghar",
     "जी": "ji", "सी": "si", "सा": "sa", "वाला": "wala", "वाली": "wali", "वाले": "wale",
 }
 
@@ -408,10 +420,13 @@ def _choose_en_or_hi_language(model, media_path: Path) -> str:
         en_p = float(probs_map.get("en", 0.0))
         hi_ur_p = float(probs_map.get("hi", 0.0)) + float(probs_map.get("ur", 0.0))
 
-        # Only pick English if English clearly dominates; otherwise force 'hi' (converted to Hinglish!)
-        if lang == "en" and prob >= 0.55 and en_p >= hi_ur_p:
+        # Only pick English if English is overwhelmingly dominant (> 88%)
+        # and there is virtually zero Hindi/Urdu detected (< 0.08).
+        # Any mixed Hinglish or Indian creator speech MUST use 'hi' so spoken Hindi words
+        # are accurately transcribed and transliterated into phonetic Hinglish, never translated!
+        if lang == "en" and prob >= 0.88 and hi_ur_p < 0.08:
             return "en"
-        if en_p > 0.65 and en_p > (hi_ur_p * 1.5):
+        if en_p >= 0.88 and hi_ur_p < 0.08:
             return "en"
         return "hi"
     except Exception:

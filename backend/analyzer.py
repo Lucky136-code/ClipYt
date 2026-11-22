@@ -206,7 +206,7 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
         "format": None,
         "writesubtitles": True,
         "writeautomaticsub": True,
-        "subtitleslangs": ["en.*", "hi.*", "en-orig", "hi-orig"],
+        "subtitleslangs": ["hi.*", "hi-orig", "hi-Latn", "en.*", "en-orig"],
     })
 
     info = None
