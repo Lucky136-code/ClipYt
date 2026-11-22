@@ -444,7 +444,7 @@ def _has_audio_stream(filepath: Path) -> bool:
         return True
 
 
-CLIMAX_HOOK_DURATION = 4.5
+CLIMAX_HOOK_DURATION = 5.0  # 2.5s before hype peak + 2.5s after hype peak
 CLIMAX_HOOK_MIN_CLIP = 9.0
 
 
@@ -456,37 +456,41 @@ def _choose_climax_teaser_offset(
     teaser_dur: float = CLIMAX_HOOK_DURATION,
 ) -> Optional[float]:
     """
-    Choose the best relative start offset (inside [0, duration]) for the 4.5s
-    Climax Teaser Hook. Returns None if clip is too short (< 9s).
+    Choose the best relative start offset (inside [0, duration]) for the 5.0s Climax Hook.
+    Exact user specification: 2.5 secs before the hype peak to 2.5 secs after the hype peak!
+    Returns None if clip is too short (< 9s).
     """
     duration = clip_end - clip_start
     if duration < CLIMAX_HOOK_MIN_CLIP:
         return None
 
-    min_off = 2.5
-    max_off = max(min_off, duration - teaser_dur - 0.3)
-
     chosen_abs = None
-    # 1. Prefer explicit clip peak_time if it lies inside the clip after the opening 2.5s
-    if peak_time is not None and (clip_start + min_off) <= peak_time <= (clip_end - 1.0):
-        chosen_abs = peak_time
-    # 2. Otherwise find the strongest YouTube heatmap spike inside [clip_start + 2.5, clip_end - 1.0]
+    # 1. Prefer explicit clip peak_time if provided
+    if peak_time is not None:
+        chosen_abs = float(peak_time)
+    # 2. Otherwise find the strongest heatmap spike inside [clip_start, clip_end]
     elif heatmap_points:
         best_val = -1.0
         for pt in heatmap_points:
             t = float(pt.get("time", -1.0))
             v = float(pt.get("intensity", 0.0))
-            if (clip_start + min_off) <= t <= (clip_end - 1.0) and v > best_val:
+            if clip_start <= t <= clip_end and v > best_val:
                 best_val = v
                 chosen_abs = t
 
-    if chosen_abs is not None:
-        rel = (chosen_abs - clip_start) - (teaser_dur * 0.45)
-    else:
-        # Fallback: classic climax point ~68% into the clip
-        rel = duration * 0.68
+    if chosen_abs is None:
+        # Fallback: midpoint of clip
+        chosen_abs = clip_start + (duration * 0.5)
 
-    return round(max(min_off, min(max_off, rel)), 3)
+    # Hook runs exactly 2.5s before hype peak to 2.5s after hype peak
+    hook_abs_start = chosen_abs - 2.5
+    rel = hook_abs_start - clip_start
+
+    # Clamp so the 5.0s teaser lies strictly within [0, duration - teaser_dur]
+    max_rel = max(0.0, duration - teaser_dur)
+    rel = max(0.0, min(max_rel, rel))
+
+    return round(float(rel), 3)
 
 
 def render_short(

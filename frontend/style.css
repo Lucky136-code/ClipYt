@@ -764,26 +764,27 @@ body::before {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7), inset 0 1px 1.5px rgba(255, 255, 255, 0.3);
   }
 
-  /* Options Row: compact side-by-side on mobile */
+  /* Options Row: centered clip count selector on mobile */
   .simple-options-row {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 8px;
     margin-top: 8px !important;
     width: 100%;
   }
 
   .inline-opt {
-    flex: 1;
+    flex: 0 1 auto;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    gap: 8px;
     background: rgba(10, 16, 28, 0.72);
     border: 1px solid rgba(59, 130, 246, 0.22);
     border-radius: 12px;
-    padding: 6px 10px;
+    padding: 6px 14px;
   }
 
   .inline-opt label {

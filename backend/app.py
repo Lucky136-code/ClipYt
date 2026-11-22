@@ -176,7 +176,7 @@ async def on_startup():
 
 class AnalyzeRequest(BaseModel):
     url: str
-    clip_duration: float = Field(default=35.0, ge=10.0, le=120.0)
+    clip_duration: float = Field(default=30.0, ge=10.0, le=120.0)
     max_clips: int = Field(default=5, ge=1, le=15)
     access_key: Optional[str] = None
 

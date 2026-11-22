@@ -190,7 +190,7 @@ def _extract_storyboard_frames(
     return frames_out
 
 
-def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int = 5) -> Dict[str, Any]:
+def analyze_youtube_video(url: str, clip_duration: float = 30.0, max_clips: int = 5) -> Dict[str, Any]:
     """
     Extracts video metadata, caption/description, storyboard frame pictures,
     and analyzes the YouTube interaction heatmap to detect high-intensity moments.
@@ -356,13 +356,14 @@ def analyze_youtube_video(url: str, clip_duration: float = 35.0, max_clips: int 
 def _detect_peaks_from_heatmap(
     raw_heatmap: List[Dict[str, Any]],
     video_duration: float,
-    clip_duration: float = 35.0,
+    clip_duration: float = 30.0,
     max_clips: int = 5,
     use_hours: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    Identifies high-intensity intervals from YouTube heatmap points
-    using peak ranking and non-maximum suppression.
+    Identifies high-intensity viral moments from the interaction heatmap.
+    Uses true local-maxima peak detection for pinpoint accuracy.
+    Positions the clip exactly: 10s buildup before the hype peak + 20s reaction after the hype peak.
     """
     if not raw_heatmap:
         return []
@@ -379,11 +380,11 @@ def _detect_peaks_from_heatmap(
     times = np.array(times)
     values = np.array(values)
 
-    # Smooth the curve with a small rolling window
+    # Smooth the curve with a 3-tap normalized rolling window
     smoothed = np.convolve(values, np.ones(3) / 3, mode="same")
 
     # Dampen artificial t=0s drop-off spike so true mid-video replay peaks rank first
-    if len(smoothed) > 4 and video_duration > clip_duration * 1.5:
+    if len(smoothed) > 4 and video_duration > 45.0:
         if values[0] > 0.85 and values[1] < 0.6:
             smoothed[0] = values[1]
 
@@ -391,25 +392,52 @@ def _detect_peaks_from_heatmap(
     if max_val <= 0:
         max_val = 1.0
 
-    candidate_windows = []
-    sorted_indices = np.argsort(smoothed)[::-1]
+    # 1. Extract true local maxima (the accurate summits of the hype hike)
+    n_pts = len(smoothed)
+    local_peaks: List[int] = []
+    for i in range(n_pts):
+        is_left_ok = (i == 0) or (smoothed[i] >= smoothed[i - 1])
+        is_right_ok = (i == n_pts - 1) or (smoothed[i] >= smoothed[i + 1])
+        t_mid = times[i]
+        # Ignore extreme video boundary points so 10s lead-up and 20s aftermath fit cleanly
+        if is_left_ok and is_right_ok and 4.0 <= t_mid <= max(4.0, video_duration - 4.0):
+            local_peaks.append(i)
 
-    for idx in sorted_indices:
+    # Sort local peaks by smoothed intensity descending
+    local_peaks.sort(key=lambda idx: smoothed[idx], reverse=True)
+
+    # Append any remaining points in descending order if there are few local peaks
+    all_sorted = list(np.argsort(smoothed)[::-1])
+    seen_indices = set(local_peaks)
+    candidate_indices = list(local_peaks)
+    for idx in all_sorted:
+        if idx not in seen_indices:
+            candidate_indices.append(idx)
+
+    target_dur = 30.0  # 10s before hype + 20s after hype
+    candidate_windows = []
+
+    for idx in candidate_indices:
         peak_t = times[idx]
         val = smoothed[idx]
 
-        half_dur = clip_duration / 2.0
-        start = max(0.0, peak_t - half_dur)
-        end = min(video_duration, start + clip_duration)
-        if (end - start) < clip_duration and start > 0:
-            start = max(0.0, end - clip_duration)
+        # Exact user specification: 10 secs before the hype and 20 secs after the hype
+        start = max(0.0, peak_t - 10.0)
+        end = min(video_duration, peak_t + 20.0)
+
+        # Fit exact 30s duration if video length allows
+        if (end - start) < target_dur:
+            if start > 0.0:
+                start = max(0.0, end - target_dur)
+            if (end - start) < target_dur and end < video_duration:
+                end = min(video_duration, start + target_dur)
 
         mask = (times >= start) & (times <= end)
         window_intensity = float(np.mean(values[mask])) if np.any(mask) else float(val)
 
         rel_peak = val / max_val
         rel_window = min(1.0, window_intensity / max_val)
-        score = int(round((rel_peak * 0.65 + rel_window * 0.35) * 100))
+        score = int(round((rel_peak * 0.70 + rel_window * 0.30) * 100))
         score = min(100, max(1, score))
 
         candidate_windows.append({
@@ -420,15 +448,21 @@ def _detect_peaks_from_heatmap(
             "intensity_score": score,
         })
 
+    # 2. Non-Maximum Suppression: ensure candidate peaks are spaced and non-overlapping
     selected_clips = []
     for cand in candidate_windows:
         overlap = False
         for sel in selected_clips:
+            # Check peak distance (must be at least 20s apart for distinct moments)
+            if abs(cand["peak_time"] - sel["peak_time"]) < 20.0:
+                overlap = True
+                break
+            # Check window overlap (max 5.0s overlap allowed)
             overlap_start = max(cand["start_time"], sel["start_time"])
             overlap_end = min(cand["end_time"], sel["end_time"])
             if overlap_end > overlap_start:
                 overlap_dur = overlap_end - overlap_start
-                if overlap_dur > (clip_duration * 0.15):
+                if overlap_dur > 5.0:
                     overlap = True
                     break
         if not overlap:
@@ -458,7 +492,7 @@ def _detect_peaks_from_heatmap(
 
 def _generate_fallback_clips(
     video_duration: float,
-    clip_duration: float = 35.0,
+    clip_duration: float = 30.0,
     max_clips: int = 5,
     use_hours: bool = False,
 ) -> List[Dict[str, Any]]:

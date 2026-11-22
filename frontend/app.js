@@ -201,20 +201,16 @@ function setupEventListeners() {
     });
   }
 
-  // Re-analyze if user changes duration or number of clips while a video is loaded
-  document.getElementById("clip-duration").addEventListener("change", () => {
-    const val = urlInput.value.trim();
-    if (looksLikeYouTubeUrl(val) && currentAnalysis) {
-      runFullAnalysis(val, true);
-    }
-  });
-
-  document.getElementById("max-clips").addEventListener("change", () => {
-    const val = urlInput.value.trim();
-    if (looksLikeYouTubeUrl(val) && currentAnalysis) {
-      runFullAnalysis(val, true);
-    }
-  });
+  // Re-analyze if user changes number of clips while a video is loaded
+  const maxClipsEl = document.getElementById("max-clips");
+  if (maxClipsEl) {
+    maxClipsEl.addEventListener("change", () => {
+      const val = urlInput.value.trim();
+      if (looksLikeYouTubeUrl(val) && currentAnalysis) {
+        runFullAnalysis(val, true);
+      }
+    });
+  }
 
   // Aspect ratio pills
   document.querySelectorAll("#aspect-picker .choice-pill").forEach((btn) => {
@@ -411,8 +407,8 @@ async function runFullAnalysis(url, force = false) {
   fetchInstantPreview(url);
 
   // Step 2: Full analysis (YouTube caption/description + heatmap + storyboard frames)
-  const duration = parseFloat(document.getElementById("clip-duration").value);
-  const maxClips = parseInt(document.getElementById("max-clips").value);
+  const duration = 30.0; // Perfect duration: 10s before hype + 20s after hype (with 5s hook)
+  const maxClips = parseInt(document.getElementById("max-clips")?.value || "5");
 
   try {
     const res = await fetchWithTimeout("/api/analyze", {
