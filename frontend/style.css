@@ -3851,51 +3851,30 @@ input:checked+.slider:before {
    MINIMALIST SAAS TELEGRAM KEY MODAL (INTER FONT & CLEAN ELEVATION)
    ========================================================================== */
 
-/* Mandatory Key Lock Modal Backdrop Shield */
+/* Mandatory Key Lock Modal Backdrop Shield - Pencil Whitish Canvas */
 #live-key-modal.modal-backdrop {
   z-index: 99999;
-  background: rgba(3, 7, 18, 0.94);
-  backdrop-filter: blur(40px) saturate(200%);
-  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  background: radial-gradient(circle at 50% 35%, #ffffff 0%, #f1f4f9 55%, #e2e8f0 100%);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
 }
 
+/* Pencil Black Card (Matte Graphite Lead Aesthetic) */
 .tg-saas-card {
   position: relative;
   max-width: 410px;
   width: 92%;
   padding: 2.6rem 2.2rem 2.2rem;
   border-radius: 26px;
-  background: rgba(13, 17, 28, 0.96);
-  backdrop-filter: blur(36px) saturate(190%);
-  -webkit-backdrop-filter: blur(36px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #141416;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 
-    0 24px 70px rgba(0, 0, 0, 0.82),
-    0 0 1px rgba(255, 255, 255, 0.22);
+    0 30px 90px rgba(0, 0, 0, 0.32),
+    0 8px 24px rgba(0, 0, 0, 0.18);
   text-align: center;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   box-sizing: border-box;
   animation: modalPopIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.tg-saas-close-btn {
-  position: absolute;
-  top: 16px;
-  right: 18px;
-  background: none;
-  border: none;
-  color: #64748b;
-  font-size: 1.45rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.tg-saas-close-btn:hover {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Rounded squircle icon matching the reference mail container */
@@ -3909,7 +3888,7 @@ input:checked+.slider:before {
   justify-content: center;
   background: linear-gradient(145deg, #4f46e5 0%, #3b82f6 50%, #0284c7 100%);
   box-shadow: 
-    0 8px 24px rgba(59, 130, 246, 0.38),
+    0 8px 24px rgba(59, 130, 246, 0.35),
     inset 0 1px 1px rgba(255, 255, 255, 0.35);
   transition: transform 0.2s ease;
 }
@@ -3918,32 +3897,34 @@ input:checked+.slider:before {
   transform: scale(1.04);
 }
 
+/* Simple Clean Typography */
 .tg-saas-title {
   font-family: 'Inter', sans-serif;
-  font-size: 1.42rem;
-  font-weight: 700;
+  font-size: 1.36rem;
+  font-weight: 600;
   color: #ffffff;
-  letter-spacing: -0.025em;
-  margin: 0 0 0.8rem;
-  line-height: 1.25;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.75rem;
+  line-height: 1.3;
 }
 
 .tg-saas-desc {
   font-family: 'Inter', sans-serif;
   font-size: 0.88rem;
-  color: #94a3b8;
-  margin: 0 0 0.4rem;
-  line-height: 1.45;
+  color: #9ca3af;
+  margin: 0 0 0.35rem;
+  line-height: 1.5;
+  font-weight: 400;
 }
 
 .tg-saas-link {
   font-family: 'Inter', sans-serif;
-  font-size: 0.98rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 500;
   color: #38bdf8;
   text-decoration: none;
   display: inline-block;
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.5rem;
   transition: color 0.18s ease;
 }
 
@@ -3955,9 +3936,10 @@ input:checked+.slider:before {
 .tg-saas-subtext {
   font-family: 'Inter', sans-serif;
   font-size: 0.84rem;
-  color: #64748b;
-  margin: 0 0 1.5rem;
-  line-height: 1.45;
+  color: #71717a;
+  margin: 0 0 1.45rem;
+  line-height: 1.5;
+  font-weight: 400;
 }
 
 /* Primary Button matching reference 'Open email app' */
@@ -3966,22 +3948,22 @@ input:checked+.slider:before {
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 0.82rem 1.2rem;
+  padding: 0.8rem 1.2rem;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   color: #ffffff !important;
   font-family: 'Inter', sans-serif;
-  font-size: 0.94rem;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 500;
   text-decoration: none;
   box-sizing: border-box;
   transition: all 0.2s ease;
 }
 
 .tg-saas-open-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-1px);
 }
 
@@ -3989,11 +3971,11 @@ input:checked+.slider:before {
 .tg-saas-divider {
   display: flex;
   align-items: center;
-  margin: 1.35rem 0 1.2rem;
-  color: #475569;
+  margin: 1.3rem 0 1.15rem;
+  color: #52525b;
   font-family: 'Inter', sans-serif;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -4003,7 +3985,7 @@ input:checked+.slider:before {
   content: "";
   flex: 1;
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .tg-saas-divider span {
@@ -4023,10 +4005,10 @@ input:checked+.slider:before {
 
 .tg-saas-input {
   flex: 1;
-  padding: 0.78rem 1rem;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(6, 10, 18, 0.88);
+  padding: 0.76rem 0.95rem;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0d0d0f;
   font-family: 'Inter', sans-serif;
   font-size: 0.88rem;
   color: #f8fafc;
@@ -4036,26 +4018,26 @@ input:checked+.slider:before {
 }
 
 .tg-saas-input::placeholder {
-  color: #475569;
+  color: #52525b;
   font-family: 'Inter', sans-serif;
   font-size: 0.84rem;
 }
 
 .tg-saas-input:focus {
   border-color: #3b82f6;
-  background: rgba(8, 14, 26, 0.96);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22);
+  background: #111114;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.22);
 }
 
 .tg-saas-submit-btn {
-  padding: 0.78rem 1.35rem;
-  border-radius: 12px;
+  padding: 0.76rem 1.3rem;
+  border-radius: 11px;
   border: none;
   background: #2563eb;
   color: #ffffff;
   font-family: 'Inter', sans-serif;
   font-size: 0.88rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.18s ease;
@@ -4074,24 +4056,25 @@ input:checked+.slider:before {
   transform: translateY(0);
 }
 
-/* Footer matching 'Didn't get it yet? Resend Verification' */
+/* Simple Footer */
 .tg-saas-footer {
   font-family: 'Inter', sans-serif;
-  font-size: 0.84rem;
-  color: #64748b;
-  margin: 1.4rem 0 0;
+  font-size: 0.82rem;
+  color: #71717a;
+  margin: 1.35rem 0 0;
   line-height: 1.45;
+  font-weight: 400;
 }
 
 .tg-saas-footer a {
-  color: #38bdf8;
-  font-weight: 600;
+  color: #60a5fa;
+  font-weight: 500;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .tg-saas-footer a:hover {
-  color: #7dd3fc;
+  color: #93c5fd;
   text-decoration: underline;
 }
 
