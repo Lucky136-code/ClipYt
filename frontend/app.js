@@ -126,7 +126,6 @@ function renderRateLimitUI() {
 document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
   setupLiquidGlassEffect();
-  setupSiteUnlockGate();
   setupProStudio();
   setupVodStudio();
   fetchRateLimitStatus();
@@ -1206,249 +1205,11 @@ const siteUnlockState = {
 };
 
 function isSiteUnlocked() {
-  try {
-    const raw = localStorage.getItem(SITE_UNLOCK_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    return Boolean(parsed && (parsed.unlocked || parsed.unlockedAt || (parsed.yt && parsed.ig)));
-  } catch (e) {
-    return false;
-  }
+  return true;
 }
 
 function setupSiteUnlockGate() {
-  const gateEl = document.getElementById("site-unlock-gate");
-  if (!gateEl) return;
-
-  if (isSiteUnlocked()) {
-    gateEl.classList.add("hidden");
-    gateEl.style.display = "none";
-    document.body.style.overflow = "";
-    return;
-  }
-
-  // Show gate overlay
-  gateEl.classList.remove("hidden");
-  document.body.style.overflow = "hidden";
-
-  // Elements
-  const ytCard = document.getElementById("task-card-yt");
-  const ytBtn = document.getElementById("yt-subscribe-btn");
-  const ytPill = document.getElementById("yt-status-pill");
-  const ytInput = document.getElementById("yt-handle-input");
-  const ytWaitStatus = document.getElementById("yt-wait-status");
-
-  const igCard = document.getElementById("task-card-ig");
-  const igBtn = document.getElementById("ig-follow-btn");
-  const igPill = document.getElementById("ig-status-pill");
-  const igInput = document.getElementById("ig-handle-input");
-  const igWaitStatus = document.getElementById("ig-wait-status");
-
-  const verifyBtn = document.getElementById("btn-verify-all-tasks");
-  const liveCard = document.getElementById("verifier-live-card");
-  const errEl = document.getElementById("unlock-gate-error");
-  const stepYt = document.getElementById("vstep-yt");
-  const stepIg = document.getElementById("vstep-ig");
-  const stepToken = document.getElementById("vstep-token");
-
-  // Persistent click states (survive tab switches / reloads on mobile!)
-  let hasYtClicked = localStorage.getItem("clipyt_task_yt") === "true";
-  let hasIgClicked = localStorage.getItem("clipyt_task_ig") === "true";
-
-  function markYtDone() {
-    hasYtClicked = true;
-    localStorage.setItem("clipyt_task_yt", "true");
-    if (ytPill) {
-      ytPill.textContent = "✓ READY";
-      ytPill.className = "task-status-pill ready";
-    }
-    if (ytCard) {
-      ytCard.classList.remove("active-working");
-      ytCard.classList.add("task-done");
-    }
-    if (ytWaitStatus) {
-      ytWaitStatus.classList.remove("hidden");
-      ytWaitStatus.classList.add("ready");
-      ytWaitStatus.textContent = "✓ Channel opened! Ready to verify.";
-    }
-    checkBothReady();
-  }
-
-  function markIgDone() {
-    hasIgClicked = true;
-    localStorage.setItem("clipyt_task_ig", "true");
-    if (igPill) {
-      igPill.textContent = "✓ READY";
-      igPill.className = "task-status-pill ready";
-    }
-    if (igCard) {
-      igCard.classList.remove("active-working");
-      igCard.classList.add("task-done");
-    }
-    if (igWaitStatus) {
-      igWaitStatus.classList.remove("hidden");
-      igWaitStatus.classList.add("ready");
-      igWaitStatus.textContent = "✓ Profile opened! Ready to verify.";
-    }
-    checkBothReady();
-  }
-
-  function checkBothReady() {
-    if (hasYtClicked && hasIgClicked && verifyBtn) {
-      verifyBtn.classList.add("btn-verify-pulse");
-      if (errEl) errEl.classList.add("hidden");
-    }
-  }
-
-  // Restore state if returning from YouTube or Instagram app
-  if (hasYtClicked) markYtDone();
-  if (hasIgClicked) markIgDone();
-
-  // Task 1: YouTube Subscribe Click -> instantly mark clicked & ready
-  if (ytBtn) {
-    ytBtn.addEventListener("click", () => {
-      markYtDone();
-    });
-  }
-
-  // Task 2: Instagram Follow Click -> instantly mark clicked & ready
-  if (igBtn) {
-    igBtn.addEventListener("click", () => {
-      markIgDone();
-    });
-  }
-
-  // Master Verifier Button Click
-  if (verifyBtn) {
-    verifyBtn.addEventListener("click", () => {
-      if (siteUnlockState.isVerifying) return;
-      if (errEl) errEl.classList.add("hidden");
-
-      // Check Task 1
-      if (!hasYtClicked) {
-        if (errEl) {
-          errEl.textContent = "👉 Please tap '1. Subscribe to @Annieplaysgta6' first!";
-          errEl.classList.remove("hidden");
-        }
-        ytBtn?.focus();
-        return;
-      }
-
-      // Check Task 2
-      if (!hasIgClicked) {
-        if (errEl) {
-          errEl.textContent = "👉 Please tap '2. Follow @gta6.insider_' first!";
-          errEl.classList.remove("hidden");
-        }
-        igBtn?.focus();
-        return;
-      }
-
-      // Optional handles (never block users!)
-      const ytVal = ytInput?.value?.trim()?.replace(/^@+/, "") || "subscriber";
-      const igVal = igInput?.value?.trim()?.replace(/^@+/, "") || "follower";
-
-      // Start Verification sequence
-      siteUnlockState.isVerifying = true;
-      verifyBtn.disabled = true;
-      if (ytInput) ytInput.disabled = true;
-      if (igInput) igInput.disabled = true;
-      if (liveCard) liveCard.classList.remove("hidden");
-
-      if (stepYt) {
-        stepYt.className = "verifier-step-line active";
-        stepYt.textContent = `⏳ Verifying YouTube subscription for @${ytVal}...`;
-      }
-      if (stepIg) {
-        stepIg.className = "verifier-step-line";
-        stepIg.textContent = `⚪ Verifying Instagram follow for @gta6.insider_...`;
-      }
-      if (stepToken) {
-        stepToken.className = "verifier-step-line";
-        stepToken.textContent = `⚪ Generating secure access token...`;
-      }
-
-      // Fast, smooth verification animation (~1s total)
-      setTimeout(() => {
-        if (stepYt) {
-          stepYt.className = "verifier-step-line done";
-          stepYt.textContent = `✓ YouTube subscription confirmed!`;
-        }
-        if (ytPill) {
-          ytPill.textContent = "VERIFIED";
-          ytPill.className = "task-status-pill verified";
-        }
-        if (stepIg) {
-          stepIg.className = "verifier-step-line active";
-          stepIg.textContent = `⏳ Verifying Instagram follow for @gta6.insider_...`;
-        }
-
-        setTimeout(() => {
-          if (stepIg) {
-            stepIg.className = "verifier-step-line done";
-            stepIg.textContent = `✓ Instagram follow confirmed!`;
-          }
-          if (igPill) {
-            igPill.textContent = "VERIFIED";
-            igPill.className = "task-status-pill verified";
-          }
-          if (stepToken) {
-            stepToken.className = "verifier-step-line active";
-            stepToken.textContent = `⏳ Issuing lifetime access token...`;
-          }
-
-          setTimeout(() => {
-            if (stepToken) {
-              stepToken.className = "verifier-step-line done";
-              stepToken.textContent = `✓ Verified! Welcome to ClipYt AI.`;
-            }
-
-            // Stop the spinner and show unlocked button
-            const vSpinner = liveCard?.querySelector(".verifier-spinner");
-            if (vSpinner) vSpinner.style.display = "none";
-            if (verifyBtn) {
-              verifyBtn.classList.remove("btn-verify-pulse");
-              verifyBtn.innerHTML = "<span>✓ Unlocked! Entering Studio...</span>";
-              verifyBtn.style.background = "#2563eb";
-            }
-
-            // Save permanent unlock
-            try {
-              localStorage.setItem(
-                SITE_UNLOCK_KEY,
-                JSON.stringify({ yt: ytVal, ig: igVal, unlocked: true, unlockedAt: Date.now() })
-              );
-              localStorage.setItem(
-                PRO_UNLOCK_KEY,
-                JSON.stringify({ handle: igVal, unlocked: true, unlockedAt: Date.now() })
-              );
-            } catch (e) {}
-
-            proState.unlocked = true;
-            siteUnlockState.isVerifying = false;
-            try {
-              if (typeof updateLiveKeyUI === "function") updateLiveKeyUI();
-            } catch (e) {}
-
-            // Smooth fade out & dismiss modal
-            setTimeout(() => {
-              gateEl.style.transition = "opacity 0.35s ease, transform 0.35s ease";
-              gateEl.style.opacity = "0";
-              gateEl.style.transform = "scale(1.02)";
-              setTimeout(() => {
-                gateEl.classList.add("hidden");
-                gateEl.style.display = "none";
-                document.body.style.overflow = "";
-                if (!isLiveStudioUnlocked()) {
-                  setTimeout(openLiveKeyModal, 350);
-                }
-              }, 350);
-            }, 300);
-          }, 350);
-        }, 350);
-      }, 400);
-    });
-  }
+  // Social follow gate removed; authentication handled strictly via 6-hour Access Key
 }
 
 
@@ -1724,7 +1485,7 @@ function setupProStudio() {
   setInterval(refreshLiveKeyUI, 30000);
   verifyLiveKeySessionWithServer();
 
-  if (isSiteUnlocked() && !isLiveStudioUnlocked()) {
+  if (!isLiveStudioUnlocked()) {
     setTimeout(openLiveKeyModal, 350);
   }
 
