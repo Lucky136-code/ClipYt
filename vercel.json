@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://waves-electoral-annually-gaming.trycloudflare.com/api/:path*"
+      "destination": "https://dennis-newspapers-graph-deposit.trycloudflare.com/api/:path*"
     }
   ]
 }
