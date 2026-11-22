@@ -3851,6 +3851,14 @@ input:checked+.slider:before {
    MINIMALIST SAAS TELEGRAM KEY MODAL (INTER FONT & CLEAN ELEVATION)
    ========================================================================== */
 
+/* Mandatory Key Lock Modal Backdrop Shield */
+#live-key-modal.modal-backdrop {
+  z-index: 99999;
+  background: rgba(3, 7, 18, 0.94);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+}
+
 .tg-saas-card {
   position: relative;
   max-width: 410px;

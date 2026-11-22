@@ -1370,11 +1370,21 @@ function openLiveKeyModal() {
   if (modal) {
     modal.classList.remove("hidden");
     const input = document.getElementById("live-access-key-input");
-    if (input) setTimeout(() => input.focus(), 80);
+    if (input) setTimeout(() => input.focus(), 60);
   }
 }
 
 function closeLiveKeyModal() {
+  if (!isLiveStudioUnlocked()) {
+    const errEl = document.getElementById("live-key-error");
+    if (errEl) {
+      errEl.textContent = "Entering your VIP access key is mandatory to use ClipYt.";
+      errEl.classList.remove("hidden");
+    }
+    const input = document.getElementById("live-access-key-input");
+    if (input) input.focus();
+    return;
+  }
   const modal = document.getElementById("live-key-modal");
   if (modal) modal.classList.add("hidden");
 }
@@ -1493,7 +1503,7 @@ function setupProStudio() {
   verifyLiveKeySessionWithServer();
 
   if (!isLiveStudioUnlocked()) {
-    setTimeout(openLiveKeyModal, 350);
+    openLiveKeyModal();
   }
 
   // Top mode switcher
@@ -1507,16 +1517,30 @@ function setupProStudio() {
     vodBtn.addEventListener("click", () => switchStudioMode("vod"));
   }
 
-  // Key Modal controls
-  const keyCloseBtn = document.getElementById("live-key-close-x");
-  if (keyCloseBtn) keyCloseBtn.addEventListener("click", closeLiveKeyModal);
-
+  // Mandatory Key Modal controls (cannot be bypassed without valid key)
   const keyModal = document.getElementById("live-key-modal");
   if (keyModal) {
     keyModal.addEventListener("click", (e) => {
-      if (e.target.id === "live-key-modal") closeLiveKeyModal();
+      if (e.target.id === "live-key-modal") {
+        if (!isLiveStudioUnlocked()) {
+          const input = document.getElementById("live-access-key-input");
+          if (input) input.focus();
+          return;
+        }
+        closeLiveKeyModal();
+      }
     });
   }
+
+  // Prevent closing modal via Escape if locked
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !isLiveStudioUnlocked()) {
+      e.preventDefault();
+      e.stopPropagation();
+      const input = document.getElementById("live-access-key-input");
+      if (input) input.focus();
+    }
+  });
 
   const keySubmitBtn = document.getElementById("live-key-submit-btn");
   if (keySubmitBtn) keySubmitBtn.addEventListener("click", submitLiveAccessKey);
