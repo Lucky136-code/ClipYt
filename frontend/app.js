@@ -1399,7 +1399,7 @@ async function submitLiveAccessKey() {
   const btnTxt = submitBtn.querySelector(".btn-text");
   const sp = submitBtn.querySelector(".spinner");
   submitBtn.disabled = true;
-  if (btnTxt) btnTxt.innerHTML = "<span>VERIFYING KEY...</span>";
+  if (btnTxt) btnTxt.textContent = "Activating...";
   if (sp) sp.classList.remove("hidden");
 
   try {
@@ -1433,13 +1433,7 @@ async function submitLiveAccessKey() {
     }
   } finally {
     submitBtn.disabled = false;
-    if (btnTxt) {
-      btnTxt.innerHTML = `
-        <span class="btn-word-cap">ACTIVATE</span>
-        <span class="btn-word-cursive"><em>Lifetime Access</em></span>
-        <span class="btn-sparkle">⚡</span>
-      `;
-    }
+    if (btnTxt) btnTxt.textContent = "Activate";
     if (sp) sp.classList.add("hidden");
   }
 }
