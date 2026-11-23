@@ -317,11 +317,18 @@ def _measure_exact_leading_pad(
     return round(fallback_pad, 3)
 
 
-def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False, timeout_sec: int = 55):
+def _download_with_guard(
+    ydl_opts: dict,
+    target: Any,
+    watch_path: Optional[Path] = None,
+    progress_cb: Optional[Callable[[str, int], None]] = None,
+    is_info_dict: bool = False,
+    timeout_sec: int = 55,
+):
     """
     Run yt-dlp download in a guarded thread pool with a strict timeout.
-    If YouTube stalls or gets stuck in the middle, it aborts and immediately terminates
-    any orphaned child processes (e.g. ffmpeg) so no hanging background tasks accumulate.
+    Continuously monitors disk growth every 350ms so progress never stays static at 20%,
+    and kills any orphaned child processes (e.g. ffmpeg) immediately if aborted.
     """
     import psutil
     curr_proc = psutil.Process()
@@ -335,10 +342,52 @@ def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False
 
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = pool.submit(_worker)
+
+    t0 = time.time()
+    last_reported_pct = 20
+    last_reported_time = 0.0
+
     try:
-        return future.result(timeout=timeout_sec)
+        while True:
+            try:
+                res = future.result(timeout=0.35)
+                if progress_cb:
+                    progress_cb("Processing downloaded segment...", 51)
+                return res
+            except concurrent.futures.TimeoutError:
+                pass
+
+            now = time.time()
+            elapsed = now - t0
+            if elapsed >= timeout_sec:
+                raise TimeoutError(f"Stream download timed out after {timeout_sec}s")
+
+            if progress_cb and (now - last_reported_time >= 0.35):
+                last_reported_time = now
+                file_size = 0
+                if watch_path:
+                    try:
+                        matches = list(watch_path.parent.glob(f"{watch_path.stem}*"))
+                        if matches:
+                            file_size = max(f.stat().st_size for f in matches)
+                    except Exception:
+                        file_size = 0
+
+                if file_size > 1000:
+                    sz_mb = file_size / (1024 * 1024)
+                    # Smoothly scale from 26% up to 50%
+                    pct = int(26 + min(24, sz_mb * 1.6))
+                    pct = max(last_reported_pct, min(50, pct))
+                    last_reported_pct = pct
+                    progress_cb(f"Fetching video clip ({sz_mb:.1f} MB received)...", pct)
+                else:
+                    # Actively pulse/increment from 20% to 25% while connecting
+                    pct = min(25, 20 + int(elapsed * 1.5))
+                    last_reported_pct = max(last_reported_pct, pct)
+                    stage = "Resolving stream segments..." if elapsed > 1.5 else "Connecting to high-speed stream..."
+                    progress_cb(stage, last_reported_pct)
+
     except concurrent.futures.TimeoutError:
-        # Kill orphan children spawned by this yt-dlp invocation
         try:
             for child in curr_proc.children(recursive=True):
                 if child.pid not in prior_pids:
@@ -349,6 +398,17 @@ def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False
         except Exception:
             pass
         raise TimeoutError(f"Stream download timed out after {timeout_sec}s")
+    except Exception:
+        try:
+            for child in curr_proc.children(recursive=True):
+                if child.pid not in prior_pids:
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        raise
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
 
@@ -431,7 +491,14 @@ def download_clip_segment(
         ydl_opts = _make_ydl_opts(cached["strat_opts"], cached.get("allow_cookies", True))
         ydl_opts.update(dl_common)
         try:
-            _download_with_guard(ydl_opts, cached["info"], is_info_dict=True, timeout_sec=seg_timeout)
+            _download_with_guard(
+                ydl_opts,
+                cached["info"],
+                watch_path=output_path,
+                progress_cb=progress_cb,
+                is_info_dict=True,
+                timeout_sec=seg_timeout,
+            )
             candidates = list(output_path.parent.glob(f"{output_path.stem}.*"))
             for cand in candidates:
                 if cand.suffix.lower() in [".mp4", ".mkv", ".webm"] and cand.stat().st_size > 20_000:
@@ -455,7 +522,14 @@ def download_clip_segment(
         ydl_opts["outtmpl"] = str(attempt_path.with_suffix(".%(ext)s"))
 
         try:
-            info = _download_with_guard(ydl_opts, url, is_info_dict=False, timeout_sec=seg_timeout)
+            info = _download_with_guard(
+                ydl_opts,
+                url,
+                watch_path=attempt_path,
+                progress_cb=progress_cb,
+                is_info_dict=False,
+                timeout_sec=seg_timeout,
+            )
             # Cache for subsequent clips from the same video with matching resolution
             if info:
                 entry = {

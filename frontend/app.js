@@ -1064,7 +1064,7 @@ function pollTaskProgress(taskId) {
     }
   }
 
-  const timer = setInterval(tick, 1500);
+  const timer = setInterval(tick, 600);
 
   // Resume immediately if user switches back to Safari on iOS
   document.addEventListener("visibilitychange", () => {
