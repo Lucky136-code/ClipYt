@@ -234,29 +234,32 @@ def _make_ydl_opts(strat_opts: dict, allow_cookies: bool) -> dict:
     return ydl_opts
 
 
-def prewarm_video_streams(url: str, video_id: str) -> None:
+def prewarm_video_streams(url: str, video_id: str, resolution: str = "1080p") -> None:
     """
     Background helper run immediately after analysis so clicking 'Create this Short'
     skips YouTube webpage scraping and JS challenge solving completely (0s overhead).
     """
-    existing = STREAM_INFO_CACHE.get(video_id)
+    cache_key = f"{video_id}_{resolution}"
+    existing = STREAM_INFO_CACHE.get(cache_key) or STREAM_INFO_CACHE.get(video_id)
     if existing and (time.time() - existing["ts"] < STREAM_CACHE_TTL_SEC):
         return
 
     clean_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else url
-    for label, strat_opts, allow_cookies in _build_stream_strategies():
+    for label, strat_opts, allow_cookies in _build_stream_strategies(resolution):
         ydl_opts = _make_ydl_opts(strat_opts, allow_cookies)
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(clean_url, download=False)
             if info and (info.get("requested_formats") or info.get("url")):
-                STREAM_INFO_CACHE[video_id] = {
+                entry = {
                     "info": info,
                     "strat_opts": strat_opts,
                     "allow_cookies": allow_cookies,
                     "label": label,
                     "ts": time.time(),
                 }
+                STREAM_INFO_CACHE[cache_key] = entry
+                STREAM_INFO_CACHE[video_id] = entry
                 return
         except Exception:
             continue
@@ -314,12 +317,16 @@ def _measure_exact_leading_pad(
     return round(fallback_pad, 3)
 
 
-def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False, timeout_sec: int = 35):
+def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False, timeout_sec: int = 55):
     """
     Run yt-dlp download in a guarded thread pool with a strict timeout.
-    If YouTube stalls or gets stuck in the middle, it aborts fast and tries the next strategy!
-    Uses wait=False so a hanging socket cannot block the server or subsequent strategies.
+    If YouTube stalls or gets stuck in the middle, it aborts and immediately terminates
+    any orphaned child processes (e.g. ffmpeg) so no hanging background tasks accumulate.
     """
+    import psutil
+    curr_proc = psutil.Process()
+    prior_pids = {p.pid for p in curr_proc.children(recursive=True)}
+
     def _worker():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             if is_info_dict:
@@ -331,6 +338,16 @@ def _download_with_guard(ydl_opts: dict, target: Any, is_info_dict: bool = False
     try:
         return future.result(timeout=timeout_sec)
     except concurrent.futures.TimeoutError:
+        # Kill orphan children spawned by this yt-dlp invocation
+        try:
+            for child in curr_proc.children(recursive=True):
+                if child.pid not in prior_pids:
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         raise TimeoutError(f"Stream download timed out after {timeout_sec}s")
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
@@ -348,15 +365,49 @@ def download_clip_segment(
     """
     Downloads ONLY the requested segment using stream-copy (-c copy, NO CPU re-encode!)
     with -copyts so exact original YouTube PTS is preserved for millisecond caption sync.
-    Guarded with strict per-strategy timeouts so downloads never stall in the middle.
+    Guarded with granular progress callbacks (20% -> 50%) and strict per-strategy timeouts.
     """
     if progress_cb:
-        progress_cb("Fetching video clip...", 20)
+        progress_cb("Connecting to high-speed stream...", 20)
 
     # Pad 1.5s before start so stream-copy hits an earlier keyframe cleanly;
     # _measure_exact_leading_pad measures the true keyframe start to 1ms accuracy.
     pad_start = max(0.0, start_time - 1.5)
     pad_end = end_time + 1.0
+
+    # Real-time granular progress hook so the progress bar never freezes at 20%
+    last_reported = [time.time(), 20]
+    def _progress_hook(d: dict):
+        if not progress_cb:
+            return
+        status = d.get("status")
+        now = time.time()
+        if status == "downloading":
+            if now - last_reported[0] < 0.35:
+                return
+            last_reported[0] = now
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes") or 0
+            speed = d.get("speed") or 0
+            speed_str = (
+                f" @ {speed / (1024 * 1024):.1f} MB/s"
+                if speed > 1024 * 1024
+                else (f" @ {speed / 1024:.0f} KB/s" if speed > 1024 else "")
+            )
+            if total > 0:
+                pct = int(20 + (downloaded / total) * 30)
+                pct = max(last_reported[1], min(50, pct))
+                last_reported[1] = pct
+                dl_mb = downloaded / (1024 * 1024)
+                tot_mb = total / (1024 * 1024)
+                progress_cb(f"Fetching video clip ({dl_mb:.1f}/{tot_mb:.1f} MB{speed_str})...", pct)
+            else:
+                pct = min(48, last_reported[1] + 1)
+                last_reported[1] = pct
+                dl_mb = downloaded / (1024 * 1024)
+                progress_cb(f"Fetching video clip ({dl_mb:.1f} MB{speed_str})...", pct)
+        elif status == "finished":
+            progress_cb("Processing downloaded segment...", 51)
 
     dl_common = {
         "download_ranges": download_range_func(None, [(pad_start, pad_end)]),
@@ -367,14 +418,15 @@ def download_clip_segment(
         "overwrites": True,
         "concurrent_fragment_downloads": 4,
         "buffersize": 8 * 1024 * 1024,
+        "progress_hooks": [_progress_hook],
     }
 
     clip_dur = max(5.0, end_time - start_time)
-    seg_timeout = max(35, int(clip_dur * 1.5) + 20)
+    seg_timeout = max(55, int(clip_dur * 2.0) + 30)
 
-    # Attempt 0: Instant pre-warmed cached metadata for this specific resolution
+    # Attempt 0: Instant pre-warmed cached metadata for this video
     cache_key = f"{video_id}_{resolution}"
-    cached = STREAM_INFO_CACHE.get(cache_key)
+    cached = STREAM_INFO_CACHE.get(cache_key) or STREAM_INFO_CACHE.get(video_id)
     if cached and (time.time() - cached["ts"] < STREAM_CACHE_TTL_SEC):
         ydl_opts = _make_ydl_opts(cached["strat_opts"], cached.get("allow_cookies", True))
         ydl_opts.update(dl_common)
@@ -388,6 +440,7 @@ def download_clip_segment(
         except Exception:
             # Cache expired or failed; drop cache and fall through to live waterfall
             STREAM_INFO_CACHE.pop(cache_key, None)
+            STREAM_INFO_CACHE.pop(video_id, None)
 
     # Live multi-tier waterfall fallback
     errors = []
@@ -405,13 +458,15 @@ def download_clip_segment(
             info = _download_with_guard(ydl_opts, url, is_info_dict=False, timeout_sec=seg_timeout)
             # Cache for subsequent clips from the same video with matching resolution
             if info:
-                STREAM_INFO_CACHE[cache_key] = {
+                entry = {
                     "info": info,
                     "strat_opts": strat_opts,
                     "allow_cookies": allow_cookies,
                     "label": label,
                     "ts": time.time(),
                 }
+                STREAM_INFO_CACHE[cache_key] = entry
+                STREAM_INFO_CACHE[video_id] = entry
 
             candidates = list(output_path.parent.glob(f"{attempt_path.stem}.*"))
             for cand in candidates:
