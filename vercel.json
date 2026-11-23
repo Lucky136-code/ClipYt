@@ -26,7 +26,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://documented-strategic-genius-resort.trycloudflare.com/api/:path*"
+      "destination": "https://valentine-blacks-terminology-controversy.trycloudflare.com/api/:path*"
     }
   ]
 }
