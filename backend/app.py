@@ -1017,9 +1017,11 @@ async def serve_google_verification(ver_id: str):
 
 @app.get("/api/debug/ytdlp")
 async def api_debug_ytdlp(url: str = "https://www.youtube.com/watch?v=Dz0naoD1QWo"):
-    import subprocess, sys, os, traceback
+    import subprocess, sys, os, traceback, shutil
     from backend.config import YTDLP_BASE_OPTS, ensure_fresh_cookiefile
     try:
+        node_path = shutil.which("node") or shutil.which("nodejs") or "/usr/bin/node" or "/usr/bin/nodejs"
+        deno_path = shutil.which("deno") or "/tmp/bin/deno"
         cookie_file = ensure_fresh_cookiefile() or YTDLP_BASE_OPTS.get("cookiefile")
         cookie_str = os.environ.get("YOUTUBE_COOKIES", "")
         cmd = [
@@ -1028,11 +1030,19 @@ async def api_debug_ytdlp(url: str = "https://www.youtube.com/watch?v=Dz0naoD1QW
             "--verbose",
             "--no-playlist",
         ]
+        if node_path and os.path.exists(node_path):
+            cmd.extend(["--js-runtimes", f"node:{node_path}"])
+        elif deno_path and os.path.exists(deno_path):
+            cmd.extend(["--js-runtimes", f"deno:{deno_path}"])
         if cookie_file and os.path.exists(cookie_file):
             cmd.extend(["--cookies", str(cookie_file)])
         cmd.append(url)
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
         return {
+            "node_path": node_path,
+            "node_exists": os.path.exists(node_path) if node_path else False,
+            "deno_path": deno_path,
+            "deno_exists": os.path.exists(deno_path) if deno_path else False,
             "cookie_len": len(cookie_str),
             "cookie_file": str(cookie_file),
             "cookie_exists": bool(cookie_file and os.path.exists(cookie_file)),
