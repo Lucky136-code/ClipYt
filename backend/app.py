@@ -1015,6 +1015,29 @@ async def serve_google_verification(ver_id: str):
     return Response(content=f"google-site-verification: google{ver_id}.html\n", media_type="text/html")
 
 
+@app.get("/api/debug/ytdlp")
+async def api_debug_ytdlp(url: str = "https://www.youtube.com/watch?v=Dz0naoD1QWo"):
+    import subprocess, sys
+    cookie_str = os.environ.get("YOUTUBE_COOKIES", "")
+    cmd = [
+        sys.executable, "-m", "yt_dlp",
+        "-F",
+        "--verbose",
+        "--no-playlist",
+    ]
+    if YTDLP_BASE_OPTS.get("cookiefile"):
+        cmd.extend(["--cookies", YTDLP_BASE_OPTS["cookiefile"]])
+    cmd.append(url)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+    return {
+        "cookie_len": len(cookie_str),
+        "cookie_file": YTDLP_BASE_OPTS.get("cookiefile"),
+        "returncode": proc.returncode,
+        "stdout": proc.stdout[:2000],
+        "stderr": proc.stderr[-2000:],
+    }
+
+
 @app.get("/")
 async def serve_index():
     index_file = FRONTEND_DIR / "index.html"
