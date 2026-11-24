@@ -2,7 +2,7 @@ fastapi>=0.115.0
 uvicorn>=0.30.0
 gradio>=4.44.1,<5.0.0
 huggingface-hub<1.0.0
-yt-dlp>=2024.10.0
+yt-dlp>=2026.11.23
 yt-dlp-ejs>=0.8.0
 youtube-transcript-api>=1.2.0
 numpy>=1.26.0
