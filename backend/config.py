@@ -120,12 +120,28 @@ def get_rolling_6h_key(offset: int = 0) -> str:
 def get_all_valid_live_keys() -> list[str]:
     """
     Retrieves all currently active valid keys.
-    When custom keys are configured in live_keys.json, ONLY those keys are valid!
-    This ensures that when an admin updates the key in live_keys.json, all old keys
-    are immediately revoked and previous users are locked out.
+    When custom keys are configured in live_keys.json or environment variables,
+    ONLY those keys are valid! This ensures that when an admin updates the key,
+    all old keys are immediately revoked and previous users are locked out.
     """
     import json
     custom_keys = set()
+
+    # Check environment variables / Hugging Face secrets
+    for env_var in ("LIVE_KEYS", "LIVE_KEY", "VIP_KEY", "VIP_KEYS", "ACCESS_KEY", "SECRET_KEY", "CUSTOM_KEYS"):
+        val = os.environ.get(env_var, "").strip()
+        if val:
+            if val.startswith("[") and val.endswith("]"):
+                try:
+                    for k in json.loads(val):
+                        if isinstance(k, str) and k.strip():
+                            custom_keys.add(k.upper().strip())
+                except Exception:
+                    pass
+            else:
+                for k in val.replace("\n", ",").split(","):
+                    if k.strip():
+                        custom_keys.add(k.strip().upper())
 
     # Check custom keys file
     if LIVE_KEYS_FILE.exists():
