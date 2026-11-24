@@ -68,6 +68,38 @@ def _build_pro_live_strategies() -> List[Tuple[str, Dict[str, Any], bool]]:
 
     strategies.extend([
         (
+            "Android Mobile Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["android", "mweb"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+        (
+            "iOS Mobile Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["ios"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+        (
+            "Web Embedded Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+        (
+            "Web Creator Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["web_creator"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+        (
             "Default Live HLS",
             {"format": live_fmt},
             False,

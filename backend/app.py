@@ -325,6 +325,10 @@ async def api_diag(url: str = "https://www.youtube.com/watch?v=B2YhlGTGXpM"):
     def _probe():
         report = {}
         for name, extra, use_ck in [
+            ("android_nock", {"extractor_args": {"youtube": {"player_client": ["android", "mweb"]}}}, False),
+            ("ios_nock", {"extractor_args": {"youtube": {"player_client": ["ios"]}}}, False),
+            ("web_creator_nock", {"extractor_args": {"youtube": {"player_client": ["web_creator"]}}}, False),
+            ("web_embedded_nock", {"extractor_args": {"youtube": {"player_client": ["web_embedded"]}}}, False),
             ("default_ck", {}, True),
             ("web_safari_ck", {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}}, True),
             ("tv_ck", {"extractor_args": {"youtube": {"player_client": ["tv"]}}}, True),

@@ -213,6 +213,10 @@ def analyze_youtube_video(url: str, clip_duration: float = 30.0, max_clips: int 
     last_err = ""
     client_strategies = [
         ("default", {}),
+        ("android", {"extractor_args": {"youtube": {"player_client": ["android", "mweb"]}}}),
+        ("ios", {"extractor_args": {"youtube": {"player_client": ["ios"]}}}),
+        ("web_creator", {"extractor_args": {"youtube": {"player_client": ["web_creator"]}}}),
+        ("web_embedded", {"extractor_args": {"youtube": {"player_client": ["web_embedded"]}}}),
         ("web_safari", {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}}),
         ("tv", {"extractor_args": {"youtube": {"player_client": ["tv"]}}}),
         ("android_vr", {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}}),

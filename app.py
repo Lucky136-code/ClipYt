@@ -1,7 +1,37 @@
 import spaces
 import torch
-import gradio as gr
 import os
+import shutil
+from pathlib import Path
+
+def ensure_deno_runtime():
+    """Ensure Deno or Node runtime is available for yt-dlp JS challenges."""
+    if shutil.which("deno") or shutil.which("node"):
+        return
+    deno_dir = Path("/tmp/bin")
+    deno_bin = deno_dir / "deno"
+    if deno_bin.exists():
+        os.environ["PATH"] = f"{deno_dir}:{os.environ.get('PATH', '')}"
+        return
+    if os.name != "nt":
+        try:
+            import urllib.request, zipfile
+            deno_dir.mkdir(parents=True, exist_ok=True)
+            url = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip"
+            zip_path = deno_dir / "deno.zip"
+            urllib.request.urlretrieve(url, zip_path)
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                z.extractall(deno_dir)
+            deno_bin.chmod(0o755)
+            zip_path.unlink(missing_ok=True)
+            os.environ["PATH"] = f"{deno_dir}:{os.environ.get('PATH', '')}"
+            print(f"[runtime] Installed Deno at {deno_bin}", flush=True)
+        except Exception as e:
+            print(f"[runtime] Could not auto-install Deno: {e}", flush=True)
+
+ensure_deno_runtime()
+
+import gradio as gr
 import uvicorn
 from backend.app import app
 
