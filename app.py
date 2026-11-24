@@ -1,24 +1,26 @@
+import spaces
+import torch
+import gradio as gr
 import os
 import uvicorn
 from backend.app import app
 
-try:
-    import spaces
-    @spaces.GPU(duration=60)
-    def zero_gpu_keepalive():
-        """Satisfies ZeroGPU runtime check and keeps GPU allocated for faster-whisper"""
-        return True
-except Exception:
-    pass
+zero = torch.Tensor([0]).cuda()
 
-try:
-    import gradio as gr
-    demo = gr.Blocks(title="ClipYT Backend Engine")
-    with demo:
-        gr.Markdown("# 🎬 ClipYT Cloud Backend Engine\n\n- **Frontend:** [https://clipyt.vercel.app](https://clipyt.vercel.app)\n- **API Status:** Running Healthy 🚀")
-    app = gr.mount_gradio_app(app, demo, path="/gradio")
-except Exception:
-    pass
+@spaces.GPU
+def greet(n=1):
+    return f"ClipYT ZeroGPU Online: {zero + n}"
+
+demo = gr.Interface(
+    fn=greet,
+    inputs=gr.Number(label="GPU Ping"),
+    outputs=gr.Text(label="GPU Output"),
+    title="🎬 ClipYT Cloud Backend Engine",
+    description="Official 24/7 cloud backend for ClipYT (https://clipyt.vercel.app)"
+)
+
+# Mount Gradio at /gradio so root / and /api remain 100% pure FastAPI for Vercel
+app = gr.mount_gradio_app(app, demo, path="/gradio")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
