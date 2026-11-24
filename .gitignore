@@ -8,7 +8,8 @@ env/
 .env
 
 # Runtime data & generated videos
-data/
+data/*
+!data/live_keys.json
 exports/
 *.mp4
 *.mkv
