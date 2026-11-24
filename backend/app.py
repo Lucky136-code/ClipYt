@@ -1017,7 +1017,7 @@ async def serve_google_verification(ver_id: str):
 
 @app.get("/api/debug/ytdlp")
 async def api_debug_ytdlp(url: str = "https://www.youtube.com/watch?v=Dz0naoD1QWo"):
-    import subprocess, sys
+    import subprocess, sys, os
     cookie_str = os.environ.get("YOUTUBE_COOKIES", "")
     cmd = [
         sys.executable, "-m", "yt_dlp",
