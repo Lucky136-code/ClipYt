@@ -212,6 +212,7 @@ def analyze_youtube_video(url: str, clip_duration: float = 30.0, max_clips: int 
     info = None
     last_err = ""
     client_strategies = [
+        ("visionos", {"extractor_args": {"youtube": {"player_client": ["visionos"]}}}),
         ("default", {}),
         ("android", {"extractor_args": {"youtube": {"player_client": ["android", "mweb"]}}}),
         ("ios", {"extractor_args": {"youtube": {"player_client": ["ios"]}}}),

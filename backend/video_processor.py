@@ -164,6 +164,14 @@ def _build_stream_strategies(target_res: str = "1080p") -> list:
 
     strategies.extend([
         (
+            "VisionOS HD Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["visionos"]}},
+                "format": hd_fmt,
+            },
+            False,
+        ),
+        (
             "Default HD Stream",
             {
                 "format": hd_fmt,

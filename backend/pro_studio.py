@@ -68,6 +68,14 @@ def _build_pro_live_strategies() -> List[Tuple[str, Dict[str, Any], bool]]:
 
     strategies.extend([
         (
+            "VisionOS Live HLS",
+            {
+                "extractor_args": {"youtube": {"player_client": ["visionos"]}},
+                "format": live_fmt,
+            },
+            False,
+        ),
+        (
             "Android Mobile Stream",
             {
                 "extractor_args": {"youtube": {"player_client": ["android", "mweb"]}},

@@ -325,6 +325,7 @@ async def api_diag(url: str = "https://www.youtube.com/watch?v=B2YhlGTGXpM"):
     def _probe():
         report = {}
         for name, extra, use_ck in [
+            ("visionos_nock", {"extractor_args": {"youtube": {"player_client": ["visionos"]}}}, False),
             ("android_nock", {"extractor_args": {"youtube": {"player_client": ["android", "mweb"]}}}, False),
             ("ios_nock", {"extractor_args": {"youtube": {"player_client": ["ios"]}}}, False),
             ("web_creator_nock", {"extractor_args": {"youtube": {"player_client": ["web_creator"]}}}, False),
