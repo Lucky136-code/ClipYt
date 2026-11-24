@@ -126,7 +126,16 @@ def _build_stream_strategies(target_res: str = "1080p") -> list:
             "best[height<=1080][protocol^=m3u8]/"
             "bv*+ba/b"
         )
-    strategies = []
+    strategies = [
+        (
+            "VisionOS HD Stream",
+            {
+                "extractor_args": {"youtube": {"player_client": ["visionos"]}},
+                "format": hd_fmt,
+            },
+            False,
+        ),
+    ]
     if YTDLP_BASE_OPTS.get("cookiefile"):
         strategies.extend([
             (
@@ -163,14 +172,6 @@ def _build_stream_strategies(target_res: str = "1080p") -> list:
         ])
 
     strategies.extend([
-        (
-            "VisionOS HD Stream",
-            {
-                "extractor_args": {"youtube": {"player_client": ["visionos"]}},
-                "format": hd_fmt,
-            },
-            False,
-        ),
         (
             "Default HD Stream",
             {
