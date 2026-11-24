@@ -40,6 +40,10 @@ YTDLP_BASE_OPTS = {
     "fragment_retries": 2,
 }
 
+_PROXY = os.environ.get("YTDLP_PROXY") or os.environ.get("PROXY") or os.environ.get("HTTP_PROXY")
+if _PROXY:
+    YTDLP_BASE_OPTS["proxy"] = _PROXY.strip()
+
 # Optional YouTube cookies support for cloud hosting (e.g. Hugging Face Spaces Secret: YOUTUBE_COOKIES)
 _ENV_COOKIES = os.environ.get("YOUTUBE_COOKIES", "").strip()
 _COOKIES_FILE = TEMP_DIR / "yt_cookies.txt"

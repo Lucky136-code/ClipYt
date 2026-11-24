@@ -1015,43 +1015,6 @@ async def serve_google_verification(ver_id: str):
     return Response(content=f"google-site-verification: google{ver_id}.html\n", media_type="text/html")
 
 
-@app.get("/api/debug/ytdlp")
-async def api_debug_ytdlp(
-    url: str = "https://www.youtube.com/watch?v=Dz0naoD1QWo",
-    client: str = "default",
-    with_cookies: bool = True,
-):
-    import subprocess, sys, os, traceback, shutil
-    from backend.config import YTDLP_BASE_OPTS, ensure_fresh_cookiefile
-    try:
-        cookie_file = ensure_fresh_cookiefile() or YTDLP_BASE_OPTS.get("cookiefile")
-        cookie_str = os.environ.get("YOUTUBE_COOKIES", "")
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
-            "-F",
-            "--verbose",
-            "--no-playlist",
-        ]
-        if client and client != "default":
-            cmd.extend(["--extractor-args", f"youtube:player_client={client}"])
-        if with_cookies and cookie_file and os.path.exists(cookie_file):
-            cmd.extend(["--cookies", str(cookie_file)])
-        cmd.append(url)
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
-        return {
-            "client": client,
-            "with_cookies": with_cookies,
-            "returncode": proc.returncode,
-            "stdout": proc.stdout[:2000],
-            "stderr": proc.stderr[-2000:],
-        }
-    except Exception as e:
-        return {
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-        }
-
-
 @app.get("/")
 async def serve_index():
     index_file = FRONTEND_DIR / "index.html"
