@@ -1002,6 +1002,14 @@ async def serve_sitemap():
     raise HTTPException(status_code=404, detail="Sitemap not found")
 
 
+@app.get("/google{ver_id}.html")
+async def serve_google_verification(ver_id: str):
+    f = FRONTEND_DIR / f"google{ver_id}.html"
+    if f.exists():
+        return FileResponse(f, media_type="text/html")
+    return Response(content=f"google-site-verification: google{ver_id}.html\n", media_type="text/html")
+
+
 @app.get("/")
 async def serve_index():
     index_file = FRONTEND_DIR / "index.html"

@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/googleedb648e75ca75856.html",
+      "destination": "/frontend/googleedb648e75ca75856.html"
+    },
+    {
+      "source": "/google:id.html",
+      "destination": "/frontend/google:id.html"
+    },
+    {
       "source": "/robots.txt",
       "destination": "/frontend/robots.txt"
     },
