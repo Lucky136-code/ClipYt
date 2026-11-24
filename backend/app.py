@@ -986,6 +986,22 @@ FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
+@app.get("/robots.txt")
+async def serve_robots():
+    f = FRONTEND_DIR / "robots.txt"
+    if f.exists():
+        return FileResponse(f, media_type="text/plain")
+    return Response(content="User-agent: *\nAllow: /\n", media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+async def serve_sitemap():
+    f = FRONTEND_DIR / "sitemap.xml"
+    if f.exists():
+        return FileResponse(f, media_type="application/xml")
+    raise HTTPException(status_code=404, detail="Sitemap not found")
+
+
 @app.get("/")
 async def serve_index():
     index_file = FRONTEND_DIR / "index.html"
