@@ -2065,7 +2065,7 @@ async function inspectLiveStream(url, forceRefresh = false) {
       body: JSON.stringify({
         url,
         force_refresh: forceRefresh,
-        access_key: proState.accessKey,
+        access_key: proState.accessKey || getLiveKeySession()?.key,
       }),
     }, 25000);
     const json = await parseApiResponse(res);
@@ -2311,7 +2311,7 @@ async function submitLiveClipExport() {
     burn_subtitles: true,
     subtitle_style: document.getElementById("pro-sub-style")?.value || "viral_pop",
     subtitle_position: isNoCam ? "bottom" : "seam",
-    access_key: proState.accessKey,
+    access_key: proState.accessKey || getLiveKeySession()?.key,
   };
 
   const modeLabel = isNoCam ? "Display-Only" : "Dual-Box";
@@ -2793,7 +2793,7 @@ async function inspectVodStream(url) {
       body: JSON.stringify({
         url,
         force_refresh: false,
-        access_key: proState.accessKey,
+        access_key: proState.accessKey || getLiveKeySession()?.key,
       }),
     }, 25000);
     const json = await parseApiResponse(res);
@@ -3061,7 +3061,7 @@ async function submitVodClipExport() {
     burn_subtitles: true,
     subtitle_style: document.getElementById("vod-sub-style")?.value || "viral_pop",
     subtitle_position: isNoCam ? "bottom" : "seam",
-    access_key: proState.accessKey,
+    access_key: proState.accessKey || getLiveKeySession()?.key,
   };
 
   const modeLabel = isNoCam ? "Display-Only" : "Dual-Box";

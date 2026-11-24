@@ -621,7 +621,7 @@ def _grab_frame_b64(
             "pipe:1",
         ])
         try:
-            res = subprocess.run(cmd, capture_output=True, timeout=14)
+            res = subprocess.run(cmd, capture_output=True, timeout=4.5)
             if res.returncode == 0 and res.stdout and len(res.stdout) > 2000:
                 b64 = base64.b64encode(res.stdout).decode("ascii")
                 return f"data:image/jpeg;base64,{b64}", ("live_frame" if is_live else "video_frame")
