@@ -5,30 +5,34 @@ import shutil
 from pathlib import Path
 
 def ensure_deno_runtime():
-    """Ensure Deno standalone binary is installed and on PATH for yt-dlp n-sig challenges."""
-    if shutil.which("deno"):
-        return
+    """Ensure Deno standalone binary (>=2.3.0) is installed and on PATH for yt-dlp n-sig challenges."""
     deno_dir = Path("/tmp/bin")
     deno_bin = deno_dir / "deno"
-    if deno_bin.exists():
-        os.environ["PATH"] = f"{deno_dir}:{os.environ.get('PATH', '')}"
-        return
     if os.name != "nt":
-        try:
-            import urllib.request, zipfile
-            deno_dir.mkdir(parents=True, exist_ok=True)
-            # Use pinned direct release of Deno x86_64 for Linux
-            url = "https://github.com/denoland/deno/releases/download/v2.1.4/deno-x86_64-unknown-linux-gnu.zip"
-            zip_path = deno_dir / "deno.zip"
-            urllib.request.urlretrieve(url, zip_path)
-            with zipfile.ZipFile(zip_path, 'r') as z:
-                z.extractall(deno_dir)
-            deno_bin.chmod(0o755)
-            zip_path.unlink(missing_ok=True)
-            os.environ["PATH"] = f"{deno_dir}:{os.environ.get('PATH', '')}"
-            print(f"[runtime] Installed Deno successfully at {deno_bin}", flush=True)
-        except Exception as e:
-            print(f"[runtime] Could not auto-install Deno: {e}", flush=True)
+        needs_install = True
+        if deno_bin.exists():
+            try:
+                res = subprocess.run([str(deno_bin), "-V"], capture_output=True, text=True)
+                # Ensure deno is >= 2.3.0
+                if "deno" in res.stdout.lower() and not any(f"2.{i}." in res.stdout for i in (0, 1, 2)):
+                    needs_install = False
+            except Exception:
+                pass
+        if needs_install:
+            try:
+                import urllib.request, zipfile
+                deno_dir.mkdir(parents=True, exist_ok=True)
+                url = "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-unknown-linux-gnu.zip"
+                zip_path = deno_dir / "deno.zip"
+                urllib.request.urlretrieve(url, zip_path)
+                with zipfile.ZipFile(zip_path, 'r') as z:
+                    z.extractall(deno_dir)
+                deno_bin.chmod(0o755)
+                zip_path.unlink(missing_ok=True)
+                print(f"[runtime] Installed Deno v2.9.8 successfully at {deno_bin}", flush=True)
+            except Exception as e:
+                print(f"[runtime] Could not auto-install Deno: {e}", flush=True)
+        os.environ["PATH"] = f"{deno_dir}:{os.environ.get('PATH', '')}"
 
 ensure_deno_runtime()
 
