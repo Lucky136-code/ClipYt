@@ -1018,9 +1018,10 @@ async def serve_google_verification(ver_id: str):
 @app.get("/api/debug/ytdlp")
 async def api_debug_ytdlp(url: str = "https://www.youtube.com/watch?v=Dz0naoD1QWo"):
     import subprocess, sys, os, traceback
+    from backend.config import YTDLP_BASE_OPTS, ensure_fresh_cookiefile
     try:
+        cookie_file = ensure_fresh_cookiefile() or YTDLP_BASE_OPTS.get("cookiefile")
         cookie_str = os.environ.get("YOUTUBE_COOKIES", "")
-        cookie_file = YTDLP_BASE_OPTS.get("cookiefile")
         cmd = [
             sys.executable, "-m", "yt_dlp",
             "-F",
