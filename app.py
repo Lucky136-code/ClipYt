@@ -34,7 +34,47 @@ def ensure_deno_runtime():
                 print(f"[runtime] Could not auto-install Deno: {e}", flush=True)
         os.environ["PATH"] = f"{deno_dir}:{os.environ.get('PATH', '')}"
 
+
+def ensure_pot_provider():
+    """Ensure bgutil PO token server runs in the background on 127.0.0.1:4416."""
+    import socket
+    s = socket.socket()
+    try:
+        s.connect(("127.0.0.1", 4416))
+        s.close()
+        return
+    except Exception:
+        pass
+
+    if os.name != "nt":
+        pot_dir = Path("/tmp/bgutil-pot")
+        if not pot_dir.exists():
+            try:
+                subprocess.run(
+                    ["git", "clone", "--depth=1", "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git", str(pot_dir)],
+                    check=True,
+                    timeout=30,
+                )
+            except Exception as e:
+                print(f"[pot] Could not clone bgutil: {e}", flush=True)
+                return
+
+        main_ts = pot_dir / "server" / "src" / "main.ts"
+        deno_bin = Path("/tmp/bin/deno")
+        if main_ts.exists() and deno_bin.exists():
+            try:
+                subprocess.Popen(
+                    [str(deno_bin), "run", "-A", str(main_ts)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                print("[pot] Launched bgutil PO token server on port 4416", flush=True)
+            except Exception as e:
+                print(f"[pot] Failed to launch bgutil server: {e}", flush=True)
+
+
 ensure_deno_runtime()
+ensure_pot_provider()
 
 import gradio as gr
 import uvicorn
