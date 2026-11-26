@@ -407,14 +407,12 @@ def _extract_words_from_segments(segments) -> List[Dict[str, Any]]:
     return words_out
 
 
-def _choose_en_or_hi_language(model, media_path: Path) -> str:
+def _choose_en_or_hi_language_from_audio(model, audio) -> str:
     """
-    Strictly choose ONLY 'en' (English) or 'hi' (Hindi -> Hinglish).
+    Strictly choose ONLY 'en' (English) or 'hi' (Hindi -> Hinglish) from pre-decoded audio.
     Prevents Whisper from ever mistaking Indian Hindi/Hinglish speech for Urdu ('ur') or Arabic ('ar')!
     """
     try:
-        from faster_whisper.audio import decode_audio
-        audio = decode_audio(str(media_path), sampling_rate=16000)
         lang, prob, all_probs = model.detect_language(audio)
         probs_map = dict(all_probs or [])
         en_p = float(probs_map.get("en", 0.0))
@@ -422,8 +420,6 @@ def _choose_en_or_hi_language(model, media_path: Path) -> str:
 
         # Only pick English if English is overwhelmingly dominant (> 88%)
         # and there is virtually zero Hindi/Urdu detected (< 0.08).
-        # Any mixed Hinglish or Indian creator speech MUST use 'hi' so spoken Hindi words
-        # are accurately transcribed and transliterated into phonetic Hinglish, never translated!
         if lang == "en" and prob >= 0.88 and hi_ur_p < 0.08:
             return "en"
         if en_p >= 0.88 and hi_ur_p < 0.08:
@@ -433,9 +429,19 @@ def _choose_en_or_hi_language(model, media_path: Path) -> str:
         return "hi"
 
 
+def _choose_en_or_hi_language(model, media_path: Path) -> str:
+    try:
+        from faster_whisper.audio import decode_audio
+        audio = decode_audio(str(media_path), sampling_rate=16000)
+        return _choose_en_or_hi_language_from_audio(model, audio)
+    except Exception:
+        return "hi"
+
+
 def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]:
     """
     Transcribe a cut clip's audio directly using faster-whisper strictly in English or Hinglish:
+      - Decodes audio ONCE (avoids duplicate PyAV decode overhead)
       - Forces language='en' or language='hi' (NEVER Urdu/Arabic!)
       - Acoustic word-level timestamps (0.000s sync accuracy!)
       - 2-pass robustness: Pass 1 gentle Silero VAD -> Pass 2 no-VAD retry for noisy gaming streams!
@@ -445,18 +451,25 @@ def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]
     global _LAST_WHISPER_ERROR
     try:
         model = _get_whisper_model()
-        target_lang = _choose_en_or_hi_language(model, media_path)
+        transcribe_input: Any = str(media_path)
+        try:
+            from faster_whisper.audio import decode_audio
+            decoded = decode_audio(str(media_path), sampling_rate=16000)
+            target_lang = _choose_en_or_hi_language_from_audio(model, decoded)
+            transcribe_input = decoded
+        except Exception:
+            target_lang = _choose_en_or_hi_language(model, media_path)
 
-        # Thread-safe GPU/CPU execution guard for 20-30 concurrent users
+        # Thread-safe GPU/CPU execution guard for concurrent users
         with _TRANSCRIBE_LOCK:
             # Pass 1: Gentle Silero VAD (captions vanish cleanly during real silence)
             words_out: List[Dict[str, Any]] = []
             try:
                 segments, _info = model.transcribe(
-                    str(media_path),
+                    transcribe_input,
                     language=target_lang,
                     task="transcribe",
-                    beam_size=2,
+                    beam_size=1,
                     best_of=1,
                     word_timestamps=True,
                     vad_filter=True,
@@ -476,10 +489,10 @@ def transcribe_clip_hinglish(media_path: Path) -> Optional[List[Dict[str, Any]]]
             # Pass 2: No-VAD retry if stream has loud game SFX/music or ONNX VAD errored
             if not words_out:
                 segments2, _info2 = model.transcribe(
-                    str(media_path),
+                    transcribe_input,
                     language=target_lang,
                     task="transcribe",
-                    beam_size=2,
+                    beam_size=1,
                     best_of=1,
                     word_timestamps=True,
                     vad_filter=False,

@@ -48,7 +48,7 @@ def detect_best_encoder() -> Dict[str, Any]:
         (
             "h264_nvenc",
             ["-hwaccel", "cuda"],
-            ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "17", "-b:v", "14000k", "-maxrate", "20000k", "-bufsize", "30000k"],
+            ["-c:v", "h264_nvenc", "-preset", "p3", "-rc", "vbr", "-cq", "17", "-b:v", "14000k", "-maxrate", "20000k", "-bufsize", "30000k"],
         ),
         (
             "h264_qsv",

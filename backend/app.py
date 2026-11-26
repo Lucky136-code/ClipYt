@@ -9,6 +9,7 @@ import requests
 from PIL import Image, ImageFilter, ImageEnhance
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -40,6 +41,7 @@ from backend.auto_frame import compute_auto_boxes, get_fallback_boxes
 
 app = FastAPI(title="ClipYT - YouTube Shorts Creator", version="2.0.0")
 
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -164,7 +166,7 @@ def _prune_expired_tasks_and_caches():
 
 @app.on_event("startup")
 async def on_startup():
-    """Probe GPU encoder once on startup, launch 5-min auto disk cleaner, and scale thread pool."""
+    """Probe GPU encoder, launch 5-min auto disk cleaner, pre-warm Whisper on GPU, and scale thread pool."""
     try:
         loop = asyncio.get_running_loop()
         loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
@@ -172,6 +174,11 @@ async def on_startup():
         pass
     asyncio.create_task(_periodic_disk_cleaner())
     await asyncio.to_thread(detect_best_encoder)
+    try:
+        from backend.whisper_captions import _get_whisper_model
+        asyncio.create_task(asyncio.to_thread(_get_whisper_model))
+    except Exception:
+        pass
 
 
 class AnalyzeRequest(BaseModel):

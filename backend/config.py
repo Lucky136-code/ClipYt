@@ -33,7 +33,7 @@ YTDLP_BASE_OPTS = {
     "remote_components": ["ejs:github"],
     "nopart": True,
     "overwrites": True,
-    "concurrent_fragment_downloads": 4,
+    "concurrent_fragment_downloads": 8,
     "buffersize": 8 * 1024 * 1024,
     "socket_timeout": 8,
     "retries": 1,
