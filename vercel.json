@@ -42,7 +42,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://dale-doc-dealer-subscriber.trycloudflare.com/api/:path*"
+      "destination": "https://behavioral-mini-slightly-york.trycloudflare.com/api/:path*"
     }
   ]
 }
