@@ -42,7 +42,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://lucky1362002-clipyt.hf.space/api/:path*"
+      "destination": "https://scan-promise-louisiana-medicine.trycloudflare.com/api/:path*"
     }
   ]
 }
