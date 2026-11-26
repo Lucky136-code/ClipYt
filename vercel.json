@@ -42,7 +42,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://scan-promise-louisiana-medicine.trycloudflare.com/api/:path*"
+      "destination": "https://dale-doc-dealer-subscriber.trycloudflare.com/api/:path*"
     }
   ]
 }
